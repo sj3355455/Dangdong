@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>당동 기록실</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
+  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#15181c; --card:#1e2228; --text:#e8eaed; --muted:#9aa1ab;
+         --line:#2f343c; --accent:#ff8c42; --hover:#262b33; }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  line-height:1.5;}
+.wrap{max-width:960px;margin:0 auto}
+h1{font-size:1.5rem;margin:0 0 4px}
+.sub{color:var(--muted);font-size:.85rem;margin-bottom:20px}
+.tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:8px 16px;border:1px solid var(--line);background:var(--card);
+  color:var(--text);border-radius:999px;cursor:pointer;font-size:.9rem}
+.tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:16px;margin-bottom:16px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem;white-space:nowrap}
+th,td{padding:9px 10px;text-align:center;border-bottom:1px solid var(--line)}
+th{cursor:pointer;user-select:none;color:var(--muted);font-weight:600;
+  position:sticky;top:0;background:var(--card)}
+th:hover{color:var(--accent)}
+th .ar{opacity:.35;font-size:.7rem}
+th.on{color:var(--accent)} th.on .ar{opacity:1}
+td.name,th.name{text-align:left}
+tbody tr:hover{background:var(--hover)}
+.rk{width:34px;color:var(--muted)}
+a.pl{color:var(--text);text-decoration:none;font-weight:600;border-bottom:1px dashed var(--muted);cursor:pointer}
+a.pl:hover{color:var(--accent);border-color:var(--accent)}
+.win{color:var(--accent);font-weight:600}
+.hide{display:none}
+.back{background:none;border:none;color:var(--accent);cursor:pointer;
+  font-size:.9rem;padding:0;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:10px;margin:14px 0}
+.st{background:var(--bg);border-radius:8px;padding:10px;text-align:center}
+.st .k{font-size:.72rem;color:var(--muted)}
+.st .v{font-size:1.15rem;font-weight:700;margin-top:2px}
+.empty{color:var(--muted);text-align:center;padding:24px;font-size:.9rem}
+svg{display:block;width:100%;height:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎱 당동 기록실</h1>
+  <div class="sub" id="sub"></div>
+  <div class="tabs">
+    <button class="tab on" data-v="rank">🏆 순위</button>
+    <button class="tab" data-v="games">🕒 경기</button>
+  </div>
+  <div id="view"></div>
+</div>
+<script>
+const DATA = {"updated":"2026-07-16 23:03","players":[{"name":"황서진","handicap":250,"games":5,"wins":1,"winRate":20.0,"avgAvg":2.8178,"bestAvg":7.0,"bestHr":16,"history":[{"date":"2026-07-16","opponents":"박지원","score":21,"inning":3,"average":7.0,"highRun":16,"win":true},{"date":"2026-07-16","opponents":"최민규, 박지원","score":4,"inning":3,"average":1.333,"highRun":3,"win":false},{"date":"2026-07-16","opponents":"박지원, 최민규, 김준서","score":22,"inning":9,"average":2.444,"highRun":8,"win":false},{"date":"2026-07-16","opponents":"김준서, 박지원","score":8,"inning":3,"average":2.667,"highRun":4,"win":false},{"date":"2026-07-16","opponents":"박지원","score":20,"inning":31,"average":0.645,"highRun":6,"win":false}]},{"name":"박지원","handicap":150,"games":5,"wins":3,"winRate":60.0,"avgAvg":1.7254,"bestAvg":5.333,"bestHr":9,"history":[{"date":"2026-07-16","opponents":"황서진","score":2,"inning":2,"average":1.0,"highRun":2,"win":false},{"date":"2026-07-16","opponents":"황서진, 최민규","score":0,"inning":2,"average":0.0,"highRun":0,"win":false},{"date":"2026-07-16","opponents":"황서진, 최민규, 김준서","score":16,"inning":9,"average":1.778,"highRun":4,"win":true},{"date":"2026-07-16","opponents":"황서진, 김준서","score":16,"inning":3,"average":5.333,"highRun":9,"win":true},{"date":"2026-07-16","opponents":"황서진","score":16,"inning":31,"average":0.516,"highRun":6,"win":true}]},{"name":"최민규","handicap":80,"games":2,"wins":2,"winRate":100.0,"avgAvg":2.0,"bestAvg":3.0,"bestHr":8,"history":[{"date":"2026-07-16","opponents":"황서진, 박지원","score":9,"inning":3,"average":3.0,"highRun":8,"win":true},{"date":"2026-07-16","opponents":"황서진, 박지원, 김준서","score":9,"inning":9,"average":1.0,"highRun":2,"win":true}]},{"name":"김준서","handicap":80,"games":2,"wins":1,"winRate":50.0,"avgAvg":2.0,"bestAvg":3.0,"bestHr":4,"history":[{"date":"2026-07-16","opponents":"황서진, 박지원, 최민규","score":8,"inning":8,"average":1.0,"highRun":3,"win":false},{"date":"2026-07-16","opponents":"황서진, 박지원","score":9,"inning":3,"average":3.0,"highRun":4,"win":true}]}],"games":[{"date":"2026-07-16","datetime":"2026-07-16 10:43:32","type":"4B","name":"4구 2인","players":[{"name":"황서진","ranking":1},{"name":"박지원","ranking":2}]},{"date":"2026-07-16","datetime":"2026-07-16 10:52:13","type":"4B","name":"4구 3인","players":[{"name":"황서진","ranking":2},{"name":"최민규","ranking":1},{"name":"박지원","ranking":2}]},{"date":"2026-07-16","datetime":"2026-07-16 11:26:16","type":"4B","name":"4구 4인","players":[{"name":"황서진","ranking":2},{"name":"박지원","ranking":1},{"name":"최민규","ranking":1},{"name":"김준서","ranking":2}]},{"date":"2026-07-16","datetime":"2026-07-16 11:29:20","type":"4B","name":"4구 3인","players":[{"name":"황서진","ranking":2},{"name":"김준서","ranking":1},{"name":"박지원","ranking":1}]},{"date":"2026-07-16","datetime":"2026-07-16 18:48:51","type":"4B","name":"4구 2인","players":[{"name":"황서진","ranking":2},{"name":"박지원","ranking":1}]}]};
+const $ = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+document.getElementById('sub').textContent =
+  `최종 업데이트 ${DATA.updated} · 총 ${DATA.games.length}경기 · 선수 ${DATA.players.length}명`;
+
+const COLS = [
+  {k:'name',     t:'선수',    txt:1},
+  {k:'handicap', t:'수지'},
+  {k:'games',    t:'경기'},
+  {k:'wins',     t:'승'},
+  {k:'winRate',  t:'승률',    fmt:v=>v.toFixed(0)+'%'},
+  {k:'avgAvg',   t:'평균에버', fmt:v=>v.toFixed(3)},
+  {k:'bestAvg',  t:'최고에버', fmt:v=>(+v.toFixed(3))},
+  {k:'bestHr',   t:'최고하이런'},
+];
+let sortKey='winRate', sortAsc=false;
+
+function renderRank(){
+  const rows = [...DATA.players].sort((a,b)=>{
+    let x=a[sortKey], y=b[sortKey], r;
+    if(typeof x==='string') r = x.localeCompare(y,'ko');
+    else r = x-y;
+    if(r===0) r = b.avgAvg-a.avgAvg;
+    return sortAsc ? r : -r;
+  });
+  const head = COLS.map(c=>{
+    const on = c.k===sortKey;
+    const ar = on ? (sortAsc?'▲':'▼') : '↕';
+    return `<th class="${on?'on':''} ${c.txt?'name':''}" data-k="${c.k}">${c.t} <span class="ar">${ar}</span></th>`;
+  }).join('');
+  const body = rows.map((p,i)=>{
+    const medal = ['🥇','🥈','🥉'][i] || (i+1);
+    const tds = COLS.map(c=>{
+      if(c.k==='name') return `<td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a></td>`;
+      const v = c.fmt ? c.fmt(p[c.k]) : p[c.k];
+      return `<td>${v}</td>`;
+    }).join('');
+    return `<tr><td class="rk">${medal}</td>${tds}</tr>`;
+  }).join('');
+  const el = $(`<div class="card"><div class="scroll"><table>
+      <thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+      <div class="sub" style="margin:10px 0 0">표 제목을 누르면 그 기준으로 정렬됩니다.</div></div>`);
+  el.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
+    const k = th.dataset.k;
+    if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'); }
+    show('rank');
+  });
+  el.querySelectorAll('a.pl').forEach(a=>a.onclick=()=>showPlayer(a.dataset.p));
+  return el;
+}
+
+function chart(vals, labels){
+  if(vals.length<2) return '<div class="empty">경기 2개 이상부터 그래프가 표시됩니다</div>';
+  const W=680,H=240,P={t:16,r:16,b:36,l:40};
+  const iw=W-P.l-P.r, ih=H-P.t-P.b;
+  const max = Math.max(...vals)*1.15 || 1;
+  const x = i => P.l + (vals.length===1?iw/2:iw*i/(vals.length-1));
+  const y = v => P.t + ih - (v/max)*ih;
+  let g='';
+  for(let i=0;i<=4;i++){
+    const yy=P.t+ih*i/4, v=(max*(4-i)/4);
+    g+=`<line x1="${P.l}" y1="${yy}" x2="${W-P.r}" y2="${yy}" stroke="var(--line)" stroke-width="1"/>`;
+    g+=`<text x="${P.l-8}" y="${yy+4}" fill="var(--muted)" font-size="11" text-anchor="end">${(+v.toFixed(2))}</text>`;
+  }
+  const pts = vals.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
+  const dots = vals.map((v,i)=>
+    `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="var(--accent)"/>
+     <text x="${x(i)}" y="${y(v)-10}" fill="var(--text)" font-size="11" text-anchor="middle">${(+v.toFixed(2))}</text>`).join('');
+  const step = Math.ceil(labels.length/8);
+  const xs = labels.map((l,i)=> i%step===0 ?
+    `<text x="${x(i)}" y="${H-14}" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(l)}</text>`:'').join('');
+  return `<svg viewBox="0 0 ${W} ${H}">${g}
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5"
+      stroke-linejoin="round" stroke-linecap="round"/>${dots}${xs}</svg>`;
+}
+
+function showPlayer(name){
+  const p = DATA.players.find(v=>v.name===name);
+  const h = [...p.history];
+  const el = $(`<div>
+    <button class="back">← 순위로</button>
+    <div class="card">
+      <h2 style="margin:0">${esc(p.name)}</h2>
+      <div class="sub" style="margin:2px 0 0">수지 ${p.handicap}</div>
+      <div class="stats">
+        <div class="st"><div class="k">경기</div><div class="v">${p.games}</div></div>
+        <div class="st"><div class="k">승 / 패</div><div class="v">${p.wins} / ${p.games-p.wins}</div></div>
+        <div class="st"><div class="k">승률</div><div class="v">${p.winRate.toFixed(0)}%</div></div>
+        <div class="st"><div class="k">평균에버</div><div class="v">${p.avgAvg.toFixed(3)}</div></div>
+        <div class="st"><div class="k">최고에버</div><div class="v">${+p.bestAvg.toFixed(3)}</div></div>
+        <div class="st"><div class="k">최고하이런</div><div class="v">${p.bestHr}</div></div>
+      </div>
+      <h3 style="font-size:1rem;margin:18px 0 8px">📈 에버리지 추이</h3>
+      ${chart(h.map(r=>r.average), h.map(r=>r.date.slice(5)))}
+    </div>
+    <div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🗒️ 경기 이력</h3>
+      <div class="scroll"><table>
+        <thead><tr><th class="name">날짜</th><th class="name">상대</th><th>점수</th>
+          <th>이닝</th><th>에버</th><th>하이런</th><th>결과</th></tr></thead>
+        <tbody>${[...h].reverse().map(r=>`<tr>
+          <td class="name">${esc(r.date)}</td><td class="name">${esc(r.opponents)}</td>
+          <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
+          <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('')}
+        </tbody></table></div></div>
+  </div>`);
+  el.querySelector('.back').onclick=()=>show('rank');
+  document.getElementById('view').replaceChildren(el);
+  scrollTo(0,0);
+}
+
+function renderGames(){
+  const rows = [...DATA.games].sort((a,b)=>b.datetime.localeCompare(a.datetime)).map(g=>{
+    const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
+    const all = g.players.map(p=>p.name).join(', ');
+    return `<tr><td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}</td>
+      <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
+  }).join('');
+  return $(`<div class="card"><div class="scroll"><table>
+    <thead><tr><th class="name">날짜</th><th class="name">경기</th>
+      <th class="name">참가자</th><th class="name">우승</th></tr></thead>
+    <tbody>${rows}</tbody></table></div></div>`);
+}
+
+function show(v){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.v===v));
+  document.getElementById('view').replaceChildren(v==='rank' ? renderRank() : renderGames());
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
+show('rank');
+</script>
+</body>
+</html>
