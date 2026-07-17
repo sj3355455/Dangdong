@@ -808,8 +808,14 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); defe
   setMode('login');
 })();
 
-if ('serviceWorker' in navigator && location.protocol !== 'file:')
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    for (const reg of regs) {
+      if (reg.scope.includes('/score/')) reg.unregister();
+    }
+  });
   navigator.serviceWorker.register('../sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>
