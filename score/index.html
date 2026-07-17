@@ -785,11 +785,19 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); defe
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.getRegistrations().then(regs => {
-    for (const reg of regs) {
-      if (reg.scope.includes('/score/')) reg.unregister();
+    for(let r of regs) {
+      if(r.scope !== location.origin + '/Dangdong/') r.unregister();
     }
   });
   navigator.serviceWorker.register('../sw.js').catch(()=>{});
+  
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
 }
 </script>
 </body>
