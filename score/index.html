@@ -60,7 +60,7 @@ select.field{appearance:none;background-image:
 .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* ── 설정 화면 ─────────────────────────────── */
-#setup .who{color:var(--muted);font-size:.82rem;display:flex;gap:10px;align-items:center}
+.who{text-align:center;color:var(--muted);font-size:.9rem;background:var(--card);padding:12px 16px;border-radius:12px;margin-bottom:16px;border:1px solid var(--line)}
 #setup .who b{color:var(--text)}
 .prow{display:flex;align-items:center;gap:10px}
 .dot{width:24px;height:24px;border-radius:50%;flex:none;border:2px solid var(--line)}
@@ -159,6 +159,10 @@ select.field{appearance:none;background-image:
   padding:10px 18px;border-radius:999px;font-size:.85rem;opacity:0;transition:opacity .3s;
   pointer-events:none;z-index:99;max-width:90vw;text-align:center}
 #toast.on{opacity:1}
+
+.tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.tab{padding:8px 16px;border:1px solid var(--line);background:var(--card);
+  color:var(--text);border-radius:999px;cursor:pointer;font-size:.9rem;text-decoration:none}
 </style>
 </head>
 <body>
@@ -198,7 +202,10 @@ select.field{appearance:none;background-image:
 
 <!-- ══ 로그인 화면 ══ -->
 <div id="auth" class="screen scroller">
-  <h1>🎱 당동 점수판</h1>
+  <div class="tabs">
+    <h1 style="margin:0; font-size:1.5rem">🎱 당동 점수판</h1>
+    <a class="tab" href="../" style="margin-left:auto">📊 기록실</a>
+  </div>
   <div class="sub" style="margin-bottom:4px">로그인하면 경기 기록이 서버에 저장되고<br>선수를 목록에서 고를 수 있어요</div>
 
   <div class="seg">
@@ -216,11 +223,14 @@ select.field{appearance:none;background-image:
   <div class="err" id="aErr"></div>
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
-  <a class="linkbtn acc" href="../" style="margin-top:2px">📊 기록실 보기</a>
 </div>
 
 <!-- ══ 설정 화면 ══ -->
 <div id="setup" class="screen scroller">
+  <div class="tabs">
+    <h1 style="margin:0; font-size:1.5rem">🎱 당동 점수판</h1>
+    <a class="tab" href="../" style="margin-left:auto">📊 기록실</a>
+  </div>
   <div class="who" id="whoBar"></div>
 
   <div class="pcard">
@@ -255,6 +265,9 @@ select.field{appearance:none;background-image:
   <div class="err" id="sErr"></div>
   <button class="bigbtn" id="btnStart">경기 시작</button>
   <div class="savenote" id="saveNote"></div>
+  <div style="text-align:center; margin-top:20px;">
+    <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
+  </div>
 </div>
 
 <!-- ══ 게임 화면 ══ -->
@@ -566,16 +579,14 @@ function applySel(i){
 
 /* ═══ 설정 화면 ═══════════════════════════════ */
 function syncSetup(){
-  // 상단: 누구로 로그인했는지 및 기록실 링크
   $('#whoBar').innerHTML = auth
-    ? `<span>👤 <b>${esc(auth.name || '회원')}</b></span><a class="linkbtn acc" href="../" style="margin-left:auto;text-decoration:none;">📊 기록실 보기</a><button class="linkbtn" id="btnLogout">로그아웃</button>`
-    : `<span>게스트 모드</span><a class="linkbtn acc" href="../" style="margin-left:auto;text-decoration:none;">📊 기록실 보기</a><button class="linkbtn acc" id="btnToLogin">로그인하기</button>`;
-  const lo = $('#btnLogout'), li = $('#btnToLogin');
+    ? `<span>👤 <b>${esc(auth.name || '회원')}</b>님 환영합니다</span>`
+    : `<span>게스트 모드</span>`;
+  const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
-    if (!confirm('로그아웃할까요?')) return;
+    if (!confirm('처음 화면으로 돌아갈까요?')) return;
     auth = null; localStorage.removeItem(LS_AUTH); show('auth');
   };
-  if (li) li.onclick = () => show('auth');
 
   // 선수 선택: 로그인 상태에서만 드롭다운, 게스트는 직접 입력만
   for (const i of [0,1]) {
