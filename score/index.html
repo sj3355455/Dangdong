@@ -63,7 +63,7 @@ select.field{appearance:none;background-image:
 .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* ── 설정 화면 ─────────────────────────────── */
-.who{text-align:center;color:var(--muted);font-size:.9rem;background:var(--card);padding:12px 16px;border-radius:12px;margin-bottom:16px;border:1px solid var(--line)}
+.who{text-align:left;color:var(--muted);font-size:.85rem;margin-bottom:16px;padding:0 4px;width:100%;max-width:420px}
 #setup .who b{color:var(--text)}
 .prow{display:flex;align-items:center;gap:10px}
 .dot{width:24px;height:24px;border-radius:50%;flex:none;border:2px solid var(--line)}
@@ -553,7 +553,7 @@ function applySel(i){
 /* ═══ 설정 화면 ═══════════════════════════════ */
 function syncSetup(){
   $('#whoBar').innerHTML = auth
-    ? `<span>👤 <b>${esc(auth.name || '회원')}</b>님 환영합니다</span>`
+    ? `<span>👤 <b>${esc(auth.name || '회원')}</b></span>`
     : `<span>게스트 모드</span>`;
   const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
