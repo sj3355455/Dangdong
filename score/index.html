@@ -683,8 +683,12 @@ function win(i){
       `<td><b>${x.score}</b></td><td>${x.innings}</td>` +
       `<td>${(x.score / x.innings).toFixed(2)}</td><td>${x.highRun}</td><td>${x.misses}</td></tr>`
     ).join('');
-  $('#winOvl').classList.add('on');
-  vib([40,60,40,60,80]);
+  setTimeout(() => {
+    if (S && S.fin) {
+      $('#winOvl').classList.add('on');
+      vib([40,60,40,60,80]);
+    }
+  }, 600);
   if (!S.saved) sendResult(f);
 }
 
