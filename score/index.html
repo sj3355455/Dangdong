@@ -106,9 +106,10 @@ select.field{appearance:none;background-image:
 .zone .minusbtn{top:calc(12px + var(--sat));left:14px}
 @media (orientation:landscape){ .zone .minusbtn{top:auto;bottom:14px;left:14px} }
 
-#mid{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  pointer-events:none;flex-direction:row;gap:10px;z-index:5}
-@media (orientation:landscape){ #mid{flex-direction:column} }
+#mid{display:flex;align-items:center;justify-content:center;
+  padding:12px;padding-bottom:calc(12px + var(--sab));gap:12px;z-index:5;
+  background:#0f1216;border-top:1px solid #1a1f26;flex-shrink:0}
+@media (orientation:landscape){ #mid{flex-direction:column;padding:16px;padding-right:calc(16px + var(--sab));border-top:none;border-left:1px solid #1a1f26} }
 #mid>*{pointer-events:auto}
 .midpill{background:rgba(10,12,15,.88);border:1px solid var(--line);color:var(--text);
   border-radius:999px;padding:10px 16px;font-weight:800;font-size:.95rem;
@@ -170,7 +171,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v64</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v65</span>
   </div>
 </div>
 
@@ -204,7 +205,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v64</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v65</span>
   </div>
 </div>
 
