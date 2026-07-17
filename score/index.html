@@ -931,6 +931,7 @@ function init(){
   if (tk) { window.location.hash = ''; return toast('로그인 처리되었습니다. 앱을 다시 열어주세요.'); }
   if (auth) { setMode('login'); $('#aName').value = auth.name; loadMembers().then(()=>queueFlush()); }
   else { setMode('login'); show('auth'); }
+  if (S && !S.finished) { S = null; lsSet(LS_STATE, null); }
   if (S) { buildGameZones(); render(); show('game'); queueFlush(); }
   else if (auth) { syncSetup(); show('setup'); }
 }
