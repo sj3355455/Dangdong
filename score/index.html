@@ -176,6 +176,8 @@ select.field{appearance:none;background-image:
   <div class="pcard">
     <input class="field" id="aName" autocomplete="username" autocapitalize="off"
            spellcheck="false" maxlength="10" placeholder="이름">
+    <input class="field" id="aPass" type="password" autocomplete="current-password"
+           placeholder="비밀번호 (6자 이상)">
   </div>
 
   <div class="err" id="aErr"></div>
@@ -433,6 +435,7 @@ function setMode(m){
   authMode = m;
   $('#tabLogin').classList.toggle('on', m === 'login');
   $('#tabSignup').classList.toggle('on', m === 'signup');
+  $('#aPass').autocomplete = m === 'signup' ? 'new-password' : 'current-password';
   $('#btnAuth').textContent = m === 'signup' ? '가입하고 시작' : '로그인';
   $('#aErr').textContent = '';
 }
@@ -441,9 +444,9 @@ $('#tabSignup').onclick = () => setMode('signup');
 
 $('#btnAuth').onclick = async () => {
   const name = $('#aName').value.trim();
-  const pass = 'dangdong123!'; // 내부 공통 비밀번호
+  const pass = $('#aPass').value;
   const err = $('#aErr'); err.textContent = '';
-  if (!name) return err.textContent = '이름을 입력하세요';
+  if (!name || !pass) return err.textContent = '이름과 비밀번호를 입력하세요';
 
   const btn = $('#btnAuth'); btn.disabled = true;
   btn.textContent = authMode === 'signup' ? '가입 중…' : '로그인 중…';
@@ -477,9 +480,9 @@ $('#btnAuth').onclick = async () => {
 };
 
 function translateAuthError(m){
-  if (/Invalid login credentials/i.test(m)) return '등록되지 않은 이름이거나 연결에 실패했어요';
+  if (/Invalid login credentials/i.test(m)) return '이름 또는 비밀번호가 틀렸어요';
   if (/User already registered/i.test(m))   return '이미 등록된 이름이에요. 로그인해 주세요';
-  if (/Password should be/i.test(m))        return '내부 오류가 발생했어요';
+  if (/Password should be/i.test(m))        return '비밀번호는 6자 이상이어야 해요';
   if (/rate limit/i.test(m))                return '요청이 너무 잦아요. 잠시 후 다시 시도해 주세요';
   if (/Failed to fetch|NetworkError/i.test(m)) return '인터넷 연결을 확인해 주세요';
   if (/email/i.test(m))                     return '처리 중 문제가 발생했어요. 다시 시도해 주세요';
