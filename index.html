@@ -116,10 +116,10 @@
 
 <script>
 (function() {
-  // 이미 설치된 앱으로 열었으면 즉시 점수판으로 이동
+  // 개발자 모드: ?dev=1 이면 설치 안내 건너뛰고 바로 점수판으로
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  if (isStandalone) {
-    window.location.replace('score/');
+  if (isStandalone || location.search.includes('dev=1')) {
+    window.location.replace('score/' + (location.search.includes('dev=1') ? '?dev=1' : ''));
     return;
   }
   // 앱이 아니면 설치 안내 화면 표시
