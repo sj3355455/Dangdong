@@ -83,6 +83,11 @@ select.field{appearance:none;background-image:
 .zone.off{filter:brightness(.42) saturate(.55)}
 .zone .zname{font-size:clamp(1rem,2.6vmin,1.4rem);font-weight:700;opacity:.75;
   display:flex;align-items:center;gap:8px}
+.zone .zname-text{display:flex;align-items:center}
+@media (orientation:landscape){
+  .zone .zname{flex-direction:column-reverse;gap:4px}
+  .turnchip{margin-bottom:2px}
+}
 .turnchip{font-size:.7em;background:rgba(0,0,0,.75);color:#fff;border-radius:999px;
   padding:3px 10px;font-weight:700;display:none}
 .zone.on .turnchip{display:inline-block}
@@ -90,7 +95,6 @@ select.field{appearance:none;background-image:
   font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .zscore.pop{animation:pop .18s ease-out}
 @keyframes pop{40%{transform:scale(1.14)}100%{transform:scale(1)}}
-.ztarget{font-size:clamp(.85rem,2.4vmin,1.1rem);opacity:.6;font-weight:600;margin-top:-4px}
 .zstats{font-size:clamp(.75rem,2.2vmin,1rem);opacity:.65;margin-top:8px;font-weight:600}
 .runbadge{position:absolute;font-size:clamp(1rem,3.4vmin,1.5rem);font-weight:800;
   background:rgba(0,0,0,.78);color:#ffd257;border-radius:999px;padding:5px 14px;
@@ -171,7 +175,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v69</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v70</span>
   </div>
 </div>
 
@@ -205,7 +209,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v69</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v70</span>
   </div>
 </div>
 
@@ -639,9 +643,11 @@ function buildGameZones() {
       <div class="zone" id="zone${i}">
         <button class="minusbtn" id="mbtn${i}">-1</button>
         <span class="runbadge" id="run${i}">+0</span>
-        <div class="zname"><span id="gball${i}"></span><span id="gname${i}">${zname}</span><span class="turnchip">치는 중</span></div>
+        <div class="zname">
+          <div class="zname-text"><span id="gball${i}"></span><span id="gname${i}">${zname}</span></div>
+          <span class="turnchip">치는 중</span>
+        </div>
         <div class="zscore" id="gsc${i}">0</div>
-        <div class="ztarget" id="gtgt${i}">목표 ${tgt}</div>
         <div class="zstats" id="gstat${i}">에버 0.000 · 하이런 0</div>
       </div>
     `;
@@ -869,17 +875,15 @@ function render(){
     }
     
     if (S.done[i]) {
-      $('#gtgt'+i).textContent = `마무리 ${S.cush[i]}/${S.round}`;
-      $('#gsc'+i).textContent = '쿠션';
+      $('#gsc'+i).innerHTML = `${S.cush[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.round}</span>`;
+      $('#gstat'+i).innerHTML = `<span style="color:var(--accent)">마무리 쿠션 단계</span>`;
       $('#gsc'+i).style.fontSize = 'clamp(40px, 15vmin, 100px)';
     } else {
-      $('#gtgt'+i).textContent = `목표 ${S.targets[i]}`;
-      $('#gsc'+i).textContent = S.sc[i];
+      $('#gsc'+i).innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.targets[i]}</span>`;
+      const ev = S.inn[i] ? (S.sc[i] / S.inn[i]).toFixed(3) : '0.000';
+      $('#gstat'+i).textContent = `에버 ${ev} · 하이런 ${S.br[i]}`;
       $('#gsc'+i).style.fontSize = 'clamp(64px, 22vmin, 150px)';
     }
-    
-    const ev = S.inn[i] ? (S.sc[i] / S.inn[i]).toFixed(3) : '0.000';
-    $('#gstat'+i).textContent = `에버 ${ev} · 하이런 ${S.br[i]}`;
     
     if (S.turn === i && S.tp > 0) {
       $('#run'+i).textContent = '+' + S.tp;
