@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="당동 점수판">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="../manifest.json">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="icon" type="image/png" href="../icon-192.png">
 <title>당동 점수판</title>
 <style>
 :root{
@@ -809,7 +809,7 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); defe
 })();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:')
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.register('../sw.js').catch(()=>{});
 </script>
 </body>
 </html>

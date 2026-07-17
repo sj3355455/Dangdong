@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>당동 기록실</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f6f7f9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="당동 기록실">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <style>
 :root{
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
@@ -408,12 +415,18 @@ function show(v){
 }
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
 
+
+
 const kick = (ms) => { clearTimeout(chartRT);
   chartRT = setTimeout(()=>{ if(chartRedraw) chartRedraw(); }, ms); };
 addEventListener('resize', ()=>kick(150));
 addEventListener('orientationchange', ()=>kick(250));   // 폰 회전
 
 initDashboard();
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>
