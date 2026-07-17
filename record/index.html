@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>당동 기록실</title>
 <link rel="manifest" href="../manifest.json">
 <meta name="theme-color" content="#f6f7f9">
@@ -66,6 +66,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 <link rel="icon" type="image/png" href="icon-192.png">
 <style>
 :root{
+  --sat: env(safe-area-inset-top,0px); --sab: env(safe-area-inset-bottom,0px);
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
   --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
 }
@@ -74,7 +75,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
          --line:#2f343c; --accent:#ff8c42; --hover:#262b33; }
 }
 *{box-sizing:border-box}
-body{margin:0;padding:16px;background:var(--bg);color:var(--text);
+body{margin:0;padding:calc(16px + var(--sat)) 16px calc(16px + var(--sab));background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   line-height:1.5;}
 .wrap{max-width:960px;margin:0 auto}
