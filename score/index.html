@@ -220,22 +220,24 @@ select.field{appearance:none;background-image:
     <div class="prow"><span class="dot w"></span> <span class="plbl" id="plbl0"></span>
       <select class="field" id="sel0"></select></div>
     <input class="field" id="name0" maxlength="10" placeholder="흰 공 선수 이름">
-    <div class="trow"><span class="lbl">목표 점수</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <b class="tval" id="tval0" style="font-size:1.2rem;">10</b>
-        <button class="mbtn" id="btnChangeTarget0">변경</button>
-      </div></div>
+    <div class="trow" style="justify-content:flex-start; gap:12px; align-items:center;">
+      <span class="lbl">목표 점수</span>
+      <b class="tval" id="tval0" style="font-size:1.2rem; line-height:1; padding-top:2px;">10</b>
+      <div style="flex:1;"></div>
+      <button class="mbtn" onclick="openTargetPopup(0)">변경</button>
+    </div>
   </div>
 
   <div class="pcard" id="pcard1">
     <div class="prow"><span class="dot y"></span> <span class="plbl" id="plbl1"></span>
       <select class="field" id="sel1"></select></div>
     <input class="field" id="name1" maxlength="10" placeholder="노란 공 선수 이름">
-    <div class="trow"><span class="lbl">목표 점수</span>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <b class="tval" id="tval1" style="font-size:1.2rem;">10</b>
-        <button class="mbtn" id="btnChangeTarget1">변경</button>
-      </div></div>
+    <div class="trow" style="justify-content:flex-start; gap:12px; align-items:center;">
+      <span class="lbl">목표 점수</span>
+      <b class="tval" id="tval1" style="font-size:1.2rem; line-height:1; padding-top:2px;">10</b>
+      <div style="flex:1;"></div>
+      <button class="mbtn" onclick="openTargetPopup(1)">변경</button>
+    </div>
   </div>
 
   <div class="firstseg"><span class="cap">내 공</span>
@@ -614,15 +616,12 @@ for (const i of [0,1]) {
   $('#name'+i).oninput  = e => { prefs.names[i] = e.target.value; lsSet(LS_PREFS, prefs); };
 }
 let curTargetEdit = 0;
-for (const i of [0,1]) {
-  $('#btnChangeTarget'+i).onclick = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    curTargetEdit = i;
-    $('#targetOvlTitle').textContent = i === 0 ? '⚪ 흰 공 목표 점수' : '🟡 노란 공 목표 점수';
-    $('#tvalEdit').textContent = prefs.targets[i];
-    $('#targetOvl').classList.add('on');
-  };
-}
+window.openTargetPopup = function(i) {
+  curTargetEdit = i;
+  $('#targetOvlTitle').textContent = i === 0 ? '⚪ 흰 공 목표 점수' : '🟡 노란 공 목표 점수';
+  $('#tvalEdit').textContent = prefs.targets[i];
+  $('#targetOvl').classList.add('on');
+};
 $('#btnTargetMinus').onclick = (e) => {
   e.preventDefault(); e.stopPropagation();
   let t = curTargetEdit;
