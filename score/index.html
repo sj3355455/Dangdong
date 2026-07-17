@@ -606,27 +606,30 @@ for (const i of [0,1]) {
 }
 let curTargetEdit = 0;
 for (const i of [0,1]) {
-  $('#btnChangeTarget'+i).onclick = () => {
+  $('#btnChangeTarget'+i).addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
     curTargetEdit = i;
     $('#targetOvlTitle').textContent = i === 0 ? '⚪ 흰 공 목표 점수' : '🟡 노란 공 목표 점수';
     $('#tvalEdit').textContent = prefs.targets[i];
     $('#targetOvl').classList.add('on');
-  };
+  });
 }
-$('#btnTargetMinus').onclick = () => {
+$('#btnTargetMinus').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
   let t = curTargetEdit;
   prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] - 1));
   $('#tvalEdit').textContent = prefs.targets[t];
   $('#tval'+t).textContent = prefs.targets[t];
   lsSet(LS_PREFS, prefs); vib(8);
-};
-$('#btnTargetPlus').onclick = () => {
+});
+$('#btnTargetPlus').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
   let t = curTargetEdit;
   prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + 1));
   $('#tvalEdit').textContent = prefs.targets[t];
   $('#tval'+t).textContent = prefs.targets[t];
   lsSet(LS_PREFS, prefs); vib(8);
-};
+});
 $('#first0').onclick = () => { applyMyBall(0); };
 $('#first1').onclick = () => { applyMyBall(1); };
 
