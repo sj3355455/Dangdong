@@ -100,7 +100,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v71</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v72</span>
   </div>
 </div>
 <script>
@@ -155,14 +155,14 @@ function processData(games) {
       if (!pmap[pName]) {
         pmap[pName] = {
           name: pName,
-          handicap: p.target,
+          handicap: isTeam ? 0 : p.target,
           games: 0,
           wins: 0,
           history: []
         };
       }
       const st = pmap[pName];
-      st.handicap = Math.max(st.handicap, p.target);
+      if (!isTeam) st.handicap = Math.max(st.handicap, p.target);
       st.games++;
       if (p.win) st.wins++;
 
@@ -228,7 +228,7 @@ const getAuth = () => { try { return JSON.parse(localStorage.getItem(LS_AUTH)); 
 
 const COLS = [
   {k:'name',     t:'이름',    txt:1},
-  {k:'handicap', t:'수지', fmt:v=>v*10},
+  {k:'handicap', t:'수지', fmt:v=>v ? v*10 : '—'},
   {k:'games',    t:'경기'},
   {k:'wins',     t:'승'},
   {k:'winRate',  t:'승률',    fmt:v=>v.toFixed(0)+'%'},
