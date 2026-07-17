@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v57</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v58</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v57</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v58</span>
   </div>
 </div>
 
@@ -354,7 +354,7 @@ function renderSetupCards() {
     for (let i = 0; i < 2; i++) {
       html += `
         <div class="pcard ${prefs.myBall === i ? 'me' : ''}" id="pcard${i}">
-          <div class="prow"><span class="dot ${ZCOLORS[i]}"></span> <span class="plbl ${prefs.myBall === i ? 'me' : 'opp'}">${prefs.myBall === i ? '우리 팀' : '상대 팀'}</span></div>
+          <div class="prow"><span class="dot ${ZCOLORS[i]}"></span> <span class="plbl ${prefs.myBall === i ? 'me' : 'opp'}">${prefs.myBall === i ? '나' : '상대'}</span></div>
           <div style="font-weight:bold; margin-bottom:8px;">${TZNAMES[i]}</div>
           <div style="display:flex; gap:8px; margin-bottom:8px;">
             <select class="field" id="sel${i*2}" style="flex:1; margin:0; padding:10px;"></select>
@@ -395,7 +395,7 @@ function renderSetupCards() {
   let mbHtml = '';
   for (let i = 0; i < (isTeam ? 2 : N); i++) {
     const ballIcon = i % 2 === 0 ? '⚪' : '🟡';
-    const label = isTeam ? TZNAMES[i] : `${i + 1}번(${ballIcon})`;
+    const label = `${i + 1}번(${ballIcon})`;
     mbHtml += `<button id="first${i}" class="${prefs.myBall === i ? 'on' : ''}" onclick="applyMyBall(${i})">${label}</button>`;
   }
   $('#myBallSeg').innerHTML = mbHtml;
