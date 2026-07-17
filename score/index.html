@@ -44,7 +44,7 @@ select.field{appearance:none;background-image:
   background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:36px}
 .pcard{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);
   padding:16px;border-radius:12px;margin-bottom:16px;transition:all .2s;display:flex;flex-direction:column;gap:10px}
-.pcard.me{background:var(--hover);border-color:var(--muted)}
+.pcard.me{border-color:var(--muted)}
 .plbl{font-size:.75rem;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:bold}
 .plbl.me{background:var(--accent);color:#fff}
 .plbl.opp{background:var(--line);color:var(--muted)}
@@ -79,7 +79,8 @@ select.field{appearance:none;background-image:
 .trow .lbl{color:var(--muted);font-size:.85rem}
 .step{display:flex;align-items:center;gap:6px}
 .step button{width:42px;height:42px;border-radius:11px;background:#12161b;
-  border:1px solid var(--line);font-size:1.25rem;font-weight:700}
+  border:1px solid var(--line);font-size:1.25rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
 .step button:active{background:#232a33}
 .step .tval{width:58px;text-align:center;font-size:1.4rem;font-weight:800;
   font-variant-numeric:tabular-nums}
@@ -169,10 +170,6 @@ select.field{appearance:none;background-image:
   padding:10px 18px;border-radius:999px;font-size:.85rem;opacity:0;transition:opacity .3s;
   pointer-events:none;z-index:99;max-width:90vw;text-align:center}
 #toast.on{opacity:1}
-
-.tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
-.tab{padding:8px 16px;border:1px solid var(--line);background:var(--card);
-  color:var(--text);border-radius:999px;cursor:pointer;font-size:.9rem;text-decoration:none}
 </style>
 </head>
 <body>
@@ -301,7 +298,7 @@ select.field{appearance:none;background-image:
     <button class="obtn primary" id="btnMenuClose">경기 계속</button>
     <button class="obtn" id="btnMenuRestart">점수 초기화 (같은 설정)</button>
     <button class="obtn" id="btnMenuNew">새 경기 설정으로</button>
-    <a class="obtn ghost" style="text-align:center;text-decoration:none;display:block" href="../">📊 기록실 열기</a>
+    <a class="obtn ghost" style="text-align:center;text-decoration:none;display:block" href="../record/">📊 기록실 열기</a>
   </div>
 
 </div>
@@ -313,9 +310,9 @@ select.field{appearance:none;background-image:
   <div class="ovlcard">
     <h2 id="targetOvlTitle" style="text-align:center;">목표 점수</h2>
     <div class="step" style="justify-content:center; margin: 24px 0;">
-      <button id="btnTargetMinus" style="padding:10px 20px;">−</button>
+      <button id="btnTargetMinus" style="width:56px;height:56px;font-size:1.6rem;">−</button>
       <span class="tval" id="tvalEdit" style="font-size:2.4rem; width:80px; text-align:center;">10</span>
-      <button id="btnTargetPlus" style="padding:10px 20px;">＋</button>
+      <button id="btnTargetPlus" style="width:56px;height:56px;font-size:1.6rem;">＋</button>
     </div>
     <button class="obtn primary" onclick="$('#targetOvl').classList.remove('on');">확인</button>
   </div>
@@ -616,6 +613,7 @@ for (const i of [0,1]) {
   $('#sel'+i).onchange  = () => { applySel(i, true); $('#name'+i).value = prefs.names[i]; };
   $('#name'+i).oninput  = e => { prefs.names[i] = e.target.value; lsSet(LS_PREFS, prefs); };
 }
+/* (옛 설정 화면 ± 버튼 리스너는 제거 — 목표 점수는 팝업에서만 조정) */
 let curTargetEdit = 0;
 window.openTargetPopup = function(i) {
   curTargetEdit = i;
@@ -678,6 +676,9 @@ $('#btnStart').onclick = () => {
     names:[...n], pids:[...prefs.pids], targets:[...prefs.targets],
     sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0],
     tp:0, turn:0, first:0,
+    done:[false,false],   // 마무리 쿠션까지 성공했는지
+    eq:false,             // 후구(선공이 먼저 끝나 후공에게 주는 마지막 기회) 진행 중
+    ot:false,             // 연장전(동점) — 먼저 1점 내면 승리
     hist:[], fin:false, saved:false, t0:Date.now()
   };
   save(); render(); show('game');
@@ -700,28 +701,71 @@ function popScore(i){
   el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
 }
 
+/* 되돌리기: 행동 직전 상태를 통째로 저장한다.
+ * 쿠션 완료·후구 시작·동점→연장 같은 전환은 여러 값을 한 번에 바꾸므로
+ * 역연산 방식보다 스냅샷 복원이 안전하다. */
+function pushHist(){
+  S.hist.push({ sc:[...S.sc], inn:[...S.inn], br:[...S.br], miss:[...S.miss],
+                tp:S.tp, turn:S.turn, done:[...S.done], eq:S.eq, ot:S.ot });
+  if (S.hist.length > 300) S.hist.shift();
+}
+
+/* 경기 규칙 (후구룰):
+ *  - 목표(알다마)를 다 치면 '마무리 쿠션' 1점이 남는다. 쿠션까지 성공해야 완료.
+ *  - 선공이 먼저 완료하면 후공에게 마지막 한 이닝(후구)이 주어진다.
+ *  - 후공이 그 이닝에 완료하면 동점 → 연장전: 먼저 1점 내는 사람이 승리.
+ *  - 후공이 먼저 완료하면 그대로 즉시 승리 (선공은 이미 같은 수의 이닝을 침). */
 function tapZone(i){
   if (!S || S.fin) return;
+  const opp = 1 - i;
   if (i === S.turn) {
-    S.sc[i]++; S.tp++; S.hist.push({ t:'s', p:i });
+    if (S.done[i] && !S.ot) return;          // 완료한 선수는 연장 외엔 칠 게 없음
+    pushHist();
+    S.sc[i]++; S.tp++;
     vib(12); popScore(i);
-    if (S.sc[i] >= S.targets[i]) { save(); return win(i); }
-  } else {
+
+    if (S.ot) { save(); render(); return win(i, 'ot'); }   // 연장: 첫 득점 즉시 승리
+
+    const t = S.targets[i];
+    if (S.sc[i] === t) {
+      toast(`🎯 ${S.names[i]} 마무리 쿠션!`);
+    } else if (S.sc[i] === t + 1) {          // 쿠션 성공 = 완료
+      S.done[i] = true;
+      if (S.tp > S.br[i]) S.br[i] = S.tp;
+      if (S.eq) {                            // 후구에서 완료 → 동점 → 연장전
+        S.inn[i]++; S.tp = 0; S.turn = S.first;
+        S.eq = false; S.ot = true;
+        vib([40,40,40]);
+        toast('동점! 연장전 — 먼저 1점 내면 승리');
+      } else if (i === S.first && !S.done[opp]) {   // 선공 완료 → 후구
+        S.inn[i]++; S.tp = 0; S.turn = opp;
+        S.eq = true;
+        vib([40,40,40]);
+        toast(`후구 — ${S.names[opp]} 마지막 기회!`);
+      } else {                               // 후공 완료 → 즉시 승리
+        save(); render(); return win(i);
+      }
+    }
+  } else {                                   // 상대 칸 터치 = 턴 넘김
+    pushHist();
     const from = S.turn;
-    S.hist.push({ t:'p', from, tp:S.tp, pb:S.br[from], miss:S.tp === 0 });
     if (S.tp === 0) S.miss[from]++;
     if (S.tp > S.br[from]) S.br[from] = S.tp;
     S.inn[from]++; S.turn = i; S.tp = 0;
     vib(30);
+    if (S.eq && from !== S.first) {          // 후구자가 못 끝내고 이닝 종료 → 선공 승
+      save(); render(); return win(S.first);
+    }
   }
   save(); render();
 }
 
 function minus(i){
   if (!S || S.fin) return;
-  const tpd = (i === S.turn && S.tp > 0) ? 1 : 0;
-  S.sc[i]--; S.tp -= tpd;
-  S.hist.push({ t:'m', p:i, tpd });
+  if (S.done[i]) { toast('이미 완료한 선수예요 — 되돌리기(↩)를 사용하세요'); return; }
+  pushHist();
+  S.sc[i]--;
+  if (i === S.turn && S.tp > 0) S.tp--;
   vib([20,40,20]); popScore(i); save(); render();
 }
 
@@ -729,29 +773,28 @@ function undo(){
   if (!S) return;
   const a = S.hist.pop();
   if (!a) { toast('되돌릴 동작이 없어요'); return; }
-  if (a.t === 's') { S.sc[a.p]--; S.tp--; }
-  else if (a.t === 'm') { S.sc[a.p]++; S.tp += a.tpd; }
-  else {
-    S.turn = a.from; S.inn[a.from]--; S.br[a.from] = a.pb;
-    if (a.miss) S.miss[a.from]--; S.tp = a.tp;
-  }
-  S.fin = false; $('#winOvl').classList.remove('on');
+  Object.assign(S, { sc:a.sc, inn:a.inn, br:a.br, miss:a.miss,
+                     tp:a.tp, turn:a.turn, done:a.done, eq:a.eq, ot:a.ot, fin:false });
+  $('#winOvl').classList.remove('on');
   vib(15); save(); render();
 }
 
 function finalStats(winner){
   return [0,1].map(p => {
-    const innings = p === winner ? S.inn[p] + 1 : Math.max(S.inn[p], 1);
+    // 완료·후구·동점 전환 때 이닝을 이미 셌으므로, 진행 중이던 이닝(득점 있음)만 +1
+    const innings = Math.max(1, S.inn[p] + (p === S.turn && S.tp > 0 ? 1 : 0));
     const run = Math.max(S.br[p], p === S.turn ? S.tp : 0);
     return { pid:S.pids[p] || null, name:S.names[p], target:S.targets[p], score:S.sc[p],
              innings, highRun:run, misses:S.miss[p], win:p === winner };
   });
 }
 
-function win(i){
+function win(i, mode){
   S.fin = true; save(); render();
   const f = finalStats(i);
-  $('#winTitle').textContent = `${S.names[i]} 목표 달성!`;
+  $('#winTitle').textContent = mode === 'ot'
+    ? `${S.names[i]} 연장전 승리!`
+    : `${S.names[i]} 승리!`;
   $('#winStats').innerHTML =
     '<tr><th></th><th>점수</th><th>이닝</th><th>에버</th><th>하이런</th><th>공타</th></tr>' +
     f.map((x,p) =>
@@ -789,18 +832,25 @@ function render(){
   for (const i of [0,1]) {
     $('#gname'+i).textContent = S.names[i];
     $('#score'+i).textContent = S.sc[i];
-    $('#target'+i).textContent = '/ ' + S.targets[i];
+    const t = S.targets[i];
+    $('#target'+i).textContent =
+      S.done[i]        ? '✔ 완료' :
+      S.sc[i] >= t     ? '🎯 마무리 쿠션!' :
+                         `/ ${t} +쿠션`;
     const liveInn = Math.max(1, S.inn[i] + (i === S.turn ? 1 : 0));
     const run = Math.max(S.br[i], i === S.turn ? S.tp : 0);
     $('#stats'+i).textContent = `이닝 ${liveInn} · 에버 ${(S.sc[i]/liveInn).toFixed(2)} · 최고런 ${run}`;
     $('#zone'+i).classList.toggle('on', S.turn === i && !S.fin);
     $('#zone'+i).classList.toggle('off', S.turn !== i || S.fin);
-    $('#prog'+i).style.width = Math.min(S.sc[i] / S.targets[i] * 100, 100) + '%';
+    $('#prog'+i).style.width = Math.min(S.sc[i] / (t + 1) * 100, 100) + '%';
     const rb = $('#run'+i);
     rb.textContent = '+' + S.tp;
     rb.classList.toggle('show', S.turn === i && S.tp > 0);
   }
-  $('#inning').textContent = (S.inn[S.turn] + 1) + '이닝';
+  $('#inning').textContent =
+    S.ot ? '🔥 연장전' :
+    S.eq ? '⏳ 후구' :
+    (S.inn[S.turn] + 1) + '이닝';
 }
 
 /* ═══ 게임 화면 바인딩 ════════════════════════ */
@@ -824,7 +874,8 @@ $('#btnMenuClose').onclick   = () => $('#menuOvl').classList.remove('on');
 $('#btnMenuRestart').onclick = () => {
   if (!confirm('점수를 0으로 초기화할까요?')) return;
   Object.assign(S, { sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0], tp:0,
-                     turn:S.first, hist:[], fin:false, saved:false, t0:Date.now() });
+                     turn:S.first, done:[false,false], eq:false, ot:false,
+                     hist:[], fin:false, saved:false, t0:Date.now() });
   save(); render(); $('#menuOvl').classList.remove('on');
 };
 $('#btnMenuNew').onclick = () => {
@@ -833,19 +884,19 @@ $('#btnMenuNew').onclick = () => {
 };
 
 /* ═══ 시작 ═══════════════════════════════════ */
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; });
-
 (async function init(){
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  // file: 프로토콜인 로컬 개발 환경은 예외 허용
-  if (!isStandalone && location.protocol !== 'file:') {
+  // file: 프로토콜(로컬 파일)과 ?dev=1(브라우저 디버깅용)은 예외 허용
+  if (!isStandalone && location.protocol !== 'file:' && !location.search.includes('dev=1')) {
     window.location.replace('../');
     return;
   }
 
   const st = lsGet(LS_STATE, null);
   if (st && st.sc && !st.fin) {          // 진행 중이던 경기 복원 (앱이 죽어도 이어서)
+    // 쿠션·후구 기능 이전에 저장된 경기와의 호환 처리
+    if (!st.done) { st.done = [false,false]; st.eq = false; st.ot = false; }
+    if (st.hist && st.hist.length && !st.hist[st.hist.length-1].sc) st.hist = [];
     S = st; render(); show('game');
     toast('진행 중이던 경기를 불러왔어요');
   } else {

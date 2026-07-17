@@ -180,22 +180,18 @@ function processData(games) {
     let sumInnings = 0;
     let sumScore = 0;
     let maxHr = 0;
-    let maxAvg = 0;
     let totalMisses = 0;
-    
+
     for (const h of p.history) {
       sumInnings += h.inning;
       sumScore += h.score;
       totalMisses += h.miss;
       if (h.highRun > maxHr) maxHr = h.highRun;
-      if (h.average > maxAvg) maxAvg = h.average;
     }
-    
+
     p.avgAvg = sumInnings > 0 ? (sumScore / sumInnings) : 0;
-    p.bestAvg = maxAvg;
     p.bestHr = maxHr;
     p.hitRate = sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0;
-    p.cushRate = null;
   }
 
   const now = new Date();
@@ -219,7 +215,6 @@ const COLS = [
   {k:'winRate',  t:'승률',    fmt:v=>v.toFixed(0)+'%'},
   {k:'adjRate',  t:'보정 승률', fmt:v=>v.toFixed(1)+'%'},
   {k:'avgAvg',   t:'에버리지', fmt:v=>v.toFixed(3)},
-  {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'hitRate',  t:'득점률',  fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
 ];
@@ -472,10 +467,9 @@ async function initDashboard() {
   } catch(e) { if (sub) sub.textContent = '데이터를 불러오는데 실패했습니다.'; }
 }
 
-let chartRO = null, chartRedraw = null, chartRT = null;
+let chartRO = null;
 function show(v){
   if(chartRO){ chartRO.disconnect(); chartRO = null; }
-  chartRedraw = null;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.v===v));
   
   const auth = getAuth();
@@ -488,10 +482,6 @@ function show(v){
   document.getElementById('view').replaceChildren(node);
 }
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
-
-const kick = (ms) => { clearTimeout(chartRT); chartRT = setTimeout(()=>{ if(chartRedraw) chartRedraw(); }, ms); };
-addEventListener('resize', ()=>kick(150));
-addEventListener('orientationchange', ()=>kick(250));
 
 initDashboard();
 
@@ -509,7 +499,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 
 (function checkStandalone(){
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  if (!isStandalone && location.protocol !== 'file:') {
+  if (!isStandalone && location.protocol !== 'file:' && !location.search.includes('dev=1')) {
     window.location.replace('../');
   }
 })();
