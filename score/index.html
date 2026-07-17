@@ -227,7 +227,7 @@ select.field{appearance:none;background-image:
       </div></div>
   </div>
 
-  <div class="firstseg"><span class="cap">선공</span>
+  <div class="firstseg"><span class="cap">내 공</span>
     <button id="first0" class="on">⚪ 흰 공</button>
     <button id="first1">🟡 노란 공</button>
   </div>
@@ -318,7 +318,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 /* ═══ 상태 ═══════════════════════════════════ */
 let auth    = lsGet(LS_AUTH, null);          // {token, refresh, uid, name}
 let members = lsGet(LS_MEM, []);             // [{id, display_name}]
-let prefs   = Object.assign({ names:['',''], pids:[null,null], targets:[10,10], first:0 },
+let prefs   = Object.assign({ names:['',''], pids:[null,null], targets:[10,10], myBall:0 },
                             lsGet(LS_PREFS, {}));
 let S       = null;                          // 진행 중 경기
 
@@ -568,8 +568,8 @@ function syncSetup(){
     $('#name'+i).value = prefs.names[i];
     $('#tval'+i).textContent = prefs.targets[i];
   }
-  $('#first0').classList.toggle('on', prefs.first === 0);
-  $('#first1').classList.toggle('on', prefs.first === 1);
+  $('#first0').classList.toggle('on', prefs.myBall === 0);
+  $('#first1').classList.toggle('on', prefs.myBall === 1);
 
   const q = lsGet(LS_QUEUE, []).length;
   $('#saveNote').innerHTML = auth
@@ -589,8 +589,18 @@ document.querySelectorAll('.step button').forEach(b => {
     $('#tval'+t).textContent = prefs.targets[t]; lsSet(LS_PREFS, prefs); vib(8);
   });
 });
-$('#first0').onclick = () => { prefs.first = 0; lsSet(LS_PREFS, prefs); syncSetup(); };
-$('#first1').onclick = () => { prefs.first = 1; lsSet(LS_PREFS, prefs); syncSetup(); };
+$('#first0').onclick = () => { applyMyBall(0); };
+$('#first1').onclick = () => { applyMyBall(1); };
+
+function applyMyBall(i) {
+  if (!auth) return toast('로그인이 필요합니다.');
+  prefs.myBall = i;
+  lsSet(LS_PREFS, prefs);
+  const sel = $('#sel'+i);
+  sel.value = auth.uid;
+  if (sel.onchange) sel.onchange();
+  syncSetup();
+}
 
 $('#btnStart').onclick = () => {
   const err = $('#sErr'); err.textContent = '';
@@ -601,7 +611,7 @@ $('#btnStart').onclick = () => {
   S = {
     names:[...n], pids:[...prefs.pids], targets:[...prefs.targets],
     sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0],
-    tp:0, turn:prefs.first, first:prefs.first,
+    tp:0, turn:0, first:0,
     hist:[], fin:false, saved:false, t0:Date.now()
   };
   save(); render(); show('game');
