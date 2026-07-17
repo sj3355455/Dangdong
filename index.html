@@ -72,12 +72,109 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   <div id="view"></div>
 </div>
 <script>
-const DATA = {"updated":"2026-07-17 10:39","players":[{"name":"황서진","handicap":250,"games":5,"wins":1,"winRate":20.0,"adjRate":28.333333333333332,"avgAvg":2.8178,"bestAvg":7.0,"bestHr":16,"hitRate":40.816326530612244,"cushRate":100.0,"history":[{"date":"2026-07-16","opponents":"박지원","score":21,"inning":3,"miss":1,"average":7.0,"highRun":16,"win":true},{"date":"2026-07-16","opponents":"최민규, 박지원","score":4,"inning":3,"miss":1,"average":1.333,"highRun":3,"win":false},{"date":"2026-07-16","opponents":"박지원, 최민규, 김준서","score":22,"inning":9,"miss":3,"average":2.444,"highRun":8,"win":false},{"date":"2026-07-16","opponents":"김준서, 박지원","score":8,"inning":3,"miss":0,"average":2.667,"highRun":4,"win":false},{"date":"2026-07-16","opponents":"박지원","score":20,"inning":31,"miss":24,"average":0.645,"highRun":6,"win":false}]},{"name":"박지원","handicap":150,"games":5,"wins":3,"winRate":60.0,"adjRate":56.666666666666664,"avgAvg":1.7254,"bestAvg":5.333,"bestHr":9,"hitRate":38.297872340425535,"cushRate":50.0,"history":[{"date":"2026-07-16","opponents":"황서진","score":2,"inning":2,"miss":1,"average":1.0,"highRun":2,"win":false},{"date":"2026-07-16","opponents":"황서진, 최민규","score":0,"inning":2,"miss":2,"average":0.0,"highRun":0,"win":false},{"date":"2026-07-16","opponents":"황서진, 최민규, 김준서","score":16,"inning":9,"miss":2,"average":1.778,"highRun":4,"win":true},{"date":"2026-07-16","opponents":"황서진, 김준서","score":16,"inning":3,"miss":0,"average":5.333,"highRun":9,"win":true},{"date":"2026-07-16","opponents":"황서진","score":16,"inning":31,"miss":24,"average":0.516,"highRun":6,"win":true}]},{"name":"최민규","handicap":80,"games":2,"wins":2,"winRate":100.0,"adjRate":91.66666666666667,"avgAvg":2.0,"bestAvg":3.0,"bestHr":8,"hitRate":66.66666666666666,"cushRate":66.66666666666666,"history":[{"date":"2026-07-16","opponents":"황서진, 박지원","score":9,"inning":3,"miss":2,"average":3.0,"highRun":8,"win":true},{"date":"2026-07-16","opponents":"황서진, 박지원, 김준서","score":9,"inning":9,"miss":2,"average":1.0,"highRun":2,"win":true}]},{"name":"김준서","handicap":80,"games":2,"wins":1,"winRate":50.0,"adjRate":45.83333333333333,"avgAvg":2.0,"bestAvg":3.0,"bestHr":4,"hitRate":72.72727272727273,"cushRate":33.33333333333333,"history":[{"date":"2026-07-16","opponents":"황서진, 박지원, 최민규","score":8,"inning":8,"miss":3,"average":1.0,"highRun":3,"win":false},{"date":"2026-07-16","opponents":"황서진, 박지원","score":9,"inning":3,"miss":0,"average":3.0,"highRun":4,"win":true}]}],"games":[{"date":"2026-07-16","datetime":"2026-07-16 10:43:32","type":"4B","name":"4구 2인","players":[{"name":"황서진","ranking":1},{"name":"박지원","ranking":2}]},{"date":"2026-07-16","datetime":"2026-07-16 10:52:13","type":"4B","name":"4구 3인","players":[{"name":"황서진","ranking":2},{"name":"최민규","ranking":1},{"name":"박지원","ranking":2}]},{"date":"2026-07-16","datetime":"2026-07-16 11:26:16","type":"4B","name":"4구 4인","players":[{"name":"황서진","ranking":2},{"name":"박지원","ranking":1},{"name":"최민규","ranking":1},{"name":"김준서","ranking":2}]},{"date":"2026-07-16","datetime":"2026-07-16 11:29:20","type":"4B","name":"4구 3인","players":[{"name":"황서진","ranking":2},{"name":"김준서","ranking":1},{"name":"박지원","ranking":1}]},{"date":"2026-07-16","datetime":"2026-07-16 18:48:51","type":"4B","name":"4구 2인","players":[{"name":"황서진","ranking":2},{"name":"박지원","ranking":1}]}]};
+let DATA = { updated: '', players: [], games: [] };
+
+const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU';
+
+async function fetchGames() {
+  const res = await fetch(SB_URL + '/rest/v1/games?select=played_at,players&order=played_at.asc', {
+    headers: { apikey: SB_KEY, 'Content-Type': 'application/json' }
+  });
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+function processData(games) {
+  const pmap = {};
+  const dataGames = [];
+
+  for (const g of games) {
+    const dt = new Date(g.played_at);
+    const pad = n => String(n).padStart(2, '0');
+    const dateStr = dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate());
+    const datetimeStr = dateStr + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()) + ':' + pad(dt.getSeconds());
+    const typeStr = '4B';
+    const nameStr = '4구 ' + g.players.length + '인';
+
+    dataGames.unshift({
+      date: dateStr,
+      datetime: datetimeStr,
+      type: typeStr,
+      name: nameStr,
+      players: g.players.map(p => ({ name: p.name, ranking: p.win ? 1 : 2 }))
+    });
+
+    for (const p of g.players) {
+      if (!pmap[p.name]) {
+        pmap[p.name] = {
+          name: p.name,
+          handicap: p.target,
+          games: 0,
+          wins: 0,
+          history: []
+        };
+      }
+      const st = pmap[p.name];
+      st.handicap = Math.max(st.handicap, p.target);
+      st.games++;
+      if (p.win) st.wins++;
+
+      const opp = g.players.filter(x => x.name !== p.name).map(x => x.name).join(', ');
+      const average = p.innings ? (p.score / p.innings) : 0;
+      
+      st.history.unshift({
+        date: dateStr,
+        opponents: opp,
+        score: p.score,
+        inning: p.innings,
+        miss: p.misses,
+        average: average,
+        highRun: p.highRun,
+        win: p.win
+      });
+    }
+  }
+
+  const pArr = Object.values(pmap);
+  for (const p of pArr) {
+    p.winRate = p.games > 0 ? (p.wins / p.games) * 100 : 0;
+    p.adjRate = p.winRate;
+    
+    let sumInnings = 0;
+    let sumScore = 0;
+    let maxHr = 0;
+    let maxAvg = 0;
+    let totalMisses = 0;
+    
+    for (const h of p.history) {
+      sumInnings += h.inning;
+      sumScore += h.score;
+      totalMisses += h.miss;
+      if (h.highRun > maxHr) maxHr = h.highRun;
+      if (h.average > maxAvg) maxAvg = h.average;
+    }
+    
+    p.avgAvg = sumInnings > 0 ? (sumScore / sumInnings) : 0;
+    p.bestAvg = maxAvg;
+    p.bestHr = maxHr;
+    p.hitRate = sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0;
+    p.cushRate = null;
+  }
+
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return {
+    updated: now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()),
+    players: pArr,
+    games: dataGames
+  };
+}
+
 const $ = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-document.getElementById('sub').textContent =
-  `최종 업데이트 ${DATA.updated} · 총 ${DATA.games.length}경기 · 선수 ${DATA.players.length}명`;
+
 
 const COLS = [
   {k:'name',     t:'이름',    txt:1},
@@ -281,6 +378,20 @@ function renderGames(){
     <tbody>${rows}</tbody></table></div></div>`);
 }
 
+async function initDashboard() {
+  const sub = document.getElementById('sub');
+  if (sub) sub.textContent = '서버에서 데이터를 불러오는 중입니다...';
+  try {
+    const games = await fetchGames();
+    DATA = processData(games);
+    if (sub) sub.textContent =
+      '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
+    show('rank');
+  } catch(e) {
+    if (sub) sub.textContent = '데이터를 불러오는데 실패했습니다.';
+  }
+}
+
 let chartRO = null, chartRedraw = null, chartRT = null;   // 선수 상세 그래프 폭 감시
 
 function show(v){
@@ -296,7 +407,7 @@ const kick = (ms) => { clearTimeout(chartRT);
 addEventListener('resize', ()=>kick(150));
 addEventListener('orientationchange', ()=>kick(250));   // 폰 회전
 
-show('rank');
+initDashboard();
 </script>
 </body>
 </html>
