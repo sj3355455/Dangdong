@@ -73,10 +73,10 @@ select.field{appearance:none;background-image:
 .pip{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px}
 .pip.off{background:var(--muted)}
 
-#game{padding:0;display:flex;flex-direction:column}
+#game{padding:0;display:flex;flex-direction:column;align-items:stretch}
 @media (orientation:landscape){ #game{flex-direction:row} }
 .zone{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;transition:filter .25s;overflow:hidden;cursor:pointer}
+  justify-content:center;transition:filter .25s;overflow:hidden;cursor:pointer;width:100%}
 .zone.w{background:radial-gradient(120% 100% at 50% 0%,var(--wz-hi),var(--wz));color:var(--wz-text)}
 .zone.y{background:radial-gradient(120% 100% at 50% 100%,var(--yz-hi),var(--yz));color:var(--yz-text)}
 .zone.r{background:radial-gradient(120% 100% at 50% 0%,var(--rz-hi),var(--rz));color:var(--rz-text)}
@@ -207,7 +207,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v44</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v45</span>
   </div>
 </div>
 
@@ -606,8 +606,9 @@ function buildGameZones() {
   // append zones to #game but keep #mid
   let gameHtml = '';
   for(let i=0; i<N; i++){
-    let zname = S.names[i];
-    if (isTeam) zname = `${TZNAMES[i]} <span style="font-size:0.75rem; font-weight:normal; opacity:0.8;">(${S.names[i*2]}, ${S.names[i*2+1]})</span>`;
+    let zname = (S.names && S.names[i]) ? S.names[i] : 'Player';
+    if (isTeam && S.names) zname = `${TZNAMES[i]} <span style="font-size:0.75rem; font-weight:normal; opacity:0.8;">(${S.names[i*2]}, ${S.names[i*2+1]})</span>`;
+    let tgt = (S.targets && S.targets[i]) ? S.targets[i] : 15;
     
     gameHtml += `
       <div class="zone ${ZCOLORS[i]}" id="zone${i}">
@@ -615,7 +616,7 @@ function buildGameZones() {
         <span class="runbadge" id="run${i}">+0</span>
         <div class="zname"><span id="gname${i}">${zname}</span><span class="turnchip">치는 중</span></div>
         <div class="zscore" id="gsc${i}">0</div>
-        <div class="ztarget" id="gtgt${i}">목표 ${S.targets[i]}</div>
+        <div class="ztarget" id="gtgt${i}">목표 ${tgt}</div>
         <div class="zstats" id="gstat${i}">에버 0.000 · 하이런 0</div>
       </div>
     `;
