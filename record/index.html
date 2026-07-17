@@ -203,8 +203,8 @@ function processData(games) {
     p.avgAvg = sumInnings > 0 ? (sumScore / sumInnings) : 0;
     p.bestHr = maxHr;
     p.hitRate = sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0;
-    // 쿠션 에버 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 '—'
-    p.cushAvg = cushInn > 0 ? (cushMade / cushInn) : null;
+    // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
+    p.cushRate = cushInn > 0 ? (cushMade / cushInn) * 100 : null;
   }
 
   const now = new Date();
@@ -228,7 +228,7 @@ const COLS = [
   {k:'winRate',  t:'승률',    fmt:v=>v.toFixed(0)+'%'},
   {k:'adjRate',  t:'보정 승률', fmt:v=>v.toFixed(1)+'%'},
   {k:'avgAvg',   t:'에버리지', fmt:v=>v.toFixed(3)},
-  {k:'cushAvg',  t:'쿠션 에버', fmt:v=>v.toFixed(3)},
+  {k:'cushRate',  t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'hitRate',  t:'득점률',  fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
 ];
@@ -335,7 +335,7 @@ function showPlayer(name){
         <div class="st"><div class="k">승률</div><div class="v">${p.winRate.toFixed(0)}%</div></div>
         <div class="st"><div class="k">보정 승률</div><div class="v">${p.adjRate==null?'—':p.adjRate.toFixed(1)+'%'}</div></div>
         <div class="st"><div class="k">에버리지</div><div class="v">${p.avgAvg.toFixed(3)}</div></div>
-        <div class="st"><div class="k">쿠션 에버</div><div class="v">${p.cushAvg==null?'—':p.cushAvg.toFixed(3)}</div></div>
+        <div class="st"><div class="k">쿠션 성공률</div><div class="v">${p.cushRate==null?'—':p.cushRate.toFixed(1)+'%'}</div></div>
         <div class="st"><div class="k">득점률</div><div class="v">${p.hitRate.toFixed(1)}%</div></div>
         <div class="st"><div class="k">하이런</div><div class="v">${p.bestHr}</div></div>
       </div>
