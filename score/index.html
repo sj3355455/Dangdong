@@ -54,6 +54,8 @@ select.field{appearance:none;background-image:
 .bigbtn[disabled]{opacity:.5}
 .linkbtn{color:var(--muted);font-size:.88rem;text-decoration:underline;text-underline-offset:3px}
 .linkbtn.acc{color:var(--accent)}
+.mbtn{background:var(--line);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:bold;cursor:pointer}
+.mbtn:active{background:var(--accent)}
 .err{color:var(--danger);font-size:.85rem;text-align:center;min-height:1em;max-width:420px}
 .nav-toggle{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:16px;width:100%;max-width:420px}
 .nav-btn{flex:1;text-align:center;padding:10px 0;text-decoration:none;color:var(--muted);font-weight:600;font-size:.95rem;border-radius:8px;transition:all .2s}
@@ -246,7 +248,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v26</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v28</span>
   </div>
 </div>
 
@@ -613,30 +615,30 @@ for (const i of [0,1]) {
 }
 let curTargetEdit = 0;
 for (const i of [0,1]) {
-  $('#btnChangeTarget'+i).addEventListener('pointerdown', e => {
+  $('#btnChangeTarget'+i).onclick = (e) => {
     e.preventDefault(); e.stopPropagation();
     curTargetEdit = i;
     $('#targetOvlTitle').textContent = i === 0 ? '⚪ 흰 공 목표 점수' : '🟡 노란 공 목표 점수';
     $('#tvalEdit').textContent = prefs.targets[i];
     $('#targetOvl').classList.add('on');
-  });
+  };
 }
-$('#btnTargetMinus').addEventListener('pointerdown', e => {
+$('#btnTargetMinus').onclick = (e) => {
   e.preventDefault(); e.stopPropagation();
   let t = curTargetEdit;
   prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] - 1));
   $('#tvalEdit').textContent = prefs.targets[t];
   $('#tval'+t).textContent = prefs.targets[t];
   lsSet(LS_PREFS, prefs); vib(8);
-});
-$('#btnTargetPlus').addEventListener('pointerdown', e => {
+};
+$('#btnTargetPlus').onclick = (e) => {
   e.preventDefault(); e.stopPropagation();
   let t = curTargetEdit;
   prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + 1));
   $('#tvalEdit').textContent = prefs.targets[t];
   $('#tval'+t).textContent = prefs.targets[t];
   lsSet(LS_PREFS, prefs); vib(8);
-});
+};
 $('#first0').onclick = () => { applyMyBall(0); };
 $('#first1').onclick = () => { applyMyBall(1); };
 
