@@ -398,7 +398,10 @@ function renderMe() {
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">이름</label>
     <input type="text" id="meName" class="field" placeholder="당신의 이름">
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">수지 (목표 점수)</label>
-    <input type="number" id="meHandicap" class="field" placeholder="예: 15">
+    <select id="meHandicap" class="field">
+      <option value="">선택하세요</option>
+      ${[50, 80, 100, 120, 150, 200, 250, 300, 400, 500].map(v => `<option value="${v}">${v}</option>`).join('')}
+    </select>
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; margin-top:12px; opacity:0.8;">비밀번호 변경 (변경할 때만 입력)</label>
     <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
     <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
