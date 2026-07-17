@@ -114,7 +114,7 @@ async function fetchGames() {
     if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
   } catch(e) {}
   
-  const res = await fetch(SB_URL + '/rest/v1/games?select=played_at,players&order=played_at.asc', {
+  const res = await fetch(SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc', {
     headers: headers
   });
   if (!res.ok) throw new Error('fetch error');
@@ -134,11 +134,16 @@ function processData(games) {
     const nameStr = '4구 ' + g.players.length + '인';
 
     dataGames.unshift({
+      id: g.id || datetimeStr,
       date: dateStr,
       datetime: datetimeStr,
       type: typeStr,
       name: nameStr,
-      players: g.players.map(p => ({ name: p.name, ranking: p.win ? 1 : 2 }))
+      players: g.players.map(p => ({
+        name: p.name, ranking: p.win ? 1 : 2,
+        target: p.target, score: p.score, innings: p.innings,
+        highRun: p.highRun, misses: p.misses, cushMade: p.cushMade||0, cushInn: p.cushInn||0
+      }))
     });
 
     for (const p of g.players) {
@@ -434,13 +439,51 @@ function renderGames(){
   const rows = [...DATA.games].sort((a,b)=>b.datetime.localeCompare(a.datetime)).map(g=>{
     const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
     const all = g.players.map(p=>p.name).join(', ');
-    return `<tr><td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}</td>
+    return `<tr onclick="showGame('${g.id}')" style="cursor:pointer">
+      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}</td>
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
   }).join('');
   return $(`<div class="card"><div class="scroll"><table>
     <thead><tr><th class="name">날짜</th><th class="name">경기</th>
       <th class="name">참가자</th><th class="name">우승</th></tr></thead>
-    <tbody>${rows}</tbody></table></div></div>`);
+    <tbody>${rows}</tbody></table></div>
+    <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div></div>`);
+}
+
+function showGame(id){
+  const g = DATA.games.find(v=>v.id===id);
+  if(!g) return;
+  const pRows = g.players.map(p => {
+    const avg = p.innings ? (p.score / p.innings).toFixed(3) : '0.000';
+    const cAvg = p.cushInn ? (p.cushMade / p.cushInn).toFixed(3) : '—';
+    const medal = p.ranking===1 ? ' 🏆' : '';
+    return `<tr>
+      <td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>${medal}</td>
+      <td><b>${p.score}</b> <span class="ar">/ ${p.target||''}</span></td>
+      <td>${p.innings}</td>
+      <td>${avg}</td>
+      <td>${p.cushInn ? `${p.cushMade}/${p.cushInn}` : '—'}</td>
+      <td>${p.highRun}</td>
+      <td>${p.misses}</td>
+    </tr>`;
+  }).join('');
+  const el = $(`<div>
+    <button class="back">← 경기 목록으로</button>
+    <div class="card">
+      <h2 style="margin:0 0 4px">🎱 ${esc(g.name||g.type)}</h2>
+      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}</div>
+      <div class="scroll">
+        <table class="statgrid">
+          <thead><tr><th class="name">선수</th><th>점수</th><th>이닝</th><th>에버</th><th>쿠션</th><th>하이런</th><th>공타</th></tr></thead>
+          <tbody>${pRows}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`);
+  el.querySelector('.back').onclick=()=>show('games');
+  el.querySelectorAll('a.pl').forEach(a=>a.onclick=()=>showPlayer(a.dataset.p));
+  document.getElementById('view').replaceChildren(el);
+  scrollTo(0,0);
 }
 
 async function queueFlush() {
