@@ -533,10 +533,10 @@ function applySel(i){
 
 /* ═══ 설정 화면 ═══════════════════════════════ */
 function syncSetup(){
-  // 상단: 누구로 로그인했는지
+  // 상단: 누구로 로그인했는지 및 기록실 링크
   $('#whoBar').innerHTML = auth
-    ? `<span>👤 <b>${esc(auth.name || '회원')}</b></span><button class="linkbtn" id="btnLogout">로그아웃</button>`
-    : `<span>게스트 모드</span><button class="linkbtn acc" id="btnToLogin">로그인하기</button>`;
+    ? `<span>👤 <b>${esc(auth.name || '회원')}</b></span><a class="linkbtn acc" href="../" style="margin-left:auto;text-decoration:none;">📊 기록실 보기</a><button class="linkbtn" id="btnLogout">로그아웃</button>`
+    : `<span>게스트 모드</span><a class="linkbtn acc" href="../" style="margin-left:auto;text-decoration:none;">📊 기록실 보기</a><button class="linkbtn acc" id="btnToLogin">로그인하기</button>`;
   const lo = $('#btnLogout'), li = $('#btnToLogin');
   if (lo) lo.onclick = () => {
     if (!confirm('로그아웃할까요?')) return;
