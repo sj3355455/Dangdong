@@ -163,6 +163,39 @@ select.field{appearance:none;background-image:
 </head>
 <body>
 
+<!-- ══ 설치 강제 화면 ══ -->
+<div id="installScreen" class="screen scroller">
+  <div style="text-align:center; padding: 40px 20px;">
+    <h1 style="margin-bottom:10px;">🎱 당동 점수판</h1>
+    <p style="color:var(--muted); font-size:0.95rem; margin-bottom: 30px;">
+      당동 점수판은 일반 웹 브라우저에서는 실행되지 않습니다.<br>
+      반드시 전용 앱으로 설치한 뒤 실행해 주세요!
+    </p>
+
+    <div class="card" style="text-align:left; padding:20px; background:var(--card); border-radius:12px; border:1px solid var(--line); margin-bottom:16px;">
+      <h3 style="margin:0 0 10px; font-size:1.1rem;">🤖 안드로이드 (갤럭시 등)</h3>
+      <p style="color:var(--muted); font-size:0.85rem; margin-bottom:14px;">크롬(Chrome)이나 삼성 인터넷 브라우저에서 아래 버튼을 눌러 바로 설치하세요.</p>
+      <button class="bigbtn" id="btnInstallAndroid" style="font-size:1rem; background:#00d26a; border-color:#00d26a;">📲 바로 자동 설치하기</button>
+      <div id="androidInstallMsg" style="color:var(--accent); font-size:0.8rem; margin-top:8px; display:none; text-align:center;">
+        설치 팝업이 뜨지 않으면 브라우저 메뉴(⋮)에서 '앱 설치'를 눌러주세요.
+      </div>
+    </div>
+
+    <div class="card" style="text-align:left; padding:20px; background:var(--card); border-radius:12px; border:1px solid var(--line);">
+      <h3 style="margin:0 0 10px; font-size:1.1rem;">🍎 아이폰 (iOS)</h3>
+      <p style="color:var(--muted); font-size:0.85rem; margin-bottom:14px;">
+        <strong style="color:var(--accent);">반드시 Safari 브라우저</strong>로 열어주세요. (카톡/네이버 브라우저 불가)
+      </p>
+      <ol style="color:var(--text); font-size:0.85rem; padding-left:20px; line-height:1.6; margin:0;">
+        <li>화면 하단 가운데 <strong>공유(📤) 버튼</strong>을 누릅니다.</li>
+        <li>메뉴를 내려 <strong>'홈 화면에 추가 ➕'</strong>를 누릅니다.</li>
+        <li>우측 상단의 <strong>'추가'</strong>를 누릅니다.</li>
+        <li>바탕화면에 생긴 앱 아이콘을 터치해 실행하세요!</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
 <!-- ══ 로그인 화면 ══ -->
 <div id="auth" class="screen scroller">
   <h1>🎱 당동 점수판</h1>
@@ -738,7 +771,26 @@ $('#btnMenuNew').onclick = () => {
 };
 
 /* ═══ 시작 ═══════════════════════════════════ */
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; });
+
 (async function init(){
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  // file: 프로토콜인 로컬 개발 환경은 예외 허용
+  if (!isStandalone && location.protocol !== 'file:') {
+    $('#installScreen').classList.add('on');
+    $('#btnInstallAndroid').onclick = async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') deferredPrompt = null;
+      } else {
+        $('#androidInstallMsg').style.display = 'block';
+      }
+    };
+    return;
+  }
+
   const st = lsGet(LS_STATE, null);
   if (st && st.sc && !st.fin) {          // 진행 중이던 경기 복원 (앱이 죽어도 이어서)
     S = st; render(); show('game');
