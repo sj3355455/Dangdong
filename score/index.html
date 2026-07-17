@@ -213,10 +213,9 @@ select.field{appearance:none;background-image:
       <select class="field" id="sel0"></select></div>
     <input class="field" id="name0" maxlength="10" placeholder="흰 공 선수 이름">
     <div class="trow"><span class="lbl">목표 점수</span>
-      <div class="step">
-        <button data-t="0" data-d="-1">−</button>
-        <span class="tval" id="tval0">10</span>
-        <button data-t="0" data-d="1">＋</button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <b class="tval" id="tval0" style="font-size:1.2rem;">10</b>
+        <button class="mbtn" id="btnChangeTarget0">변경</button>
       </div></div>
   </div>
 
@@ -225,10 +224,9 @@ select.field{appearance:none;background-image:
       <select class="field" id="sel1"></select></div>
     <input class="field" id="name1" maxlength="10" placeholder="노란 공 선수 이름">
     <div class="trow"><span class="lbl">목표 점수</span>
-      <div class="step">
-        <button data-t="1" data-d="-1">−</button>
-        <span class="tval" id="tval1">10</span>
-        <button data-t="1" data-d="1">＋</button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <b class="tval" id="tval1" style="font-size:1.2rem;">10</b>
+        <button class="mbtn" id="btnChangeTarget1">변경</button>
       </div></div>
   </div>
 
@@ -294,6 +292,19 @@ select.field{appearance:none;background-image:
     <button class="obtn" id="btnMenuNew">새 경기 설정으로</button>
     <a class="obtn ghost" style="text-align:center;text-decoration:none;display:block" href="../">📊 기록실 열기</a>
   </div>
+
+<!-- ══ 목표 점수 변경 오버레이 ══ -->
+<div class="ovl" id="targetOvl">
+  <div class="ovlcard">
+    <h2 id="targetOvlTitle" style="text-align:center;">목표 점수</h2>
+    <div class="step" style="justify-content:center; margin: 24px 0;">
+      <button id="btnTargetMinus" style="padding:10px 20px;">−</button>
+      <span class="tval" id="tvalEdit" style="font-size:2.4rem; width:80px; text-align:center;">10</span>
+      <button id="btnTargetPlus" style="padding:10px 20px;">＋</button>
+    </div>
+    <button class="obtn primary" onclick="$('#targetOvl').classList.remove('on');">확인</button>
+  </div>
+</div>
 </div>
 
 <div id="toast"></div>
@@ -593,14 +604,29 @@ for (const i of [0,1]) {
   $('#sel'+i).onchange  = () => { applySel(i, true); $('#name'+i).value = prefs.names[i]; };
   $('#name'+i).oninput  = e => { prefs.names[i] = e.target.value; lsSet(LS_PREFS, prefs); };
 }
-document.querySelectorAll('.step button').forEach(b => {
-  b.addEventListener('pointerdown', e => {
-    e.preventDefault();
-    const t = +b.dataset.t, d = +b.dataset.d;
-    prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + d));
-    $('#tval'+t).textContent = prefs.targets[t]; lsSet(LS_PREFS, prefs); vib(8);
-  });
-});
+let curTargetEdit = 0;
+for (const i of [0,1]) {
+  $('#btnChangeTarget'+i).onclick = () => {
+    curTargetEdit = i;
+    $('#targetOvlTitle').textContent = i === 0 ? '⚪ 흰 공 목표 점수' : '🟡 노란 공 목표 점수';
+    $('#tvalEdit').textContent = prefs.targets[i];
+    $('#targetOvl').classList.add('on');
+  };
+}
+$('#btnTargetMinus').onclick = () => {
+  let t = curTargetEdit;
+  prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] - 1));
+  $('#tvalEdit').textContent = prefs.targets[t];
+  $('#tval'+t).textContent = prefs.targets[t];
+  lsSet(LS_PREFS, prefs); vib(8);
+};
+$('#btnTargetPlus').onclick = () => {
+  let t = curTargetEdit;
+  prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + 1));
+  $('#tvalEdit').textContent = prefs.targets[t];
+  $('#tval'+t).textContent = prefs.targets[t];
+  lsSet(LS_PREFS, prefs); vib(8);
+};
 $('#first0').onclick = () => { applyMyBall(0); };
 $('#first1').onclick = () => { applyMyBall(1); };
 
