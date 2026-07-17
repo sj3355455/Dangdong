@@ -209,7 +209,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v46</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v47</span>
   </div>
 </div>
 
@@ -943,9 +943,23 @@ function init(){
   if (tk) { window.location.hash = ''; return toast('로그인 처리되었습니다. 앱을 다시 열어주세요.'); }
   if (auth) { setMode('login'); $('#aName').value = auth.name; loadMembers().then(()=>queueFlush()); }
   else { setMode('login'); show('auth'); }
-  if (S && !S.finished) { S = null; lsSet(LS_STATE, null); }
-  if (S) { buildGameZones(); render(); show('game'); queueFlush(); }
-  else if (auth) { syncSetup(); show('setup'); }
+
+  // 구버전 상태 마이그레이션: finished 배열이 없으면 추가
+  if (S && S.sc && !Array.isArray(S.finished)) {
+    const N = S.sc.length;
+    S.finished = Array(N).fill(false);
+    S.winners = S.winners || [];
+    S.lastInning = S.lastInning || false;
+    S.round = S.round || 1;
+    if (!S.type) S.type = '2인';
+    save();
+  }
+
+  if (S && S.sc && !S.fin) {
+    buildGameZones(); render(); show('game'); queueFlush();
+  } else if (auth) {
+    syncSetup(); show('setup');
+  }
 }
 window.addEventListener('online', queueFlush);
 init();
