@@ -78,10 +78,16 @@ const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU';
 
 async function fetchGames() {
+  const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };
+  try {
+    const auth = JSON.parse(localStorage.getItem('dangScoreAuth_v1'));
+    if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
+  } catch(e) {}
+  
   const res = await fetch(SB_URL + '/rest/v1/games?select=played_at,players&order=played_at.asc', {
-    headers: { apikey: SB_KEY, 'Content-Type': 'application/json' }
+    headers: headers
   });
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error('fetch error');
   return await res.json();
 }
 
