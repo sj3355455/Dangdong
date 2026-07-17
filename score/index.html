@@ -171,7 +171,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v66</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v67</span>
   </div>
 </div>
 
@@ -205,7 +205,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v66</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v67</span>
   </div>
 </div>
 
@@ -482,26 +482,11 @@ document.querySelectorAll('#gameTypeSeg button').forEach(b => {
     const modeChanged = (prefs.gameType !== newVal);
     prefs.gameType = newVal;
     
-    if (auth && modeChanged) {
-      let myIdx = prefs.pids.findIndex(pid => pid === auth.uid);
-      if (myIdx === -1) {
-        prefs.pids[0] = auth.uid;
-        myIdx = 0;
-      }
-      
-      if (newVal === '팀전') {
-        prefs.myBall = (myIdx % 2 === 0) ? 0 : 1;
-      } else {
-        const N = parseInt(newVal.replace('인',''), 10);
-        if (myIdx >= N) {
-          prefs.pids[0] = auth.uid;
-          prefs.myBall = 0;
-        } else {
-          prefs.myBall = myIdx;
-        }
-      }
-    } else if (modeChanged) {
+    if (modeChanged) {
       prefs.myBall = 0;
+      if (auth) {
+        prefs.pids[0] = auth.uid;
+      }
     }
     
     lsSet(LS_PREFS, prefs);
