@@ -130,8 +130,8 @@ function processData(games) {
     const pad = n => String(n).padStart(2, '0');
     const dateStr = dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate());
     const datetimeStr = dateStr + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()) + ':' + pad(dt.getSeconds());
-    const typeStr = '4B';
-    const nameStr = '4구 ' + g.players.length + '인';
+    const typeStr = g.game_type || (g.players.length + '인');
+    const nameStr = typeStr;
 
     dataGames.unshift({
       id: String(g.id || datetimeStr),
