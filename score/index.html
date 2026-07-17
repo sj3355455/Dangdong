@@ -169,8 +169,9 @@ select.field{appearance:none;background-image:
 </style>
 </head>
 <body>
-
-
+<a href="../record/?tab=me" id="topUserBtn" style="position:absolute; top:calc(16px + var(--sat)); right:16px; background:var(--card); border:1px solid var(--line); padding:6px 12px; border-radius:20px; color:var(--text); font-size:0.85rem; display:flex; align-items:center; gap:6px; z-index:100; cursor:pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-decoration:none;">
+  <span style="font-size:1.1rem">👤</span> <b id="topUserName">로그인</b>
+</a>
 <!-- ══ 로그인 화면 ══ -->
 <div id="auth" class="screen scroller">
   <h1 style="margin:0 0 16px 0; font-size:1.6rem; text-align:center;">🎱 당동 점수판</h1>
@@ -204,7 +205,6 @@ select.field{appearance:none;background-image:
     <a href="../score/" class="nav-btn on">🎱 점수판</a>
     <a href="../record/" class="nav-btn">📊 기록실</a>
   </div>
-  <div class="who" id="whoBar"></div>
 
   <div class="pcard">
     <div class="prow"><span class="dot w"></span>
@@ -556,9 +556,7 @@ function applySel(i, isUserAction){
 
 /* ═══ 설정 화면 ═══════════════════════════════ */
 function syncSetup(){
-  $('#whoBar').innerHTML = auth
-    ? `<span>👤 <b>${esc(auth.name || '회원')}</b></span>`
-    : `<span>게스트 모드</span>`;
+  $('#topUserName').textContent = auth ? (auth.name || '회원') : '게스트';
   const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
     if (!confirm('처음 화면으로 돌아갈까요?')) return;

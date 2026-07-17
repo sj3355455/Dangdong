@@ -131,6 +131,9 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 </style>
 </head>
 <body>
+<div id="topUserBtn" style="position:absolute; top:calc(16px + var(--sat)); right:16px; background:var(--card); border:1px solid var(--line); padding:6px 12px; border-radius:20px; color:var(--text); font-size:0.85rem; display:flex; align-items:center; gap:6px; z-index:100; cursor:pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" onclick="show('me')">
+  <span style="font-size:1.1rem">👤</span> <b id="topUserName">로그인</b>
+</div>
 <div class="wrap">
   <h1 style="margin:0 0 8px 0; font-size:1.6rem; text-align:center;">🎱 당동 기록실</h1>
   <div class="sub" id="sub" style="text-align:center; margin-bottom:16px;"></div>
@@ -152,7 +155,7 @@ let DATA = { updated: '', players: [], games: [] };
 
 const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU';
-const LS_AUTH = 'dang-score-auth';
+const LS_AUTH = 'dangScoreAuth_v1';
 
 async function fetchGames() {
   const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };
@@ -514,7 +517,8 @@ async function initDashboard() {
     const games = await fetchGames();
     DATA = processData(games);
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
-    show('rank');
+    const t = new URLSearchParams(location.search).get('tab') || 'rank';
+    show(t);
   } catch(e) { if (sub) sub.textContent = '데이터를 불러오는데 실패했습니다.'; }
 }
 
@@ -523,6 +527,10 @@ function show(v){
   if(chartRO){ chartRO.disconnect(); chartRO = null; }
   chartRedraw = null;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.v===v));
+  
+  const auth = getAuth();
+  document.getElementById('topUserName').textContent = auth ? auth.name : '게스트';
+  
   let node;
   if(v==='rank') node = renderRank();
   else if(v==='games') node = renderGames();
