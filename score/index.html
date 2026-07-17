@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v60</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v61</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v60</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v61</span>
   </div>
 </div>
 
@@ -702,7 +702,7 @@ function tapZone(i){
       if (S.sc[i] >= S.targets[i]) {
         S.done[i] = true;
         S.cushInn[i]++;
-        if (S.type === '팀전' && S.sc.length === 4) { const p = (i+2)%4; S.done[p] = true; S.cushInn[p]++; }
+        if (S.type === '팀전' && S.sc.length === 4) { const p = (i+2)%4; S.done[p] = true; }
         toast(`🎯 마무리 쿠션!`);
       }
     } else if (S.cush[i] < S.round) {
@@ -784,7 +784,6 @@ function endInning() {
         S.lastInning = false;
         S.winners = [];
         S.cushInn[S.first]++;
-        if (isTeam) S.cushInn[(S.first+2)%4]++;
         vib([40,40,40]);
         toast(`동점! 마무리 쿠션 ${S.round} — 연장`);
         return;
@@ -825,7 +824,7 @@ window.undoScore = function(i){
   
   if (S.type === '팀전' && S.sc.length === 4) {
     const p = (i+2)%4;
-    S.sc[p] = S.sc[i]; S.done[p] = S.done[i]; S.cush[p] = S.cush[i]; S.cushInn[p] = S.cushInn[i];
+    S.sc[p] = S.sc[i]; S.done[p] = S.done[i]; S.cush[p] = S.cush[i];
   }
   vib(15); popScore(i);
   save(); render();
