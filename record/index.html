@@ -100,7 +100,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v56</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v57</span>
   </div>
 </div>
 <script>
@@ -412,6 +412,7 @@ function renderMe() {
     <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
     <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
     <button id="meSave" class="bigbtn">저장하기</button>
+    <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--border); color:#f44336;">로그아웃</button>
   </div>`;
   const myData = DATA.players.find(p => p.name === auth.name);
   const myHandicap = myData ? myData.handicap : '';
@@ -444,6 +445,11 @@ function renderMe() {
       msg.textContent = '✅ 성공적으로 저장되었습니다.'; msg.style.color = '#4CAF50'; d.querySelector('#mePwd').value = '';
     } catch(e) { msg.textContent = '❌ 저장 실패. 다시 로그인해 보세요.'; msg.style.color = '#f44336'; }
     btn.disabled = false;
+  };
+  
+  d.querySelector('#meLogout').onclick = () => {
+    localStorage.removeItem(LS_AUTH);
+    location.href = '../score/';
   };
   return d;
 }
