@@ -674,11 +674,14 @@ $('#btnStart').onclick = () => {
   prefs.names = n; lsSet(LS_PREFS, prefs);
   S = {
     names:[...n], pids:[...prefs.pids], targets:[...prefs.targets],
-    sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0],
+    sc:[0,0],            // 알다마 점수 (목표에서 멈춤 — 쿠션은 여기 안 더한다)
+    inn:[0,0], br:[0,0], miss:[0,0],
+    done:[false,false],  // 알다마 완주 여부
+    cush:[0,0],          // 마무리 쿠션 성공 횟수 (연장 갈수록 1,2,3…)
+    cushInn:[0,0],       // 쿠션을 시도한 이닝 수 (쿠션 에버 계산용)
+    round:1,             // 지금 겨루는 마무리 쿠션 번호
+    eq:false,            // 후구 — 선공이 이번 라운드 쿠션 성공, 후공이 따라잡을 기회
     tp:0, turn:0, first:0,
-    done:[false,false],   // 마무리 쿠션까지 성공했는지
-    eq:false,             // 후구(선공이 먼저 끝나 후공에게 주는 마지막 기회) 진행 중
-    ot:false,             // 연장전(동점) — 먼저 1점 내면 승리
     hist:[], fin:false, saved:false, t0:Date.now()
   };
   save(); render(); show('game');
@@ -706,47 +709,56 @@ function popScore(i){
  * 역연산 방식보다 스냅샷 복원이 안전하다. */
 function pushHist(){
   S.hist.push({ sc:[...S.sc], inn:[...S.inn], br:[...S.br], miss:[...S.miss],
-                tp:S.tp, turn:S.turn, done:[...S.done], eq:S.eq, ot:S.ot });
+                done:[...S.done], cush:[...S.cush], cushInn:[...S.cushInn],
+                round:S.round, eq:S.eq, tp:S.tp, turn:S.turn });
   if (S.hist.length > 300) S.hist.shift();
 }
 
 /* 경기 규칙 (후구룰):
- *  - 목표(알다마)를 다 치면 '마무리 쿠션' 1점이 남는다. 쿠션까지 성공해야 완료.
- *  - 선공이 먼저 완료하면 후공에게 마지막 한 이닝(후구)이 주어진다.
- *  - 후공이 그 이닝에 완료하면 동점 → 연장전: 먼저 1점 내는 사람이 승리.
- *  - 후공이 먼저 완료하면 그대로 즉시 승리 (선공은 이미 같은 수의 이닝을 침). */
+ *  - 목표(알다마)를 다 치면 점수는 거기서 멈추고 '마무리 쿠션'이 남는다.
+ *  - 선공이 이번 라운드 쿠션에 성공하면 후공에게 한 이닝(후구)이 주어진다.
+ *      · 후공도 성공 → 동점 → 다음 라운드(마무리 쿠션 2, 3 …)로 넘어가고 다시 선공부터
+ *      · 후공 실패 → 선공 승
+ *  - 후공이 선공보다 먼저 성공하면 즉시 승리 (선공은 이미 같은 이닝을 쳤으므로) */
 function tapZone(i){
   if (!S || S.fin) return;
   const opp = 1 - i;
+
   if (i === S.turn) {
-    if (S.done[i] && !S.ot) return;          // 완료한 선수는 연장 외엔 칠 게 없음
-    pushHist();
-    S.sc[i]++; S.tp++;
-    vib(12); popScore(i);
-
-    if (S.ot) { save(); render(); return win(i, 'ot'); }   // 연장: 첫 득점 즉시 승리
-
-    const t = S.targets[i];
-    if (S.sc[i] === t) {
-      toast(`🎯 ${S.names[i]} 마무리 쿠션!`);
-    } else if (S.sc[i] === t + 1) {          // 쿠션 성공 = 완료
-      S.done[i] = true;
+    if (!S.done[i]) {                        // ── 알다마 단계
+      pushHist();
+      S.sc[i]++; S.tp++;
+      vib(12); popScore(i);
+      if (S.sc[i] >= S.targets[i]) {         // 알다마 완주 → 같은 이닝에 이어서 쿠션 시도
+        S.done[i] = true;
+        S.cushInn[i]++;
+        toast(`🎯 ${S.names[i]} 마무리 쿠션!`);
+      }
+    } else if (S.cush[i] < S.round) {        // ── 마무리 쿠션 성공
+      pushHist();
+      S.cush[i]++; S.tp++;
+      vib(12); popScore(i);
       if (S.tp > S.br[i]) S.br[i] = S.tp;
-      if (S.eq) {                            // 후구에서 완료 → 동점 → 연장전
-        S.inn[i]++; S.tp = 0; S.turn = S.first;
-        S.eq = false; S.ot = true;
+
+      if (S.eq) {                            // 후공이 따라잡음 → 동점 → 다음 라운드
+        S.inn[i]++; S.tp = 0;
+        S.eq = false; S.round++;
+        S.turn = S.first; S.cushInn[S.first]++;
         vib([40,40,40]);
-        toast('동점! 연장전 — 먼저 1점 내면 승리');
-      } else if (i === S.first && !S.done[opp]) {   // 선공 완료 → 후구
-        S.inn[i]++; S.tp = 0; S.turn = opp;
-        S.eq = true;
+        toast(`동점! 마무리 쿠션 ${S.round} — 연장`);
+      } else if (i === S.first) {            // 선공 성공 → 후공에게 후구 기회
+        S.inn[i]++; S.tp = 0;
+        S.turn = opp; S.eq = true;
+        if (S.done[opp]) S.cushInn[opp]++;
         vib([40,40,40]);
         toast(`후구 — ${S.names[opp]} 마지막 기회!`);
-      } else {                               // 후공 완료 → 즉시 승리
+      } else {                               // 후공이 먼저 성공 → 즉시 승리
         save(); render(); return win(i);
       }
+    } else {
+      return;                                // 이번 라운드 쿠션을 이미 성공 — 칠 게 없음
     }
-  } else {                                   // 상대 칸 터치 = 턴 넘김
+  } else {                                   // ── 상대 칸 터치 = 턴 넘김
     pushHist();
     const from = S.turn;
     if (S.tp === 0) S.miss[from]++;
@@ -756,13 +768,14 @@ function tapZone(i){
     if (S.eq && from !== S.first) {          // 후구자가 못 끝내고 이닝 종료 → 선공 승
       save(); render(); return win(S.first);
     }
+    if (S.done[i] && S.cush[i] < S.round) S.cushInn[i]++;   // 넘겨받은 쪽이 쿠션 단계면 시도 시작
   }
   save(); render();
 }
 
 function minus(i){
   if (!S || S.fin) return;
-  if (S.done[i]) { toast('이미 완료한 선수예요 — 되돌리기(↩)를 사용하세요'); return; }
+  if (S.done[i]) { toast('알다마를 끝낸 선수예요 — 되돌리기(↩)를 사용하세요'); return; }
   pushHist();
   S.sc[i]--;
   if (i === S.turn && S.tp > 0) S.tp--;
@@ -774,7 +787,8 @@ function undo(){
   const a = S.hist.pop();
   if (!a) { toast('되돌릴 동작이 없어요'); return; }
   Object.assign(S, { sc:a.sc, inn:a.inn, br:a.br, miss:a.miss,
-                     tp:a.tp, turn:a.turn, done:a.done, eq:a.eq, ot:a.ot, fin:false });
+                     done:a.done, cush:a.cush, cushInn:a.cushInn,
+                     round:a.round, eq:a.eq, tp:a.tp, turn:a.turn, fin:false });
   $('#winOvl').classList.remove('on');
   vib(15); save(); render();
 }
@@ -785,22 +799,25 @@ function finalStats(winner){
     const innings = Math.max(1, S.inn[p] + (p === S.turn && S.tp > 0 ? 1 : 0));
     const run = Math.max(S.br[p], p === S.turn ? S.tp : 0);
     return { pid:S.pids[p] || null, name:S.names[p], target:S.targets[p], score:S.sc[p],
-             innings, highRun:run, misses:S.miss[p], win:p === winner };
+             innings, highRun:run, misses:S.miss[p],
+             cushMade:S.cush[p], cushInn:S.cushInn[p], win:p === winner };
   });
 }
 
-function win(i, mode){
+function win(i){
   S.fin = true; save(); render();
   const f = finalStats(i);
-  $('#winTitle').textContent = mode === 'ot'
-    ? `${S.names[i]} 연장전 승리!`
+  $('#winTitle').textContent = S.round > 1
+    ? `${S.names[i]} 연장 승리! (쿠션 ${S.round})`
     : `${S.names[i]} 승리!`;
   $('#winStats').innerHTML =
-    '<tr><th></th><th>점수</th><th>이닝</th><th>에버</th><th>하이런</th><th>공타</th></tr>' +
+    '<tr><th></th><th>점수</th><th>이닝</th><th>에버</th><th>쿠션</th><th>하이런</th><th>공타</th></tr>' +
     f.map((x,p) =>
       `<tr><td>${p === 0 ? '⚪' : '🟡'} ${esc(x.name)}${x.win ? ' 🏆' : ''}</td>` +
       `<td><b>${x.score}</b></td><td>${x.innings}</td>` +
-      `<td>${(x.score / x.innings).toFixed(2)}</td><td>${x.highRun}</td><td>${x.misses}</td></tr>`
+      `<td>${(x.score / x.innings).toFixed(2)}</td>` +
+      `<td>${x.cushInn ? `${x.cushMade}/${x.cushInn}` : '—'}</td>` +
+      `<td>${x.highRun}</td><td>${x.misses}</td></tr>`
     ).join('');
   setTimeout(() => {
     if (S && S.fin) {
@@ -833,24 +850,25 @@ function render(){
     $('#gname'+i).textContent = S.names[i];
     $('#score'+i).textContent = S.sc[i];
     const t = S.targets[i];
+    const cushLbl = '마무리 쿠션' + (S.round > 1 ? ' ' + S.round : '');
     $('#target'+i).textContent =
-      S.done[i]        ? '✔ 완료' :
-      S.sc[i] >= t     ? '🎯 마무리 쿠션!' :
-                         `/ ${t} +쿠션`;
+      !S.done[i]             ? `/ ${t}` :
+      S.cush[i] >= S.round   ? '✔ 성공' :
+                               '🎯 ' + cushLbl;
     const liveInn = Math.max(1, S.inn[i] + (i === S.turn ? 1 : 0));
     const run = Math.max(S.br[i], i === S.turn ? S.tp : 0);
     $('#stats'+i).textContent = `이닝 ${liveInn} · 에버 ${(S.sc[i]/liveInn).toFixed(2)} · 최고런 ${run}`;
     $('#zone'+i).classList.toggle('on', S.turn === i && !S.fin);
     $('#zone'+i).classList.toggle('off', S.turn !== i || S.fin);
-    $('#prog'+i).style.width = Math.min(S.sc[i] / (t + 1) * 100, 100) + '%';
+    $('#prog'+i).style.width = Math.min(S.sc[i] / t * 100, 100) + '%';
     const rb = $('#run'+i);
     rb.textContent = '+' + S.tp;
     rb.classList.toggle('show', S.turn === i && S.tp > 0);
   }
   $('#inning').textContent =
-    S.ot ? '🔥 연장전' :
-    S.eq ? '⏳ 후구' :
-    (S.inn[S.turn] + 1) + '이닝';
+    S.eq        ? '⏳ 후구' :
+    S.round > 1 ? `🔥 쿠션 ${S.round}` :
+                  (S.inn[S.turn] + 1) + '이닝';
 }
 
 /* ═══ 게임 화면 바인딩 ════════════════════════ */
@@ -873,8 +891,9 @@ $('#btnWinNew').onclick  = () => { S = null; save(); $('#winOvl').classList.remo
 $('#btnMenuClose').onclick   = () => $('#menuOvl').classList.remove('on');
 $('#btnMenuRestart').onclick = () => {
   if (!confirm('점수를 0으로 초기화할까요?')) return;
-  Object.assign(S, { sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0], tp:0,
-                     turn:S.first, done:[false,false], eq:false, ot:false,
+  Object.assign(S, { sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0],
+                     done:[false,false], cush:[0,0], cushInn:[0,0], round:1, eq:false,
+                     tp:0, turn:S.first,
                      hist:[], fin:false, saved:false, t0:Date.now() });
   save(); render(); $('#menuOvl').classList.remove('on');
 };
@@ -893,10 +912,9 @@ $('#btnMenuNew').onclick = () => {
   }
 
   const st = lsGet(LS_STATE, null);
-  if (st && st.sc && !st.fin) {          // 진행 중이던 경기 복원 (앱이 죽어도 이어서)
-    // 쿠션·후구 기능 이전에 저장된 경기와의 호환 처리
-    if (!st.done) { st.done = [false,false]; st.eq = false; st.ot = false; }
-    if (st.hist && st.hist.length && !st.hist[st.hist.length-1].sc) st.hist = [];
+  if (st && st.sc && !st.cush) {         // 쿠션 구조 이전 버전 — 이어서 세기 애매하므로 버린다
+    localStorage.removeItem(LS_STATE);
+  } else if (st && st.sc && !st.fin) {   // 진행 중이던 경기 복원 (앱이 죽어도 이어서)
     S = st; render(); show('game');
     toast('진행 중이던 경기를 불러왔어요');
   } else {
