@@ -100,7 +100,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v74</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v75</span>
   </div>
 </div>
 <script>
@@ -166,8 +166,10 @@ function processData(games, members) {
 
     for (const p of g.players) {
       const pName = p.name || p.id || "알 수 없음";
-      if (!pmap[pName]) {
-        pmap[pName] = {
+      // 회원은 계정 id로 묶어 이름이 바뀌어도 같은 사람으로 집계. 게스트는 이름으로 묶는다.
+      const key = p.id ? ('id:' + p.id) : ('nm:' + pName);
+      if (!pmap[key]) {
+        pmap[key] = {
           name: pName,
           handicap: isTeam ? 0 : p.target,
           games: 0,
@@ -176,7 +178,7 @@ function processData(games, members) {
           id: p.id || null
         };
       }
-      const st = pmap[pName];
+      const st = pmap[key];
       if (!isTeam) st.handicap = Math.max(st.handicap, p.target);
       st.games++;
       if (p.win) st.wins++;
@@ -207,7 +209,10 @@ function processData(games, members) {
     for (const p of pArr) {
       let m = p.id ? members.find(x => x.id === p.id) : null;
       if (!m) m = members.find(x => x.display_name === p.name);
-      if (m && m.handicap != null) p.handicap = parseInt(m.handicap, 10);
+      if (m) {
+        if (m.display_name) p.name = m.display_name;   // 이름 변경 시 최신 이름으로
+        if (m.handicap != null) p.handicap = parseInt(m.handicap, 10);
+      }
     }
   }
 
@@ -530,32 +535,12 @@ function showGame(id){
   scrollTo(0,0);
 }
 
-async function queueFlush() {
-  try {
-    const auth = getAuth();
-    if (!auth || !auth.token) return;
-    let q = JSON.parse(localStorage.getItem('dangScoreQueue_v1') || '[]');
-    if (!q.length) return;
-    for (const p of [...q]) {
-      try {
-        const res = await fetch(SB_URL + '/rest/v1/games', {
-          method: 'POST',
-          headers: { apikey: SB_KEY, Authorization: 'Bearer ' + auth.token, 'Content-Type': 'application/json', Prefer: 'return=representation' },
-          body: JSON.stringify(p)
-        });
-        if (!res.ok) throw new Error();
-        q = q.filter(x => x !== p);
-      } catch(e) { break; }
-    }
-    localStorage.setItem('dangScoreQueue_v1', JSON.stringify(q));
-  } catch(e) {}
-}
-
+/* 오프라인 대기열 동기화는 점수판(score/)이 담당한다.
+ * 앱 시작 화면이 점수판이라 기록실엔 반드시 점수판을 거쳐 오므로 여기선 불필요. */
 async function initDashboard() {
   const sub = document.getElementById('sub');
   if (sub) sub.textContent = '서버에서 데이터를 불러오는 중입니다...';
   try {
-    await queueFlush(); // 먼저 폰에 밀린 기록이 있으면 올리기
     const [games, members] = await Promise.all([
       fetchGames(),
       fetchMembers().catch(() => [])

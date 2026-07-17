@@ -168,14 +168,14 @@ select.field{appearance:none;background-image:
 
   <div class="pcard">
     <input class="field" id="aName" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="10" placeholder="이름">
-    <input class="field" id="aPass" type="password" autocomplete="current-password" placeholder="비밀번호 (선택)">
+    <input class="field" id="aPass" type="password" autocomplete="current-password" placeholder="비밀번호 (6자 이상)">
   </div>
 
   <div class="err" id="aErr"></div>
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v74</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v75</span>
   </div>
 </div>
 
@@ -209,7 +209,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v74</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v75</span>
   </div>
 </div>
 
@@ -299,7 +299,7 @@ $('#tabSignup').onclick = () => setMode('signup');
 $('#btnAuth').onclick = async () => {
   const btn = $('#btnAuth'), err = $('#aErr');
   const name = $('#aName').value.trim(), pass = $('#aPass').value;
-  if (!name) return err.textContent = '이름을 입력하세요';
+  if (!name || pass.length < 6) return err.textContent = '이름과 6자 이상 비밀번호를 입력하세요';
   err.textContent = ''; btn.disabled = true;
   
   try {
@@ -521,7 +521,9 @@ function syncSetup(modeChanged = false){
 let curTargetEdit = 0;
 window.openTargetPopup = function(i) {
   curTargetEdit = i;
-  $('#targetOvlTitle').textContent = (prefs.gameType === '팀전' ? TZNAMES[i] : ZBALLS[i]) + ' 목표 점수';
+  // 공 색은 턴에 따라 바뀌므로 제목엔 선수 이름을 쓴다 (없으면 자리 번호)
+  const who = prefs.gameType === '팀전' ? TZNAMES[i] : (prefs.names[i] || `${i + 1}번 선수`);
+  $('#targetOvlTitle').textContent = who + ' 목표 점수';
   $('#tvalEdit').textContent = prefs.targets[i];
   $('#targetOvl').classList.add('on');
 };
@@ -604,7 +606,7 @@ $('#btnStart').onclick = () => {
     inn: Array(N).fill(0), br: Array(N).fill(0), miss: Array(N).fill(0),
     done: Array(N).fill(false),
     cush: Array(N).fill(0), indCush: Array(N).fill(0), cushInn: Array(N).fill(0),
-    finished: Array(N).fill(false),
+    finished: Array(N).fill(false), rank: Array(N).fill(0),
     round: 1, lastInning: false, winners: [],
     tp: 0, turn: 0, first: 0, tc: 0,
     hist: [], fin: false, saved: false, t0: Date.now()
@@ -644,7 +646,7 @@ function buildGameZones() {
         <button class="minusbtn" id="mbtn${i}">-1</button>
         <span class="runbadge" id="run${i}">+0</span>
         <div class="zname">
-          <div class="zname-text"><span id="gball${i}"></span><span id="gname${i}">${zname}</span></div>
+          <div class="zname-text"><span id="gball${i}"></span><span id="gname${i}">${esc(zname)}</span></div>
           <span class="turnchip">치는 중</span>
         </div>
         <div class="zscore" id="gsc${i}">0</div>
@@ -677,7 +679,7 @@ function pushHist(){
     sc:[...S.sc], indSc: S.indSc ? [...S.indSc] : [...S.sc],
     inn:[...S.inn], br:[...S.br], miss:[...S.miss],
     done:[...S.done], cush:[...S.cush], indCush: S.indCush ? [...S.indCush] : [...S.cush], cushInn:[...S.cushInn],
-    finished:[...S.finished], round:S.round, lastInning:S.lastInning, winners:[...S.winners],
+    finished:[...S.finished], rank: S.rank ? [...S.rank] : [], round:S.round, lastInning:S.lastInning, winners:[...S.winners],
     tp:S.tp, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin
   }));
 }
@@ -901,22 +903,67 @@ function render(){
 }
 
 // ══ Win / Menu ══
+// 이번 라운드 승자를 등수에 반영 (동시 달성이면 같은 등수). 아직 못 끝낸 팀/개인 수를 반환.
+function assignRanksAndCountRemaining(){
+  const isTeam = S.type === '팀전';
+  if (!S.rank) S.rank = Array(S.sc.length).fill(0);
+  const nextRank = Math.max(0, ...S.rank) + 1;
+  S.winners.forEach(w => { if (!S.rank[w]) S.rank[w] = nextRank; });
+  // 남은 유닛 수 (팀전은 팀 기준, 개인전은 사람 기준)
+  const doneUnits = new Set();
+  S.rank.forEach((r, i) => { if (r) doneUnits.add(isTeam ? i % 2 : i); });
+  const total = isTeam ? 2 : S.sc.length;
+  return total - doneUnits.size;
+}
+
+// 게임 종료 시 최종 기록을 서버에 저장 (등수 확정 · 못 끝낸 선수는 공동 꼴찌)
+function saveGame(){
+  if (S.saved) return;
+  S.saved = true; save();
+  if (!auth) {
+    $('#saveStat').className = 'savestat'; $('#saveStat').textContent = '게스트 모드: 기록이 저장되지 않습니다';
+    return;
+  }
+  const N = S.sc.length, isTeam = S.type === '팀전';
+  const lastRank = Math.max(0, ...S.rank) + 1;   // 끝까지 못 친 선수들의 공동 등수
+  const pl = [];
+  for (let i = 0; i < N; i++) {
+    const rank = S.rank[i] || lastRank;
+    const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
+    const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
+    pl.push({
+      id: S.pids[i] || null, name: S.names[i], win: rank === 1, rank,
+      score: indS, target: S.targets[i], innings: S.inn[i],
+      highRun: S.br[i], misses: S.miss[i], cushMade: indC,
+      cushInn: S.cushInn[i], isTeam
+    });
+  }
+  const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl };
+  $('#saveStat').className = 'savestat'; $('#saveStat').textContent = '서버에 기록 저장 중...';
+  api.submitGame(payload).then(() => {
+    $('#saveStat').className = 'savestat ok'; $('#saveStat').textContent = '기록 저장 완료 ✓';
+  }).catch(() => {
+    queueAdd(payload);
+    $('#saveStat').className = 'savestat warn'; $('#saveStat').textContent = '오프라인: 나중에 저장됩니다';
+  });
+}
+
 function win(winnerIdx){
-  S.fin = true; save();
-  $('#winOvl').classList.add('on');
-  
+  S.fin = true;
   const isTeam = S.type === '팀전';
   const N = S.sc.length;
-  let isTie = false;
-  if (isTeam && N === 4) {
-    const teamWins = new Set(S.winners.map(i => i%2));
-    isTie = teamWins.size > 1;
-  } else {
-    isTie = S.winners.length > 1;
-  }
-  let title = isTie ? '공동 목표 달성!' : `${isTeam ? TZNAMES[S.winners[0]%2] : S.names[S.winners[0]]} 승리!`;
-  $('#winTitle').textContent = title;
-  
+  const remaining = assignRanksAndCountRemaining();
+  const isFinal = remaining <= 1;   // 남은 유닛이 1 이하면 더 겨룰 상대가 없음 → 경기 종료
+  save();
+  $('#winOvl').classList.add('on');
+
+  const isTie = isTeam && N === 4 ? new Set(S.winners.map(i => i%2)).size > 1 : S.winners.length > 1;
+  const first = S.winners[0];
+  const placeLabel = (S.rank[first] || 1) === 1 ? '승리' : `${S.rank[first]}위 확정`;
+  $('#winTitle').textContent = isTie
+    ? '공동 달성!'
+    : `${isTeam ? TZNAMES[first%2] : S.names[first]} ${placeLabel}!`;
+
   let html = '<tr><th>선수</th><th>점수</th><th>에버</th><th>하이런</th></tr>';
   for(let i=0; i<N; i++){
     const nm = isTeam ? `${i%2===0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
@@ -924,43 +971,19 @@ function win(winnerIdx){
     const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
     const scStr = S.done[i] ? `쿠션 ${indC}/${S.round}` : `${indS}/${S.targets[i]}`;
     const ev = S.inn[i] ? (indS / S.inn[i]).toFixed(3) : '0.000';
-    html += `<tr><td>${nm}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
+    const rankTag = S.rank[i] ? ` <span style="opacity:.6">${S.rank[i]}위</span>` : '';
+    html += `<tr><td>${esc(nm)}${rankTag}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
   }
   $('#winStats').innerHTML = html;
-  
-  if (!S.saved) {
-    if (auth) {
-      $('#saveStat').className = 'savestat'; $('#saveStat').textContent = '서버에 기록 저장 중...';
-      const pl = [];
-      for(let i=0; i<N; i++){
-        const isWin = S.winners.includes(i);
-        const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
-        const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
-        pl.push({
-          id: S.pids[i] || null, name: S.names[i], win: isWin,
-          score: indS, target: S.targets[i], innings: S.inn[i],
-          highRun: S.br[i], misses: S.miss[i], cushMade: indC,
-          cushInn: S.cushInn[i], isTeam: isTeam
-        });
-      }
-      
-      const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl };
-      api.submitGame(payload).then(() => {
-        S.saved = true; save();
-        $('#saveStat').className = 'savestat ok'; $('#saveStat').textContent = '기록 저장 완료 ✓';
-      }).catch(e => {
-        queueAdd(payload); S.saved = true; save();
-        $('#saveStat').className = 'savestat warn'; $('#saveStat').textContent = '오프라인: 나중에 저장됩니다';
-        alert("저장 에러: " + (e.message || e));
-      });
-    } else {
-      S.saved = true; save();
-      $('#saveStat').className = 'savestat'; $('#saveStat').textContent = '게스트 모드: 기록이 저장되지 않습니다';
-    }
-  }
+
+  // 아직 겨룰 선수가 남았으면 '계속치기'로 꼴등전 진행, 최종이면 여기서 저장
+  $('#btnWinCont').style.display = isFinal ? 'none' : '';
+  if (isFinal) saveGame();
 }
 
+// 경기 종료(저장) 후 새 경기 — 꼴등전을 안 하고 바로 끝낼 때도 여기서 저장된다
 $('#btnWinNew').onclick = () => {
+  saveGame();
   $('#winOvl').classList.remove('on'); S = null; save(); show('setup');
 };
 
@@ -970,12 +993,12 @@ $('#btnWinCont').onclick = () => {
   S.winners = [];
   S.lastInning = false;
   S.fin = false;
-  
+
   if (activePlayerCount() <= 1) {
     toast('더 이상 진행할 선수가 없습니다.');
-    S.fin = true; save(); return;
+    S.fin = true; saveGame(); return;
   }
-  
+
   // Set turn to the next non-finished player if current is finished
   if (S.finished[S.turn]) S.turn = nextTurnIndex(S.turn);
   save(); render();
@@ -1022,15 +1045,14 @@ async function queueFlush(){
       await api.submitGame(p);
       sent++;
     } catch(e) {
-      if (e.message && e.message.includes('fetch error')) {
-        // network error, keep in queue
-        newQ.push(p);
-      } else if (e.message && e.message.includes('Failed to fetch')) {
-        newQ.push(p);
-      } else {
-        // likely 4xx bad request from supabase, discard to prevent blocking
-        console.error('Discarding bad payload', e);
-      }
+      // 회복 가능한 실패는 대기열에 남긴다:
+      //  - status 없음 → 네트워크 오류 (fetch 실패)
+      //  - 401 토큰 만료, 429 과다요청, 5xx 서버 장애
+      // 진짜 잘못된 요청(400/409/422 등)만 폐기해 큐가 막히지 않게 한다.
+      const s = e.status;
+      const recoverable = !s || s === 401 || s === 429 || s >= 500;
+      if (recoverable) newQ.push(p);
+      else console.error('Discarding bad payload', e);
     }
   }
   lsSet(LS_QUEUE, newQ);
@@ -1052,6 +1074,9 @@ function init(){
       S.lastInning = S.lastInning || false;
       S.round = S.round || 1;
       if (!S.type) S.type = '2인';
+    }
+    if (!Array.isArray(S.rank)) {
+      S.rank = Array(S.sc.length).fill(0);
     }
     if (typeof S.tc !== 'number') {
       S.tc = S.inn.reduce((a, b) => a + b, 0);

@@ -71,37 +71,13 @@ function syntheticEmail(name){
 
 export async function sbAuth(name, password, isSignup){
   const email = syntheticEmail(name);
-  const paddedPassword = password + '_DANGDONG_SCORE_PAD';
-
-  if (isSignup) {
-    const path = '/auth/v1/signup';
-    const r = await fetch(SB_URL + path, {
-      method:'POST', headers:{ apikey: SB_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ email, password: paddedPassword })
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.msg || d.error_description || d.message || '요청 실패');
-    if (!d.access_token) throw new Error('이메일 인증이 필요한 계정입니다');
-    return { token: d.access_token, refresh: d.refresh_token, uid: d.user.id };
-  } else {
-    const path = '/auth/v1/token?grant_type=password';
-    let r = await fetch(SB_URL + path, {
-      method:'POST', headers:{ apikey: SB_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ email, password: paddedPassword })
-    });
-    let d = await r.json();
-
-    // Fallback for existing users who signed up before padding was introduced
-    if (!r.ok && (d.error === 'invalid_grant' || d.message === 'Invalid login credentials')) {
-      r = await fetch(SB_URL + path, {
-        method:'POST', headers:{ apikey: SB_KEY, 'Content-Type':'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      d = await r.json();
-    }
-
-    if (!r.ok) throw new Error(d.msg || d.error_description || d.message || '요청 실패');
-    if (!d.access_token) throw new Error('이메일 인증이 필요한 계정입니다');
-    return { token: d.access_token, refresh: d.refresh_token, uid: d.user.id };
-  }
+  const path = isSignup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password';
+  const r = await fetch(SB_URL + path, {
+    method:'POST', headers:{ apikey: SB_KEY, 'Content-Type':'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.msg || d.error_description || d.message || '요청 실패');
+  if (!d.access_token) throw new Error('이메일 인증이 필요한 계정입니다');
+  return { token: d.access_token, refresh: d.refresh_token, uid: d.user.id };
 }
