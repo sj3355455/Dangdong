@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e1114">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="당동 점수판">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>당동 점수판</title>
+<style>
+:root{
+  --bg:#0e1114; --card:#1a1f26; --line:#2c333d; --text:#e9ecef; --muted:#8b94a1;
+  --wz:#f2f1ec; --wz-hi:#ffffff; --wz-text:#171a1e;
+  --yz:#f0be3e; --yz-hi:#ffd257; --yz-text:#231a04;
+  --accent:#ff8c42; --danger:#e5484d;
+  --sat: env(safe-area-inset-top,0px); --sab: env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;user-select:none;-webkit-user-select:none}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit}
+
+/* ── 화면 전환 ─────────────────────────────── */
+.screen{position:fixed;inset:0;display:none}
+.screen.on{display:flex}
+
+/* ── 설정 화면 ─────────────────────────────── */
+#setup{flex-direction:column;align-items:center;justify-content:center;
+  padding:calc(16px + var(--sat)) 20px calc(16px + var(--sab));gap:14px;overflow-y:auto}
+#setup h1{font-size:1.4rem;letter-spacing:-.02em}
+#setup .sub{color:var(--muted);font-size:.85rem;margin-top:-6px}
+.pcard{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:10px}
+.dot{width:26px;height:26px;border-radius:50%;flex:none;border:2px solid var(--line)}
+.dot.w{background:var(--wz)} .dot.y{background:var(--yz)}
+.pname{flex:1;min-width:0;background:#12161b;border:1px solid var(--line);color:var(--text);
+  border-radius:10px;padding:10px 12px;font-size:1rem}
+.trow{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.trow .lbl{color:var(--muted);font-size:.85rem}
+.step{display:flex;align-items:center;gap:6px}
+.step button{width:44px;height:44px;border-radius:12px;background:#12161b;
+  border:1px solid var(--line);font-size:1.3rem;font-weight:700}
+.step button:active{background:#232a33}
+.step .tval{width:64px;text-align:center;font-size:1.5rem;font-weight:800;
+  font-variant-numeric:tabular-nums}
+.firstseg{display:flex;gap:6px;width:100%;max-width:420px}
+.firstseg .cap{color:var(--muted);font-size:.85rem;align-self:center;margin-right:4px;flex:none}
+.firstseg button{flex:1;padding:11px 0;border-radius:12px;background:var(--card);
+  border:1px solid var(--line);font-weight:600}
+.firstseg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#btnStart{width:100%;max-width:420px;padding:16px 0;border-radius:14px;background:var(--accent);
+  color:#fff;font-size:1.15rem;font-weight:800;letter-spacing:.02em}
+#btnStart:active{filter:brightness(.9)}
+.linkrow{color:var(--muted);font-size:.85rem}
+.linkrow a{color:var(--accent);text-decoration:none}
+
+/* ── 게임 화면 ─────────────────────────────── */
+#game{flex-direction:column}
+@media (orientation:landscape){ #game{flex-direction:row} }
+.zone{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;transition:filter .25s;overflow:hidden;cursor:pointer}
+.zone.w{background:radial-gradient(120% 100% at 50% 0%,var(--wz-hi),var(--wz));color:var(--wz-text)}
+.zone.y{background:radial-gradient(120% 100% at 50% 100%,var(--yz-hi),var(--yz));color:var(--yz-text)}
+.zone.off{filter:brightness(.42) saturate(.55)}
+.zone .zname{font-size:clamp(1rem,2.6vmin,1.4rem);font-weight:700;opacity:.75;
+  display:flex;align-items:center;gap:8px}
+.turnchip{font-size:.7em;background:rgba(0,0,0,.75);color:#fff;border-radius:999px;
+  padding:3px 10px;font-weight:700;display:none}
+.zone.on .turnchip{display:inline-block}
+.zscore{font-size:clamp(64px,22vmin,150px);font-weight:900;line-height:1.05;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.zscore.pop{animation:pop .18s ease-out}
+@keyframes pop{40%{transform:scale(1.14)}100%{transform:scale(1)}}
+.ztarget{font-size:clamp(.85rem,2.4vmin,1.1rem);opacity:.6;font-weight:600;margin-top:-4px}
+.zstats{font-size:clamp(.75rem,2.2vmin,1rem);opacity:.65;margin-top:8px;font-weight:600}
+.runbadge{position:absolute;font-size:clamp(1rem,3.4vmin,1.5rem);font-weight:800;
+  background:rgba(0,0,0,.78);color:#ffd257;border-radius:999px;padding:5px 14px;
+  opacity:0;transition:opacity .15s}
+.zone.on .runbadge.show{opacity:1}
+.zone.w .runbadge{top:calc(12px + var(--sat));right:14px}
+.zone.y .runbadge{bottom:calc(12px + var(--sab));right:14px}
+@media (orientation:landscape){
+  .zone.w .runbadge{top:auto;bottom:14px;right:14px}
+  .zone.y .runbadge{bottom:14px;right:14px}
+}
+.minusbtn{position:absolute;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;
+  padding:10px 18px;font-weight:800;font-size:1rem;backdrop-filter:blur(4px)}
+.minusbtn:active{background:var(--danger)}
+.zone.w .minusbtn{top:calc(12px + var(--sat));left:14px}
+.zone.y .minusbtn{bottom:calc(12px + var(--sab));left:14px}
+@media (orientation:landscape){
+  .zone .minusbtn{top:auto;bottom:14px;left:14px}
+}
+.zprog{position:absolute;left:0;bottom:0;height:5px;background:rgba(0,0,0,.5);
+  width:0%;transition:width .2s}
+@media (orientation:landscape){
+  .zone.w .zprog{bottom:0}
+}
+
+/* 가운데 컨트롤 */
+#mid{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;flex-direction:row;gap:10px;z-index:5}
+@media (orientation:landscape){ #mid{flex-direction:column} }
+#mid>*{pointer-events:auto}
+.midpill{background:rgba(10,12,15,.88);border:1px solid var(--line);color:var(--text);
+  border-radius:999px;padding:10px 16px;font-weight:800;font-size:.95rem;
+  font-variant-numeric:tabular-nums;backdrop-filter:blur(6px);white-space:nowrap}
+.midbtn{width:54px;height:54px;border-radius:50%;background:rgba(10,12,15,.88);
+  border:1px solid var(--line);color:var(--text);font-size:1.25rem;
+  backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center}
+.midbtn:active{background:#2a323d}
+
+/* ── 오버레이 공통 ──────────────────────────── */
+.ovl{position:fixed;inset:0;background:rgba(5,7,9,.78);display:none;
+  align-items:center;justify-content:center;z-index:50;padding:20px;backdrop-filter:blur(3px)}
+.ovl.on{display:flex}
+.ovlcard{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);
+  border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:14px;
+  max-height:calc(100% - 40px);overflow-y:auto}
+.ovlcard h2{font-size:1.25rem;text-align:center}
+.ovlcard .big{font-size:2rem;text-align:center}
+.statgrid{width:100%;border-collapse:collapse;font-size:.9rem}
+.statgrid th,.statgrid td{padding:7px 4px;text-align:center;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums}
+.statgrid th{color:var(--muted);font-weight:600}
+.statgrid td:first-child,.statgrid th:first-child{text-align:left}
+.obtn{width:100%;padding:14px 0;border-radius:12px;font-weight:700;font-size:1rem;
+  background:#12161b;border:1px solid var(--line)}
+.obtn:active{background:#232a33}
+.obtn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.obtn.ghost{color:var(--muted)}
+
+#toast{position:fixed;left:50%;bottom:calc(24px + var(--sab));transform:translateX(-50%);
+  background:rgba(10,12,15,.92);border:1px solid var(--line);color:var(--text);
+  padding:10px 18px;border-radius:999px;font-size:.85rem;opacity:0;transition:opacity .3s;
+  pointer-events:none;z-index:99;white-space:nowrap}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- ── 설정 화면 ── -->
+<div id="setup" class="screen on">
+  <h1>🎱 당동 점수판</h1>
+  <div class="sub">이름과 목표 점수를 정하고 시작하세요</div>
+
+  <div class="pcard">
+    <div class="prow"><span class="dot w"></span>
+      <input class="pname" id="name0" maxlength="10" placeholder="흰 공 선수"></div>
+    <div class="trow"><span class="lbl">목표 점수</span>
+      <div class="step">
+        <button data-t="0" data-d="-1">−</button>
+        <span class="tval" id="tval0">10</span>
+        <button data-t="0" data-d="1">＋</button>
+      </div></div>
+  </div>
+
+  <div class="pcard">
+    <div class="prow"><span class="dot y"></span>
+      <input class="pname" id="name1" maxlength="10" placeholder="노란 공 선수"></div>
+    <div class="trow"><span class="lbl">목표 점수</span>
+      <div class="step">
+        <button data-t="1" data-d="-1">−</button>
+        <span class="tval" id="tval1">10</span>
+        <button data-t="1" data-d="1">＋</button>
+      </div></div>
+  </div>
+
+  <div class="firstseg"><span class="cap">선공</span>
+    <button id="first0" class="on">⚪ 흰 공</button>
+    <button id="first1">🟡 노란 공</button>
+  </div>
+
+  <button id="btnStart">경기 시작</button>
+  <div class="linkrow"><a href="../">📊 기록실 보기</a></div>
+</div>
+
+<!-- ── 게임 화면 ── -->
+<div id="game" class="screen">
+  <div class="zone w" id="zone0">
+    <button class="minusbtn" data-p="0">−1</button>
+    <span class="runbadge" id="run0">+0</span>
+    <div class="zname"><span id="gname0">흰 공</span><span class="turnchip">치는 중</span></div>
+    <div class="zscore" id="score0">0</div>
+    <div class="ztarget" id="target0">/ 10</div>
+    <div class="zstats" id="stats0">이닝 1 · 에버 0.00 · 최고런 0</div>
+    <div class="zprog" id="prog0"></div>
+  </div>
+
+  <div class="zone y off" id="zone1">
+    <button class="minusbtn" data-p="1">−1</button>
+    <span class="runbadge" id="run1">+0</span>
+    <div class="zname"><span id="gname1">노란 공</span><span class="turnchip">치는 중</span></div>
+    <div class="zscore" id="score1">0</div>
+    <div class="ztarget" id="target1">/ 10</div>
+    <div class="zstats" id="stats1">이닝 0 · 에버 0.00 · 최고런 0</div>
+    <div class="zprog" id="prog1"></div>
+  </div>
+
+  <div id="mid">
+    <button class="midbtn" id="btnUndo" title="되돌리기">↩</button>
+    <span class="midpill" id="inning">1이닝</span>
+    <button class="midbtn" id="btnMenu" title="메뉴">☰</button>
+  </div>
+</div>
+
+<!-- ── 승리 오버레이 ── -->
+<div class="ovl" id="winOvl">
+  <div class="ovlcard">
+    <div class="big">🏆</div>
+    <h2 id="winTitle">목표 달성!</h2>
+    <table class="statgrid" id="winStats"></table>
+    <button class="obtn primary" id="btnWinNew">경기 종료 · 새 경기</button>
+    <button class="obtn" id="btnWinCont">계속 진행 (후구 등)</button>
+    <button class="obtn ghost" id="btnWinUndo">↩ 방금 점수 취소</button>
+  </div>
+</div>
+
+<!-- ── 메뉴 오버레이 ── -->
+<div class="ovl" id="menuOvl">
+  <div class="ovlcard">
+    <h2>메뉴</h2>
+    <button class="obtn primary" id="btnMenuClose">경기 계속</button>
+    <button class="obtn" id="btnMenuRestart">점수 초기화 (같은 설정)</button>
+    <button class="obtn" id="btnMenuNew">새 경기 설정으로</button>
+    <a class="obtn ghost" style="text-align:center;text-decoration:none;display:block" href="../">📊 기록실 열기</a>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const LS_STATE = 'dangScoreState_v1';
+const LS_PREFS = 'dangScorePrefs_v1';
+
+/* ── 상태 ─────────────────────────────────── */
+let prefs = { names:['',''], targets:[10,10], first:0 };
+let S = null;   // 경기 상태 (null = 설정 화면)
+
+try { const p = JSON.parse(localStorage.getItem(LS_PREFS)); if (p) prefs = {...prefs, ...p}; } catch(e){}
+
+function save(){
+  try {
+    localStorage.setItem(LS_STATE, S ? JSON.stringify(S) : '');
+    localStorage.setItem(LS_PREFS, JSON.stringify(prefs));
+  } catch(e){}
+}
+
+function newState(){
+  return {
+    names:[prefs.names[0]||'흰 공', prefs.names[1]||'노란 공'],
+    targets:[...prefs.targets],
+    sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0],
+    tp:0, turn:prefs.first, first:prefs.first,
+    hist:[], fin:false, t0:Date.now()
+  };
+}
+
+/* ── 진동 (아이폰은 미지원 → 조용히 무시) ── */
+const vib = ms => { try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} };
+
+/* ── 화면 꺼짐 방지 ───────────────────────── */
+let wl = null;
+async function wakeLock(){
+  try { wl = await navigator.wakeLock.request('screen'); } catch(e){}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S) wakeLock();
+  save();
+});
+
+/* ── 게임 동작 ────────────────────────────── */
+function tapZone(i){
+  if (!S || S.fin) return;
+  if (i === S.turn){                       // 자기 칸 → 득점
+    S.sc[i]++; S.tp++;
+    S.hist.push({t:'s', p:i});
+    vib(12); popScore(i);
+    if (S.sc[i] >= S.targets[i]) return win(i);
+  } else {                                 // 상대 칸 → 턴 넘김
+    const from = S.turn;
+    S.hist.push({t:'p', from, tp:S.tp, pb:S.br[from], miss:S.tp===0});
+    if (S.tp === 0) S.miss[from]++;
+    if (S.tp > S.br[from]) S.br[from] = S.tp;
+    S.inn[from]++; S.turn = i; S.tp = 0;
+    vib(30);
+  }
+  save(); render();
+}
+
+function minus(i){
+  if (!S || S.fin) return;
+  const tpd = (i === S.turn && S.tp > 0) ? 1 : 0;
+  S.sc[i]--; S.tp -= tpd;
+  S.hist.push({t:'m', p:i, tpd});
+  vib([20,40,20]); popScore(i);
+  save(); render();
+}
+
+function undo(){
+  if (!S) return;
+  const a = S.hist.pop();
+  if (!a){ toast('되돌릴 동작이 없어요'); return; }
+  if (a.t === 's'){ S.sc[a.p]--; S.tp--; }
+  else if (a.t === 'm'){ S.sc[a.p]++; S.tp += a.tpd; }
+  else { S.turn = a.from; S.inn[a.from]--; S.br[a.from] = a.pb;
+         if (a.miss) S.miss[a.from]--; S.tp = a.tp; }
+  S.fin = false; $('#winOvl').classList.remove('on');
+  vib(15); save(); render();
+}
+
+function win(i){
+  S.fin = true; save(); render();
+  $('#winTitle').textContent = `${S.names[i]} 목표 달성!`;
+  const liveInn = p => Math.max(1, S.inn[p] + (p === S.turn ? 1 : 0));
+  const fin = [0,1].map(p => {
+    const innings = p === i ? S.inn[p] + 1 : Math.max(S.inn[p], 1);
+    const run = Math.max(S.br[p], p === S.turn ? S.tp : 0);
+    return { name:S.names[p], sc:S.sc[p], inn:innings,
+             avg:(S.sc[p]/innings).toFixed(2), run, miss:S.miss[p] };
+  });
+  $('#winStats').innerHTML =
+    '<tr><th></th><th>점수</th><th>이닝</th><th>에버</th><th>하이런</th><th>공타</th></tr>' +
+    fin.map((f,p) =>
+      `<tr><td>${p===0?'⚪':'🟡'} ${esc(f.name)}${p===i?' 🏆':''}</td>` +
+      `<td><b>${f.sc}</b></td><td>${f.inn}</td><td>${f.avg}</td><td>${f.run}</td><td>${f.miss}</td></tr>`
+    ).join('');
+  $('#winOvl').classList.add('on');
+  vib([40,60,40,60,80]);
+}
+
+/* ── 렌더링 ───────────────────────────────── */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function popScore(i){
+  const el = $('#score'+i);
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+}
+
+function render(){
+  if (!S) return;
+  for (const i of [0,1]){
+    $('#gname'+i).textContent = S.names[i];
+    $('#score'+i).textContent = S.sc[i];
+    $('#target'+i).textContent = '/ ' + S.targets[i];
+    const liveInn = Math.max(1, S.inn[i] + (i === S.turn ? 1 : 0));
+    const avg = (S.sc[i] / liveInn).toFixed(2);
+    const run = Math.max(S.br[i], i === S.turn ? S.tp : 0);
+    $('#stats'+i).textContent = `이닝 ${liveInn} · 에버 ${avg} · 최고런 ${run}`;
+    $('#zone'+i).classList.toggle('on', S.turn === i && !S.fin);
+    $('#zone'+i).classList.toggle('off', S.turn !== i || S.fin);
+    $('#prog'+i).style.width = Math.min(S.sc[i] / S.targets[i] * 100, 100) + '%';
+    const rb = $('#run'+i);
+    rb.textContent = '+' + S.tp;
+    rb.classList.toggle('show', S.turn === i && S.tp > 0);
+  }
+  $('#inning').textContent = (S.inn[S.turn] + 1) + '이닝';
+}
+
+function show(screen){
+  $('#setup').classList.toggle('on', screen === 'setup');
+  $('#game').classList.toggle('on', screen === 'game');
+  if (screen === 'game') wakeLock();
+}
+
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._tm); t._tm = setTimeout(() => t.classList.remove('on'), 2200);
+}
+
+/* ── 설정 화면 바인딩 ─────────────────────── */
+function syncSetup(){
+  $('#name0').value = prefs.names[0]; $('#name1').value = prefs.names[1];
+  $('#tval0').textContent = prefs.targets[0]; $('#tval1').textContent = prefs.targets[1];
+  $('#first0').classList.toggle('on', prefs.first === 0);
+  $('#first1').classList.toggle('on', prefs.first === 1);
+}
+document.querySelectorAll('.step button').forEach(b => {
+  const bump = () => {
+    const t = +b.dataset.t, d = +b.dataset.d;
+    prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + d));
+    syncSetup(); save(); vib(8);
+  };
+  b.addEventListener('pointerdown', e => { e.preventDefault(); bump(); });
+});
+$('#first0').addEventListener('click', () => { prefs.first = 0; syncSetup(); save(); });
+$('#first1').addEventListener('click', () => { prefs.first = 1; syncSetup(); save(); });
+$('#name0').addEventListener('input', e => { prefs.names[0] = e.target.value; save(); });
+$('#name1').addEventListener('input', e => { prefs.names[1] = e.target.value; save(); });
+$('#btnStart').addEventListener('click', () => {
+  S = newState(); save(); render(); show('game');
+  toast(`${S.names[S.first]} 선공으로 시작!`);
+});
+
+/* ── 게임 화면 바인딩 ─────────────────────── */
+for (const i of [0,1]){
+  $('#zone'+i).addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return;
+    if (e.target.closest('.minusbtn')) return;
+    tapZone(i);
+  });
+  $('#zone'+i).addEventListener('contextmenu', e => e.preventDefault());
+}
+document.querySelectorAll('.minusbtn').forEach(b =>
+  b.addEventListener('pointerdown', e => {
+    e.stopPropagation(); if (!e.isPrimary) return;
+    minus(+b.dataset.p);
+  }));
+$('#btnUndo').addEventListener('pointerdown', e => { e.stopPropagation(); undo(); });
+$('#btnMenu').addEventListener('pointerdown', e => {
+  e.stopPropagation(); $('#menuOvl').classList.add('on');
+});
+
+/* 승리 오버레이 */
+$('#btnWinCont').addEventListener('click', () => {
+  S.fin = false; $('#winOvl').classList.remove('on'); save(); render();
+});
+$('#btnWinUndo').addEventListener('click', undo);
+$('#btnWinNew').addEventListener('click', () => {
+  S = null; save(); $('#winOvl').classList.remove('on'); syncSetup(); show('setup');
+});
+
+/* 메뉴 오버레이 */
+$('#btnMenuClose').addEventListener('click', () => $('#menuOvl').classList.remove('on'));
+$('#btnMenuRestart').addEventListener('click', () => {
+  if (!confirm('점수를 0으로 초기화할까요?')) return;
+  S = newState(); save(); render(); $('#menuOvl').classList.remove('on');
+});
+$('#btnMenuNew').addEventListener('click', () => {
+  if (!confirm('현재 경기를 버리고 설정 화면으로 갈까요?')) return;
+  S = null; save(); $('#menuOvl').classList.remove('on'); syncSetup(); show('setup');
+});
+
+/* ── 시작: 진행 중 경기 복원 ───────────────── */
+(function init(){
+  syncSetup();
+  try {
+    const raw = localStorage.getItem(LS_STATE);
+    if (raw){
+      const st = JSON.parse(raw);
+      if (st && st.sc && !st.fin){
+        S = st; render(); show('game');
+        toast('진행 중이던 경기를 불러왔어요');
+        return;
+      }
+    }
+  } catch(e){}
+  show('setup');
+})();
+
+/* ── 서비스 워커 (오프라인 캐시) ───────────── */
+if ('serviceWorker' in navigator && location.protocol !== 'file:')
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
