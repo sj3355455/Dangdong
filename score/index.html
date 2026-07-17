@@ -36,13 +36,18 @@ input,select{font:inherit;user-select:text;-webkit-user-select:text}
 .field{width:100%;background:#12161b;border:1px solid var(--line);color:#fff;
   border-radius:10px;padding:12px;font-size:1rem}
 .field:focus{outline:none;border-color:var(--accent)}
+.field:disabled{opacity:0.6;cursor:not-allowed}
 select.field{appearance:none;background-image:
   linear-gradient(45deg,transparent 50%,var(--muted) 50%),
   linear-gradient(135deg,var(--muted) 50%,transparent 50%);
   background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
   background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:36px}
 .pcard{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);
-  border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  padding:16px;border-radius:12px;margin-bottom:16px;transition:all .2s;display:flex;flex-direction:column;gap:10px}
+.pcard.me{background:var(--hover);border-color:var(--muted)}
+.plbl{font-size:.75rem;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:bold}
+.plbl.me{background:var(--accent);color:#fff}
+.plbl.opp{background:var(--line);color:var(--muted)}
 .bigbtn{width:100%;max-width:420px;padding:15px 0;border-radius:14px;background:var(--accent);
   color:#fff;font-size:1.1rem;font-weight:800}
 .bigbtn:active{filter:brightness(.9)}
@@ -203,8 +208,8 @@ select.field{appearance:none;background-image:
     <a href="../record/" class="nav-btn">📊 기록실</a>
   </div>
 
-  <div class="pcard">
-    <div class="prow"><span class="dot w"></span>
+  <div class="pcard" id="pcard0">
+    <div class="prow"><span class="dot w"></span> <span class="plbl" id="plbl0"></span>
       <select class="field" id="sel0"></select></div>
     <input class="field" id="name0" maxlength="10" placeholder="흰 공 선수 이름">
     <div class="trow"><span class="lbl">목표 점수</span>
@@ -215,8 +220,8 @@ select.field{appearance:none;background-image:
       </div></div>
   </div>
 
-  <div class="pcard">
-    <div class="prow"><span class="dot y"></span>
+  <div class="pcard" id="pcard1">
+    <div class="prow"><span class="dot y"></span> <span class="plbl" id="plbl1"></span>
       <select class="field" id="sel1"></select></div>
     <input class="field" id="name1" maxlength="10" placeholder="노란 공 선수 이름">
     <div class="trow"><span class="lbl">목표 점수</span>
@@ -567,6 +572,13 @@ function syncSetup(){
     else { $('#name'+i).style.display = ''; prefs.pids[i] = null; }
     $('#name'+i).value = prefs.names[i];
     $('#tval'+i).textContent = prefs.targets[i];
+    
+    const isMe = (prefs.myBall === i);
+    $('#pcard'+i).classList.toggle('me', isMe);
+    $('#sel'+i).disabled = isMe;
+    $('#name'+i).disabled = isMe;
+    $('#plbl'+i).textContent = isMe ? '나' : '상대';
+    $('#plbl'+i).className = 'plbl ' + (isMe ? 'me' : 'opp');
   }
   $('#first0').classList.toggle('on', prefs.myBall === 0);
   $('#first1').classList.toggle('on', prefs.myBall === 1);
@@ -594,6 +606,22 @@ $('#first1').onclick = () => { applyMyBall(1); };
 
 function applyMyBall(i) {
   if (!auth) return toast('로그인이 필요합니다.');
+  
+  if (prefs.myBall !== i) {
+    const other = 1 - i;
+    const tempName = prefs.names[i];
+    const tempPid = prefs.pids[i];
+    const tempTarget = prefs.targets[i];
+    
+    prefs.names[i] = prefs.names[other];
+    prefs.pids[i] = prefs.pids[other];
+    prefs.targets[i] = prefs.targets[other];
+    
+    prefs.names[other] = tempName;
+    prefs.pids[other] = tempPid;
+    prefs.targets[other] = tempTarget;
+  }
+  
   prefs.myBall = i;
   lsSet(LS_PREFS, prefs);
   const sel = $('#sel'+i);
