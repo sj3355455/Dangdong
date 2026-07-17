@@ -175,7 +175,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v70</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v71</span>
   </div>
 </div>
 
@@ -209,7 +209,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v70</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v71</span>
   </div>
 </div>
 
@@ -919,9 +919,11 @@ function win(winnerIdx){
   
   let html = '<tr><th>선수</th><th>점수</th><th>에버</th><th>하이런</th></tr>';
   for(let i=0; i<N; i++){
-    const nm = isTeam ? TZNAMES[i] : S.names[i];
-    const scStr = S.done[i] ? `쿠션 ${S.cush[i]}/${S.round}` : `${S.sc[i]}/${S.targets[i]}`;
-    const ev = S.inn[i] ? (S.sc[i]/S.inn[i]).toFixed(3) : '0.000';
+    const nm = isTeam ? `${i%2===0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
+    const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
+    const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
+    const scStr = S.done[i] ? `쿠션 ${indC}/${S.round}` : `${indS}/${S.targets[i]}`;
+    const ev = S.inn[i] ? (indS / S.inn[i]).toFixed(3) : '0.000';
     html += `<tr><td>${nm}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
   }
   $('#winStats').innerHTML = html;
@@ -932,10 +934,12 @@ function win(winnerIdx){
       const pl = [];
       for(let i=0; i<N; i++){
         const isWin = S.winners.includes(i);
+        const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
+        const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
         pl.push({
           id: S.pids[i] || null, name: S.names[i], win: isWin,
-          score: S.indSc ? S.indSc[i] : S.sc[i], target: S.targets[i], innings: S.inn[i],
-          highRun: S.br[i], misses: S.miss[i], cushMade: S.indCush ? S.indCush[i] : S.cush[i],
+          score: indS, target: S.targets[i], innings: S.inn[i],
+          highRun: S.br[i], misses: S.miss[i], cushMade: indC,
           cushInn: S.cushInn[i], isTeam: isTeam
         });
       }
