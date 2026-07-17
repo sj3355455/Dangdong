@@ -134,7 +134,7 @@ function processData(games) {
     const nameStr = '4구 ' + g.players.length + '인';
 
     dataGames.unshift({
-      id: g.id || datetimeStr,
+      id: String(g.id || datetimeStr),
       date: dateStr,
       datetime: datetimeStr,
       type: typeStr,
