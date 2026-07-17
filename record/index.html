@@ -80,7 +80,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 <div class="wrap">
   <h1 style="margin:0 0 8px 0; font-size:1.6rem; text-align:center; position:relative;">
     🎱 당동 기록실
-    <button onclick="location.reload(true)" style="position:absolute; right:0; top:0; background:none; border:none; font-size:1.2rem; cursor:pointer;" title="새로고침">🔄</button>
+    <button onclick="location.href = location.href.split('?')[0] + '?_t=' + Date.now()" style="position:absolute; right:0; top:0; background:none; border:none; font-size:1.2rem; cursor:pointer;" title="새로고침">🔄</button>
   </h1>
   <div class="sub" id="sub" style="text-align:center; margin-bottom:16px;"></div>
   
