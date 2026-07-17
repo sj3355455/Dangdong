@@ -412,11 +412,15 @@ function renderMe() {
     <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
     <button id="meSave" class="bigbtn">저장하기</button>
   </div>`;
+  const myData = DATA.players.find(p => p.name === auth.name);
+  const myHandicap = myData ? myData.handicap : '';
+  d.querySelector('#meName').value = auth.name || '';
+  d.querySelector('#meHandicap').value = myHandicap;
   fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
     headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token }
   })
   .then(r=>r.json())
-  .then(rows => { if(rows && rows.length > 0) { d.querySelector('#meName').value = rows[0].display_name || ''; d.querySelector('#meHandicap').value = rows[0].handicap || ''; } }).catch(()=>{});
+  .then(rows => { if(rows && rows.length > 0) { if (rows[0].display_name) d.querySelector('#meName').value = rows[0].display_name; if (rows[0].handicap) d.querySelector('#meHandicap').value = rows[0].handicap; } }).catch(()=>{});
   d.querySelector('#meSave').onclick = async () => {
     const btn = d.querySelector('#meSave'), msg = d.querySelector('#meMsg'), name = d.querySelector('#meName').value.trim(), hd = d.querySelector('#meHandicap').value.trim(), pwd = d.querySelector('#mePwd').value;
     btn.disabled = true; msg.textContent = '저장 중...'; msg.style.color = 'var(--text)';

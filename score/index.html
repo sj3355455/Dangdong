@@ -24,7 +24,7 @@ input,select{font:inherit;user-select:text;-webkit-user-select:text}
 a{color:inherit;text-decoration:none}
 .screen{width:100%;height:100%;position:absolute;top:0;left:0;display:none;
   flex-direction:column;align-items:center;padding:calc(16px + var(--sat)) 16px calc(16px + var(--sab))}
-.scroller{overflow-y:auto;justify-content:flex-start}
+.scroller{overflow-y:auto;justify-content:flex-start;padding-top:calc(56px + var(--sat))}
 .nav-toggle{display:flex;background:#1a1f26;border-radius:12px;padding:4px;width:100%;max-width:320px;margin-bottom:24px}
 .nav-btn{flex:1;text-align:center;padding:10px 0;font-weight:700;font-size:.95rem;color:var(--muted);border-radius:8px;transition:all .2s}
 .nav-btn.on{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(0,122,255,.3)}
@@ -39,7 +39,7 @@ select.field{appearance:none;background-image:
   width:100%;max-width:420px;padding:20px;margin-bottom:16px;transition:border-color .2s;position:relative}
 .pcard.me{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .prow{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.dot{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 -2px 4px rgba(0,0,0,.15)}
+.dot{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 -2px 4px rgba(0,0,0,.15);flex-shrink:0}
 .dot.w{background:linear-gradient(135deg,var(--wz-hi),var(--wz))}
 .dot.y{background:linear-gradient(135deg,var(--yz-hi),var(--yz))}
 .dot.r{background:linear-gradient(135deg,var(--rz-hi),var(--rz))}
@@ -274,10 +274,9 @@ let members = lsGet(LS_MEM, []);
 let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:0 });
 let S = lsGet(LS_STATE, null);
 
-const ZCOLORS = ['w','y','r','b'];
-const ZNAMES = ['⚪ 흰 공', '🟡 노란 공', '🔴 빨간 공', '🔵 파란 공'];
-const TZNAMES = ['🔥 A팀', '💧 B팀'];
-const ZBALLS = ['⚪', '🟡', '🔴', '🔵'];
+const ZCOLORS = ['w','y','w','y'];
+const ZNAMES = ['⚪ 흰 공', '🟡 노란 공', '⚪ 흰 공', '🟡 노란 공'];
+const TZNAMES = ['우리 팀', '상대 팀'];
 
 const api = {
   members: () => sbFetch('/rest/v1/profiles?select=id,display_name,handicap&order=display_name'),
