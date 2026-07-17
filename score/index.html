@@ -11,12 +11,10 @@
 <link rel="apple-touch-icon" href="../icon-192.png">
 <style>
 :root{--sat:env(safe-area-inset-top);--sab:env(safe-area-inset-bottom);
-  --bg:#0a0c0f;--card:#12161b;--text:#e4e8ec;--muted:#8b949e;
-  --line:rgba(255,255,255,.08);--accent:#007aff;--danger:#ff453a;--ok:#32d74b;
-  --wz:#d4d8dd;--wz-hi:#f0f2f5;--wz-text:#1a1d21;
-  --yz:#fbe06e;--yz-hi:#fff9db;--yz-text:#5c4300;
-  --rz:#ff9999;--rz-hi:#ffeded;--rz-text:#8a0000;
-  --bz:#99c2ff;--bz-hi:#e8f4fd;--bz-text:#003380;}
+  --bg:#0e1114;--card:#1a1f26;--text:#e9ecef;--muted:#8b94a1;
+  --line:#2c333d;--accent:#ff8c42;--danger:#e5484d;--ok:#3dd68c;
+  --wz:#f2f1ec;--wz-hi:#ffffff;--wz-text:#171a1e;
+  --yz:#f0be3e;--yz-hi:#ffd257;--yz-text:#231a04;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;
   touch-action:manipulation;user-select:none;-webkit-user-select:none}
 html,body{width:100%;height:100%;background:var(--bg);color:var(--text);overflow:hidden;
@@ -81,8 +79,6 @@ select.field{appearance:none;background-image:
   justify-content:center;transition:filter .25s;overflow:hidden;cursor:pointer;width:100%}
 .zone.w{background:radial-gradient(120% 100% at 50% 0%,var(--wz-hi),var(--wz));color:var(--wz-text)}
 .zone.y{background:radial-gradient(120% 100% at 50% 100%,var(--yz-hi),var(--yz));color:var(--yz-text)}
-.zone.r{background:radial-gradient(120% 100% at 50% 0%,var(--rz-hi),var(--rz));color:var(--rz-text)}
-.zone.b{background:radial-gradient(120% 100% at 50% 100%,var(--bz-hi),var(--bz));color:var(--bz-text)}
 .zone.off{filter:brightness(.42) saturate(.55)}
 .zone .zname{font-size:clamp(1rem,2.6vmin,1.4rem);font-weight:700;opacity:.75;
   display:flex;align-items:center;gap:8px}
@@ -209,7 +205,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v48</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v49</span>
   </div>
 </div>
 
@@ -582,7 +578,7 @@ $('#btnStart').onclick = () => {
     cush: Array(N).fill(0), cushInn: Array(N).fill(0),
     finished: Array(N).fill(false),
     round: 1, lastInning: false, winners: [],
-    tp: 0, turn: 0, first: 0,
+    tp: 0, turn: 0, first: 0, tc: 0,
     hist: [], fin: false, saved: false, t0: Date.now()
   };
   save(); buildGameZones(); render(); show('game');
@@ -614,10 +610,10 @@ function buildGameZones() {
     let tgt = (S.targets && S.targets[i]) ? S.targets[i] : 15;
     
     gameHtml += `
-      <div class="zone ${ZCOLORS[i]}" id="zone${i}">
+      <div class="zone" id="zone${i}">
         <button class="minusbtn" id="mbtn${i}">-1</button>
         <span class="runbadge" id="run${i}">+0</span>
-        <div class="zname"><span id="gname${i}">${zname}</span><span class="turnchip">치는 중</span></div>
+        <div class="zname"><span id="gball${i}"></span><span id="gname${i}">${zname}</span><span class="turnchip">치는 중</span></div>
         <div class="zscore" id="gsc${i}">0</div>
         <div class="ztarget" id="gtgt${i}">목표 ${tgt}</div>
         <div class="zstats" id="gstat${i}">에버 0.000 · 하이런 0</div>
@@ -649,7 +645,7 @@ function pushHist(){
     sc:[...S.sc], inn:[...S.inn], br:[...S.br], miss:[...S.miss],
     done:[...S.done], cush:[...S.cush], cushInn:[...S.cushInn],
     finished:[...S.finished], round:S.round, lastInning:S.lastInning, winners:[...S.winners],
-    tp:S.tp, turn:S.turn, first:S.first, fin:S.fin
+    tp:S.tp, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin
   }));
 }
 
@@ -724,6 +720,7 @@ function passTurnInner(isMiss) {
   
   const next = nextTurnIndex(S.turn);
   S.turn = next;
+  S.tc++;
   vib(25);
   
   if (S.turn === S.first) {
@@ -795,6 +792,25 @@ function render(){
       el.classList.add('off');
     } else {
       el.style.opacity = '1';
+    }
+    
+    // 계산: 이 선수가 칠 때의 절대 턴수(tc)
+    let expectedTc = S.tc;
+    if (!S.finished[i]) {
+      let curr = S.turn;
+      while (curr !== i) {
+        curr = (curr + 1) % N;
+        if (!S.finished[curr]) expectedTc++;
+      }
+    }
+    const isWhite = (expectedTc % 2 === 0);
+    el.classList.toggle('w', isWhite);
+    el.classList.toggle('y', !isWhite);
+    
+    const ballSpan = $('#gball'+i);
+    if (ballSpan) {
+      ballSpan.textContent = isWhite ? '⚪ ' : '🟡 ';
+      ballSpan.style.marginRight = '4px';
     }
     
     if (S.done[i]) {
@@ -917,7 +933,7 @@ $('#btnMenuRestart').onclick = () => {
     Object.assign(S, { sc:Array(N).fill(0), inn:Array(N).fill(0), br:Array(N).fill(0), miss:Array(N).fill(0),
                        done:Array(N).fill(false), cush:Array(N).fill(0), cushInn:Array(N).fill(0),
                        finished:Array(N).fill(false), round:1, lastInning:false, winners:[],
-                       tp:0, turn:S.first, hist:[], fin:false, saved:false, t0:Date.now() });
+                       tp:0, turn:S.first, tc:0, hist:[], fin:false, saved:false, t0:Date.now() });
     save(); buildGameZones(); render(); toast('점수가 초기화되었습니다.');
   }
 };
@@ -945,13 +961,18 @@ function init(){
   else { setMode('login'); show('auth'); }
 
   // 구버전 상태 마이그레이션: finished 배열이 없으면 추가
-  if (S && S.sc && !Array.isArray(S.finished)) {
-    const N = S.sc.length;
-    S.finished = Array(N).fill(false);
-    S.winners = S.winners || [];
-    S.lastInning = S.lastInning || false;
-    S.round = S.round || 1;
-    if (!S.type) S.type = '2인';
+  if (S && S.sc) {
+    if (!Array.isArray(S.finished)) {
+      const N = S.sc.length;
+      S.finished = Array(N).fill(false);
+      S.winners = S.winners || [];
+      S.lastInning = S.lastInning || false;
+      S.round = S.round || 1;
+      if (!S.type) S.type = '2인';
+    }
+    if (typeof S.tc !== 'number') {
+      S.tc = S.inn.reduce((a, b) => a + b, 0);
+    }
     save();
   }
 
