@@ -171,7 +171,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v67</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v69</span>
   </div>
 </div>
 
@@ -205,7 +205,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v67</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v69</span>
   </div>
 </div>
 
@@ -358,12 +358,12 @@ function renderSetupCards(modeChanged = false) {
           <div class="prow"><span class="dot ${ZCOLORS[i]}"></span> <span class="plbl ${prefs.myBall === i ? 'me' : 'opp'}">${prefs.myBall === i ? '나' : '상대'}</span></div>
           <div style="font-weight:bold; margin-bottom:8px;">${TZNAMES[i]}</div>
           <div style="display:flex; gap:8px; margin-bottom:8px;">
-            <select class="field" id="sel${i*2}" style="flex:1; margin:0; padding:10px;"></select>
-            <input class="field" id="name${i*2}" maxlength="10" placeholder="선수 1" style="flex:1; margin:0; padding:10px;">
+            <select class="field" id="sel${i}" style="flex:1; margin:0; padding:10px;"></select>
+            <input class="field" id="name${i}" maxlength="10" placeholder="선수 1" style="flex:1; margin:0; padding:10px;">
           </div>
           <div style="display:flex; gap:8px; margin-bottom:8px;">
-            <select class="field" id="sel${i*2+1}" style="flex:1; margin:0; padding:10px;"></select>
-            <input class="field" id="name${i*2+1}" maxlength="10" placeholder="선수 2" style="flex:1; margin:0; padding:10px;">
+            <select class="field" id="sel${i+2}" style="flex:1; margin:0; padding:10px;"></select>
+            <input class="field" id="name${i+2}" maxlength="10" placeholder="선수 2" style="flex:1; margin:0; padding:10px;">
           </div>
           <div class="trow" style="justify-content:flex-start; gap:12px; align-items:center;">
             <span class="lbl">팀 목표 점수</span>
@@ -556,10 +556,8 @@ window.applyMyBall = function(i) {
   }
   
   prefs.myBall = i;
-  if (prefs.gameType === '팀전') {
-    prefs.pids[i * 2] = auth.uid;
-  } else {
-    prefs.pids[i] = auth.uid;
+  prefs.pids[i] = auth.uid;
+  if (prefs.gameType !== '팀전') {
     const m = members.find(x => x.id === auth.uid);
     if (m && m.handicap != null) prefs.targets[i] = parseInt(m.handicap, 10);
   }
