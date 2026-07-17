@@ -168,14 +168,14 @@ select.field{appearance:none;background-image:
 
   <div class="pcard">
     <input class="field" id="aName" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="10" placeholder="이름">
-    <input class="field" id="aPass" type="password" autocomplete="current-password" placeholder="비밀번호 (6자 이상)">
+    <input class="field" id="aPass" type="password" autocomplete="current-password" placeholder="비밀번호 (선택)">
   </div>
 
   <div class="err" id="aErr"></div>
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v71</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v74</span>
   </div>
 </div>
 
@@ -209,7 +209,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v71</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v74</span>
   </div>
 </div>
 
@@ -299,7 +299,7 @@ $('#tabSignup').onclick = () => setMode('signup');
 $('#btnAuth').onclick = async () => {
   const btn = $('#btnAuth'), err = $('#aErr');
   const name = $('#aName').value.trim(), pass = $('#aPass').value;
-  if (!name || pass.length < 6) return err.textContent = '이름과 6자 이상 비밀번호를 입력하세요';
+  if (!name) return err.textContent = '이름을 입력하세요';
   err.textContent = ''; btn.disabled = true;
   
   try {
