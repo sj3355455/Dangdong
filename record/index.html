@@ -86,8 +86,15 @@ h1{font-size:1.5rem;margin:0 0 4px}
 .nav-btn.on{background:var(--accent);color:#fff}
 .tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;justify-content:center}
 .tab{padding:8px 16px;border:1px solid var(--line);background:var(--card);
-  color:var(--text);border-radius:999px;cursor:pointer;font-size:.9rem}
+  color:var(--text);border-radius:20px;cursor:pointer;font:inherit;outline:none;transition:all .2s}
 .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.field{width:100%;background:#12161b;border:1px solid var(--line);color:var(--text);
+  padding:12px;border-radius:8px;outline:none;transition:border-color .2s;font-size:1rem;margin-bottom:12px;}
+.field:focus{border-color:var(--accent)}
+.bigbtn{width:100%;max-width:420px;padding:15px 0;border-radius:14px;background:var(--accent);
+  color:#fff;border:none;font-weight:bold;font-size:1.1rem;cursor:pointer;transition:transform .1s}
+.bigbtn:active{filter:brightness(.9)}
+.bigbtn:disabled{opacity:.5;cursor:not-allowed;}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
   padding:16px;margin-bottom:16px}
 .scroll{overflow-x:auto}
@@ -118,7 +125,6 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   color:var(--muted);border-radius:999px;cursor:pointer;font-size:.8rem}
 .mbtn:hover{color:var(--accent);border-color:var(--accent)}
 .mbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-/* 그래프는 폭을 px 로 직접 지정한다(스크롤 가능해야 하므로 width:100% 금지) */
 .cscroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
 .cscroll svg{display:block;width:auto;max-width:none}
 .chint{color:var(--muted);font-size:.75rem;margin-top:4px}
@@ -137,6 +143,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   <div class="tabs">
     <button class="tab on" data-v="rank">🏆 순위</button>
     <button class="tab" data-v="games">🕒 경기</button>
+    <button class="tab" data-v="me">👤 내 정보</button>
   </div>
   <div id="view"></div>
 </div>
@@ -145,11 +152,12 @@ let DATA = { updated: '', players: [], games: [] };
 
 const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU';
+const LS_AUTH = 'dang-score-auth';
 
 async function fetchGames() {
   const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };
   try {
-    const auth = JSON.parse(localStorage.getItem('dangScoreAuth_v1'));
+    const auth = getAuth();
     if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
   } catch(e) {}
   
@@ -248,8 +256,7 @@ function processData(games) {
 
 const $ = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-
+const getAuth = () => { try { return JSON.parse(localStorage.getItem(LS_AUTH)); } catch(e) { return null; } }
 
 const COLS = [
   {k:'name',     t:'이름',    txt:1},
@@ -263,14 +270,12 @@ const COLS = [
   {k:'hitRate',  t:'득점률',  fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
 ];
-// 기록 없음(null)은 '—'. 쿠션을 한 번도 못 쳐본 선수가 있을 수 있다.
 const cell = (p, c) => p[c.k]==null ? '—' : (c.fmt ? c.fmt(p[c.k]) : p[c.k]);
 let sortKey='winRate', sortAsc=false;
 
 function renderRank(){
   const rows = [...DATA.players].sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey], r;
-    // 기록 없음은 정렬 방향과 무관하게 항상 맨 뒤
     if(x==null && y==null) return 0;
     if(x==null) return 1;
     if(y==null) return -1;
@@ -295,9 +300,7 @@ function renderRank(){
   const el = $(`<div class="card"><div class="scroll"><table>
       <thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
       <div class="sub" style="margin:10px 0 0">표 제목을 누르면 그 기준으로 정렬됩니다.<br>
-        <b>보정 승률</b>: 인원수가 다른 경기를 공평하게 비교한 값. 그 판에서 내가 제친 사람
-        비율의 평균이라, 4인전에서 진 것(33%)이 2인전에서 진 것(0%)보다 덜 깎입니다.
-        <b>50%가 평균</b>이고, 높을수록 잘한 것.</div></div>`);
+        <b>보정 승률</b>: 인원수가 다른 경기를 공평하게 비교한 값. 50%가 평균입니다.</div></div>`);
   el.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
     const k = th.dataset.k;
     if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'); }
@@ -307,8 +310,6 @@ function renderRank(){
   return el;
 }
 
-// viewBox 를 컨테이너 실제 픽셀 폭에 맞춘다.
-// 고정폭(예: 680)으로 두면 폰에서 SVG 전체가 축소되며 글자까지 같이 작아진다.
 function chart(vals, labels, opt){
   opt = opt || {};
   if(vals.length<2) return '<div class="empty">경기 2개 이상부터 그래프가 표시됩니다</div>';
@@ -317,11 +318,9 @@ function chart(vals, labels, opt){
   const fmt = v => (+v.toFixed(dec)) + suf;
 
   const availW = Math.max(260, Math.round(opt.W || 680));
-  // 좁은 화면일수록 세로로 길게 — 세로로 긴 폰 화면을 채우도록
   const H = opt.H || (availW < 420 ? 300 : availW < 560 ? 270 : 240);
   const P = {t:20, r:14, b:34, l:44};
 
-  // 점마다 최소 간격을 보장한다. 경기가 쌓여 화면 폭을 넘으면 가로로 스크롤.
   const MIN_GAP = 46;
   const needW = P.l + P.r + MIN_GAP*(vals.length-1);
   const W = Math.max(availW, needW);
@@ -331,8 +330,8 @@ function chart(vals, labels, opt){
   const x = i => P.l + (vals.length===1?iw/2:iw*i/(vals.length-1));
   const y = v => P.t + ih - (v/max)*ih;
 
-  const gap = iw/(vals.length-1);      // 점 사이 간격(px)
-  const showVal = gap >= 36;           // 좁으면 점 위 숫자 생략 (겹침 방지)
+  const gap = iw/(vals.length-1);
+  const showVal = gap >= 36;
   const xStep = Math.max(1, Math.ceil(34/gap));
 
   let g='';
@@ -354,14 +353,10 @@ function chart(vals, labels, opt){
       stroke-linejoin="round" stroke-linecap="round"/>${dots}${xs}</svg></div>`;
 }
 
-// 추이 그래프에서 전환 가능한 지표들
 const METRICS = [
-  {k:'avg', t:'에버리지', desc:'경기별 에버리지',
-   vals:h=>h.map(r=>r.average), dec:2},
-  {k:'hit', t:'득점률',   desc:'경기별 득점률 (공타가 아닌 이닝 비율)',
-   vals:h=>h.map(r=>r.inning ? (r.inning-r.miss)/r.inning*100 : 0), max:100, suffix:'%', dec:0},
-  {k:'win', t:'승률',     desc:'그 경기까지의 누적 승률',
-   vals:h=>{let w=0; return h.map((r,i)=>{ if(r.win) w++; return w/(i+1)*100; });}, max:100, suffix:'%', dec:0},
+  {k:'avg', t:'에버리지', desc:'경기별 에버리지', vals:h=>h.map(r=>r.average), dec:2},
+  {k:'hit', t:'득점률',   desc:'경기별 득점률', vals:h=>h.map(r=>r.inning ? (r.inning-r.miss)/r.inning*100 : 0), max:100, suffix:'%', dec:0},
+  {k:'win', t:'승률',     desc:'그 경기까지의 누적 승률', vals:h=>{let w=0; return h.map((r,i)=>{ if(r.win) w++; return w/(i+1)*100; });}, max:100, suffix:'%', dec:0},
 ];
 
 function showPlayer(name){
@@ -378,7 +373,6 @@ function showPlayer(name){
         <div class="st"><div class="k">승률</div><div class="v">${p.winRate.toFixed(0)}%</div></div>
         <div class="st"><div class="k">보정 승률</div><div class="v">${p.adjRate==null?'—':p.adjRate.toFixed(1)+'%'}</div></div>
         <div class="st"><div class="k">에버리지</div><div class="v">${p.avgAvg.toFixed(3)}</div></div>
-        <div class="st"><div class="k">쿠션 성공률</div><div class="v">${p.cushRate==null?'—':p.cushRate.toFixed(1)+'%'}</div></div>
         <div class="st"><div class="k">득점률</div><div class="v">${p.hitRate.toFixed(1)}%</div></div>
         <div class="st"><div class="k">하이런</div><div class="v">${p.bestHr}</div></div>
       </div>
@@ -401,43 +395,81 @@ function showPlayer(name){
         </tbody></table></div></div>
   </div>`);
   el.querySelector('.back').onclick=()=>show('rank');
-
   const labels = h.map(r=>r.date.slice(5));
   let cur = 'avg', lastW = 0;
   const draw = (key) => {
     cur = key;
     const m = METRICS.find(v=>v.k===key);
     const box = el.querySelector('#cbox');
-    // 컨테이너 실제 폭을 재서 그린다 (없으면 화면 폭으로 추정)
     lastW = box.clientWidth || innerWidth-64;
     box.innerHTML = chart(m.vals(h), labels, {...m, W: lastW});
     el.querySelector('#cdesc').textContent = m.desc;
     el.querySelectorAll('.mbtn').forEach(b=>b.classList.toggle('on', b.dataset.m===key));
-    // 그래프가 화면보다 넓으면 최신 경기(오른쪽 끝)부터 보여준다
     const sc = box.querySelector('.cscroll');
     if(sc && sc.scrollWidth > sc.clientWidth){
       sc.scrollLeft = sc.scrollWidth;
-      box.insertAdjacentHTML('beforeend',
-        '<div class="chint">← 옆으로 밀면 지난 경기를 볼 수 있어요</div>');
+      box.insertAdjacentHTML('beforeend', '<div class="chint">← 옆으로 밀면 지난 경기를 볼 수 있어요</div>');
     }
   };
   el.querySelectorAll('.mbtn').forEach(b=>b.onclick=()=>draw(b.dataset.m));
-
   document.getElementById('view').replaceChildren(el);
-  draw('avg');                       // DOM 삽입 후 그려야 clientWidth 가 잡힌다
-
-  // 그래프 폭이 바뀌면 다시 그린다. 두 가지를 함께 쓴다:
-  //  - ResizeObserver: 창 크기가 그대로인 레이아웃 변화까지 잡음
-  //  - resize/orientationchange: RO 가 막히는 환경을 위한 폴백
-  chartRedraw = () => { const box = el.querySelector('#cbox');
-                        if(box && Math.abs(box.clientWidth - lastW) > 2) draw(cur); };
-  if(chartRO) chartRO.disconnect();
-  chartRO = new ResizeObserver(es=>{
-    const w = es[0].contentRect.width;
-    if(Math.abs(w - lastW) > 2) draw(cur);   // 폭이 실제로 변했을 때만 (재귀 방지)
-  });
+  draw('avg');
+  chartRO = new ResizeObserver(es=>{ const w = es[0].contentRect.width; if(Math.abs(w - lastW) > 2) draw(cur); });
   chartRO.observe(el.querySelector('#cbox'));
   scrollTo(0,0);
+}
+
+function renderMe() {
+  const auth = getAuth();
+  const d = document.createElement('div');
+  if (!auth) {
+    d.innerHTML = `<div class="card" style="padding:40px 20px; text-align:center;">
+      <h2 style="margin:0 0 16px 0;">👤 내 정보</h2>
+      <p style="margin:0 0 24px 0; color:var(--text); opacity:0.8;">내 정보를 설정하려면 로그인이 필요합니다.</p>
+      <a href="../score/" class="bigbtn" style="display:inline-block; text-decoration:none; box-sizing:border-box;">점수판으로 가서 로그인</a>
+    </div>`;
+    return d;
+  }
+  d.innerHTML = `<div class="card" style="padding:24px 20px;">
+    <h2 style="margin:0 0 20px 0; font-size:1.3rem;">👤 내 정보 설정</h2>
+    <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">이름</label>
+    <input type="text" id="meName" class="field" placeholder="당신의 이름">
+    <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">수지 (목표 점수)</label>
+    <input type="number" id="meHandicap" class="field" placeholder="예: 15">
+    <label style="display:block; font-size:0.9rem; margin-bottom:6px; margin-top:12px; opacity:0.8;">비밀번호 변경 (변경할 때만 입력)</label>
+    <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
+    <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
+    <button id="meSave" class="bigbtn">저장하기</button>
+  </div>`;
+  fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token }
+  })
+  .then(r=>r.json())
+  .then(rows => { if(rows && rows.length > 0) { d.querySelector('#meName').value = rows[0].display_name || ''; d.querySelector('#meHandicap').value = rows[0].handicap || ''; } }).catch(()=>{});
+  d.querySelector('#meSave').onclick = async () => {
+    const btn = d.querySelector('#meSave'), msg = d.querySelector('#meMsg'), name = d.querySelector('#meName').value.trim(), hd = d.querySelector('#meHandicap').value.trim(), pwd = d.querySelector('#mePwd').value;
+    btn.disabled = true; msg.textContent = '저장 중...'; msg.style.color = 'var(--text)';
+    try {
+      const pRes = await fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
+        method: 'PATCH',
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: name, handicap: hd ? parseInt(hd,10) : null })
+      });
+      if(!pRes.ok) throw 0;
+      auth.name = name; localStorage.setItem(LS_AUTH, JSON.stringify(auth));
+      if(pwd) {
+        const authRes = await fetch(SB_URL + '/auth/v1/user', {
+          method: 'PUT',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd })
+        });
+        if(!authRes.ok) throw 0;
+      }
+      msg.textContent = '✅ 성공적으로 저장되었습니다.'; msg.style.color = '#4CAF50'; d.querySelector('#mePwd').value = '';
+    } catch(e) { msg.textContent = '❌ 저장 실패. 다시 로그인해 보세요.'; msg.style.color = '#f44336'; }
+    btn.disabled = false;
+  };
+  return d;
 }
 
 function renderGames(){
@@ -455,12 +487,10 @@ function renderGames(){
 
 async function queueFlush() {
   try {
-    const auth = JSON.parse(localStorage.getItem('dangScoreAuth_v1'));
+    const auth = getAuth();
     if (!auth || !auth.token) return;
-    
     let q = JSON.parse(localStorage.getItem('dangScoreQueue_v1') || '[]');
     if (!q.length) return;
-    
     for (const p of [...q]) {
       try {
         const res = await fetch(SB_URL + '/rest/v1/games', {
@@ -483,30 +513,27 @@ async function initDashboard() {
     await queueFlush(); // 먼저 폰에 밀린 기록이 있으면 올리기
     const games = await fetchGames();
     DATA = processData(games);
-    if (sub) sub.textContent =
-      '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
+    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
     show('rank');
-  } catch(e) {
-    if (sub) sub.textContent = '데이터를 불러오는데 실패했습니다.';
-  }
+  } catch(e) { if (sub) sub.textContent = '데이터를 불러오는데 실패했습니다.'; }
 }
 
-let chartRO = null, chartRedraw = null, chartRT = null;   // 선수 상세 그래프 폭 감시
-
+let chartRO = null, chartRedraw = null, chartRT = null;
 function show(v){
-  if(chartRO){ chartRO.disconnect(); chartRO = null; }   // 상세를 떠나면 감시 해제
+  if(chartRO){ chartRO.disconnect(); chartRO = null; }
   chartRedraw = null;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.v===v));
-  document.getElementById('view').replaceChildren(v==='rank' ? renderRank() : renderGames());
+  let node;
+  if(v==='rank') node = renderRank();
+  else if(v==='games') node = renderGames();
+  else if(v==='me') node = renderMe();
+  document.getElementById('view').replaceChildren(node);
 }
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
 
-
-
-const kick = (ms) => { clearTimeout(chartRT);
-  chartRT = setTimeout(()=>{ if(chartRedraw) chartRedraw(); }, ms); };
+const kick = (ms) => { clearTimeout(chartRT); chartRT = setTimeout(()=>{ if(chartRedraw) chartRedraw(); }, ms); };
 addEventListener('resize', ()=>kick(150));
-addEventListener('orientationchange', ()=>kick(250));   // 폰 회전
+addEventListener('orientationchange', ()=>kick(250));
 
 initDashboard();
 

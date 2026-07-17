@@ -403,7 +403,7 @@ async function authRequest(kind, email, password){
 }
 
 const api = {
-  members: () => sbFetch('/rest/v1/profiles?select=id,display_name&order=display_name'),
+  members: () => sbFetch('/rest/v1/profiles?select=id,display_name,handicap&order=display_name'),
   myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
   createProfile: (uid, name) => sbFetch('/rest/v1/profiles', {
     method:'POST', headers:{ Prefer:'return=representation' },
@@ -538,7 +538,7 @@ function fillSelect(i){
   applySel(i);
 }
 
-function applySel(i){
+function applySel(i, isUserAction){
   const v = $('#sel'+i).value;
   const manual = (v === MANUAL);
   $('#name'+i).style.display = manual ? '' : 'none';
@@ -546,6 +546,10 @@ function applySel(i){
   else if (v) {
     const m = members.find(x => x.id === v);
     prefs.pids[i] = v; prefs.names[i] = m ? m.display_name : '';
+    if (isUserAction && m && m.handicap != null) {
+      prefs.targets[i] = parseInt(m.handicap, 10);
+      $('#tval'+i).textContent = prefs.targets[i];
+    }
   } else { prefs.pids[i] = null; prefs.names[i] = ''; }
   lsSet(LS_PREFS, prefs);
 }
@@ -580,7 +584,7 @@ function syncSetup(){
 }
 
 for (const i of [0,1]) {
-  $('#sel'+i).onchange  = () => { applySel(i); $('#name'+i).value = prefs.names[i]; };
+  $('#sel'+i).onchange  = () => { applySel(i, true); $('#name'+i).value = prefs.names[i]; };
   $('#name'+i).oninput  = e => { prefs.names[i] = e.target.value; lsSet(LS_PREFS, prefs); };
 }
 document.querySelectorAll('.step button').forEach(b => {
