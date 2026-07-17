@@ -738,7 +738,7 @@ for (const i of [0,1]) {
 document.querySelectorAll('.minusbtn').forEach(b =>
   b.addEventListener('pointerdown', e => { e.stopPropagation(); if (e.isPrimary) minus(+b.dataset.p); }));
 $('#btnUndo').addEventListener('pointerdown', e => { e.stopPropagation(); undo(); });
-$('#btnMenu').addEventListener('pointerdown', e => { e.stopPropagation(); $('#menuOvl').classList.add('on'); });
+$('#btnMenu').onclick = e => { e.stopPropagation(); $('#menuOvl').classList.add('on'); };
 
 $('#btnWinCont').onclick = () => { S.fin = false; $('#winOvl').classList.remove('on'); save(); render(); };
 $('#btnWinUndo').onclick = undo;
