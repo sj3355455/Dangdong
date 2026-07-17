@@ -16,7 +16,7 @@
   --bg:#0e1114; --card:#1a1f26; --line:#2c333d; --text:#e9ecef; --muted:#8b94a1;
   --wz:#f2f1ec; --wz-hi:#ffffff; --wz-text:#171a1e;
   --yz:#f0be3e; --yz-hi:#ffd257; --yz-text:#231a04;
-  --accent:#ff8c42; --danger:#e5484d;
+  --accent:#ff8c42; --danger:#e5484d; --ok:#3dd68c;
   --sat: env(safe-area-inset-top,0px); --sab: env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;
@@ -25,42 +25,62 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
-input{font:inherit}
+input,select{font:inherit;user-select:text;-webkit-user-select:text}
 
-/* ── 화면 전환 ─────────────────────────────── */
 .screen{position:fixed;inset:0;display:none}
 .screen.on{display:flex}
+.scroller{flex-direction:column;align-items:center;justify-content:center;
+  padding:calc(16px + var(--sat)) 20px calc(16px + var(--sab));gap:12px;overflow-y:auto}
 
-/* ── 설정 화면 ─────────────────────────────── */
-#setup{flex-direction:column;align-items:center;justify-content:center;
-  padding:calc(16px + var(--sat)) 20px calc(16px + var(--sab));gap:14px;overflow-y:auto}
-#setup h1{font-size:1.4rem;letter-spacing:-.02em}
-#setup .sub{color:var(--muted);font-size:.85rem;margin-top:-6px}
+/* ── 공통 부품 ─────────────────────────────── */
+.field{width:100%;background:#12161b;border:1px solid var(--line);color:var(--text);
+  border-radius:10px;padding:12px;font-size:1rem}
+.field:focus{outline:none;border-color:var(--accent)}
+select.field{appearance:none;background-image:
+  linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+  linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:36px}
 .pcard{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);
   border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.bigbtn{width:100%;max-width:420px;padding:15px 0;border-radius:14px;background:var(--accent);
+  color:#fff;font-size:1.1rem;font-weight:800}
+.bigbtn:active{filter:brightness(.9)}
+.bigbtn[disabled]{opacity:.5}
+.linkbtn{color:var(--muted);font-size:.88rem;text-decoration:underline;text-underline-offset:3px}
+.linkbtn.acc{color:var(--accent)}
+.err{color:var(--danger);font-size:.85rem;text-align:center;min-height:1em;max-width:420px}
+
+/* ── 로그인 화면 ───────────────────────────── */
+#auth h1{font-size:1.5rem}
+#auth .sub{color:var(--muted);font-size:.85rem;text-align:center;line-height:1.5}
+.seg{display:flex;gap:6px;width:100%;max-width:420px;margin-bottom:2px}
+.seg button{flex:1;padding:10px 0;border-radius:11px;background:var(--card);
+  border:1px solid var(--line);font-weight:600;font-size:.92rem}
+.seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── 설정 화면 ─────────────────────────────── */
+#setup .who{color:var(--muted);font-size:.82rem;display:flex;gap:10px;align-items:center}
+#setup .who b{color:var(--text)}
 .prow{display:flex;align-items:center;gap:10px}
-.dot{width:26px;height:26px;border-radius:50%;flex:none;border:2px solid var(--line)}
+.dot{width:24px;height:24px;border-radius:50%;flex:none;border:2px solid var(--line)}
 .dot.w{background:var(--wz)} .dot.y{background:var(--yz)}
-.pname{flex:1;min-width:0;background:#12161b;border:1px solid var(--line);color:var(--text);
-  border-radius:10px;padding:10px 12px;font-size:1rem}
 .trow{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .trow .lbl{color:var(--muted);font-size:.85rem}
 .step{display:flex;align-items:center;gap:6px}
-.step button{width:44px;height:44px;border-radius:12px;background:#12161b;
-  border:1px solid var(--line);font-size:1.3rem;font-weight:700}
+.step button{width:42px;height:42px;border-radius:11px;background:#12161b;
+  border:1px solid var(--line);font-size:1.25rem;font-weight:700}
 .step button:active{background:#232a33}
-.step .tval{width:64px;text-align:center;font-size:1.5rem;font-weight:800;
+.step .tval{width:58px;text-align:center;font-size:1.4rem;font-weight:800;
   font-variant-numeric:tabular-nums}
-.firstseg{display:flex;gap:6px;width:100%;max-width:420px}
-.firstseg .cap{color:var(--muted);font-size:.85rem;align-self:center;margin-right:4px;flex:none}
-.firstseg button{flex:1;padding:11px 0;border-radius:12px;background:var(--card);
+.firstseg{display:flex;gap:6px;width:100%;max-width:420px;align-items:center}
+.firstseg .cap{color:var(--muted);font-size:.85rem;margin-right:2px;flex:none}
+.firstseg button{flex:1;padding:10px 0;border-radius:11px;background:var(--card);
   border:1px solid var(--line);font-weight:600}
 .firstseg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
-#btnStart{width:100%;max-width:420px;padding:16px 0;border-radius:14px;background:var(--accent);
-  color:#fff;font-size:1.15rem;font-weight:800;letter-spacing:.02em}
-#btnStart:active{filter:brightness(.9)}
-.linkrow{color:var(--muted);font-size:.85rem}
-.linkrow a{color:var(--accent);text-decoration:none}
+.savenote{font-size:.78rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.savenote .pip{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.savenote .pip.off{background:var(--muted)}
 
 /* ── 게임 화면 ─────────────────────────────── */
 #game{flex-direction:column}
@@ -96,16 +116,10 @@ input{font:inherit}
 .minusbtn:active{background:var(--danger)}
 .zone.w .minusbtn{top:calc(12px + var(--sat));left:14px}
 .zone.y .minusbtn{bottom:calc(12px + var(--sab));left:14px}
-@media (orientation:landscape){
-  .zone .minusbtn{top:auto;bottom:14px;left:14px}
-}
+@media (orientation:landscape){ .zone .minusbtn{top:auto;bottom:14px;left:14px} }
 .zprog{position:absolute;left:0;bottom:0;height:5px;background:rgba(0,0,0,.5);
   width:0%;transition:width .2s}
-@media (orientation:landscape){
-  .zone.w .zprog{bottom:0}
-}
 
-/* 가운데 컨트롤 */
 #mid{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   pointer-events:none;flex-direction:row;gap:10px;z-index:5}
 @media (orientation:landscape){ #mid{flex-direction:column} }
@@ -118,43 +132,69 @@ input{font:inherit}
   backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center}
 .midbtn:active{background:#2a323d}
 
-/* ── 오버레이 공통 ──────────────────────────── */
+/* ── 오버레이 ──────────────────────────────── */
 .ovl{position:fixed;inset:0;background:rgba(5,7,9,.78);display:none;
   align-items:center;justify-content:center;z-index:50;padding:20px;backdrop-filter:blur(3px)}
 .ovl.on{display:flex}
 .ovlcard{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);
-  border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:14px;
+  border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:13px;
   max-height:calc(100% - 40px);overflow-y:auto}
 .ovlcard h2{font-size:1.25rem;text-align:center}
 .ovlcard .big{font-size:2rem;text-align:center}
-.statgrid{width:100%;border-collapse:collapse;font-size:.9rem}
-.statgrid th,.statgrid td{padding:7px 4px;text-align:center;border-bottom:1px solid var(--line);
+.statgrid{width:100%;border-collapse:collapse;font-size:.88rem}
+.statgrid th,.statgrid td{padding:7px 3px;text-align:center;border-bottom:1px solid var(--line);
   font-variant-numeric:tabular-nums}
 .statgrid th{color:var(--muted);font-weight:600}
 .statgrid td:first-child,.statgrid th:first-child{text-align:left}
-.obtn{width:100%;padding:14px 0;border-radius:12px;font-weight:700;font-size:1rem;
+.obtn{width:100%;padding:13px 0;border-radius:12px;font-weight:700;font-size:1rem;
   background:#12161b;border:1px solid var(--line)}
 .obtn:active{background:#232a33}
 .obtn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .obtn.ghost{color:var(--muted)}
+.savestat{text-align:center;font-size:.85rem;color:var(--muted);min-height:1.2em}
+.savestat.ok{color:var(--ok)} .savestat.warn{color:var(--accent)}
 
 #toast{position:fixed;left:50%;bottom:calc(24px + var(--sab));transform:translateX(-50%);
   background:rgba(10,12,15,.92);border:1px solid var(--line);color:var(--text);
   padding:10px 18px;border-radius:999px;font-size:.85rem;opacity:0;transition:opacity .3s;
-  pointer-events:none;z-index:99;white-space:nowrap}
+  pointer-events:none;z-index:99;max-width:90vw;text-align:center}
 #toast.on{opacity:1}
 </style>
 </head>
 <body>
 
-<!-- ── 설정 화면 ── -->
-<div id="setup" class="screen on">
+<!-- ══ 로그인 화면 ══ -->
+<div id="auth" class="screen scroller">
   <h1>🎱 당동 점수판</h1>
-  <div class="sub">이름과 목표 점수를 정하고 시작하세요</div>
+  <div class="sub" style="margin-bottom:4px">로그인하면 경기 기록이 서버에 저장되고<br>선수를 목록에서 고를 수 있어요</div>
+
+  <div class="seg">
+    <button id="tabLogin" class="on">로그인</button>
+    <button id="tabSignup">회원가입</button>
+  </div>
+
+  <div class="pcard">
+    <input class="field" id="aEmail" type="email" inputmode="email" autocomplete="email"
+           autocapitalize="off" spellcheck="false" placeholder="이메일">
+    <input class="field" id="aPass" type="password" autocomplete="current-password"
+           placeholder="비밀번호 (6자 이상)">
+    <input class="field" id="aName" placeholder="이름 (기록에 표시됨)" maxlength="10" style="display:none">
+  </div>
+
+  <div class="err" id="aErr"></div>
+  <button class="bigbtn" id="btnAuth">로그인</button>
+  <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
+  <a class="linkbtn acc" href="../" style="margin-top:2px">📊 기록실 보기</a>
+</div>
+
+<!-- ══ 설정 화면 ══ -->
+<div id="setup" class="screen scroller">
+  <div class="who" id="whoBar"></div>
 
   <div class="pcard">
     <div class="prow"><span class="dot w"></span>
-      <input class="pname" id="name0" maxlength="10" placeholder="흰 공 선수"></div>
+      <select class="field" id="sel0"></select></div>
+    <input class="field" id="name0" maxlength="10" placeholder="흰 공 선수 이름">
     <div class="trow"><span class="lbl">목표 점수</span>
       <div class="step">
         <button data-t="0" data-d="-1">−</button>
@@ -165,7 +205,8 @@ input{font:inherit}
 
   <div class="pcard">
     <div class="prow"><span class="dot y"></span>
-      <input class="pname" id="name1" maxlength="10" placeholder="노란 공 선수"></div>
+      <select class="field" id="sel1"></select></div>
+    <input class="field" id="name1" maxlength="10" placeholder="노란 공 선수 이름">
     <div class="trow"><span class="lbl">목표 점수</span>
       <div class="step">
         <button data-t="1" data-d="-1">−</button>
@@ -179,11 +220,12 @@ input{font:inherit}
     <button id="first1">🟡 노란 공</button>
   </div>
 
-  <button id="btnStart">경기 시작</button>
-  <div class="linkrow"><a href="../">📊 기록실 보기</a></div>
+  <div class="err" id="sErr"></div>
+  <button class="bigbtn" id="btnStart">경기 시작</button>
+  <div class="savenote" id="saveNote"></div>
 </div>
 
-<!-- ── 게임 화면 ── -->
+<!-- ══ 게임 화면 ══ -->
 <div id="game" class="screen">
   <div class="zone w" id="zone0">
     <button class="minusbtn" data-p="0">−1</button>
@@ -191,20 +233,18 @@ input{font:inherit}
     <div class="zname"><span id="gname0">흰 공</span><span class="turnchip">치는 중</span></div>
     <div class="zscore" id="score0">0</div>
     <div class="ztarget" id="target0">/ 10</div>
-    <div class="zstats" id="stats0">이닝 1 · 에버 0.00 · 최고런 0</div>
+    <div class="zstats" id="stats0"></div>
     <div class="zprog" id="prog0"></div>
   </div>
-
   <div class="zone y off" id="zone1">
     <button class="minusbtn" data-p="1">−1</button>
     <span class="runbadge" id="run1">+0</span>
     <div class="zname"><span id="gname1">노란 공</span><span class="turnchip">치는 중</span></div>
     <div class="zscore" id="score1">0</div>
     <div class="ztarget" id="target1">/ 10</div>
-    <div class="zstats" id="stats1">이닝 0 · 에버 0.00 · 최고런 0</div>
+    <div class="zstats" id="stats1"></div>
     <div class="zprog" id="prog1"></div>
   </div>
-
   <div id="mid">
     <button class="midbtn" id="btnUndo" title="되돌리기">↩</button>
     <span class="midpill" id="inning">1이닝</span>
@@ -212,19 +252,20 @@ input{font:inherit}
   </div>
 </div>
 
-<!-- ── 승리 오버레이 ── -->
+<!-- ══ 승리 오버레이 ══ -->
 <div class="ovl" id="winOvl">
   <div class="ovlcard">
     <div class="big">🏆</div>
     <h2 id="winTitle">목표 달성!</h2>
     <table class="statgrid" id="winStats"></table>
+    <div class="savestat" id="saveStat"></div>
     <button class="obtn primary" id="btnWinNew">경기 종료 · 새 경기</button>
     <button class="obtn" id="btnWinCont">계속 진행 (후구 등)</button>
     <button class="obtn ghost" id="btnWinUndo">↩ 방금 점수 취소</button>
   </div>
 </div>
 
-<!-- ── 메뉴 오버레이 ── -->
+<!-- ══ 메뉴 오버레이 ══ -->
 <div class="ovl" id="menuOvl">
   <div class="ovlcard">
     <h2>메뉴</h2>
@@ -239,57 +280,317 @@ input{font:inherit}
 
 <script>
 'use strict';
-const $ = s => document.querySelector(s);
+
+/* ═══ 설정 ═══════════════════════════════════
+ * anon key 는 브라우저에 노출되도록 설계된 공개 키.
+ * 실제 권한 통제는 서버의 RLS 정책이 담당한다.
+ */
+const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU';
+
 const LS_STATE = 'dangScoreState_v1';
-const LS_PREFS = 'dangScorePrefs_v1';
+const LS_PREFS = 'dangScorePrefs_v2';
+const LS_AUTH  = 'dangScoreAuth_v1';
+const LS_QUEUE = 'dangScoreQueue_v1';
+const LS_MEM   = 'dangScoreMembers_v1';
+const MANUAL = '__manual__';
 
-/* ── 상태 ─────────────────────────────────── */
-let prefs = { names:['',''], targets:[10,10], first:0 };
-let S = null;   // 경기 상태 (null = 설정 화면)
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
 
-try { const p = JSON.parse(localStorage.getItem(LS_PREFS)); if (p) prefs = {...prefs, ...p}; } catch(e){}
+/* ═══ 상태 ═══════════════════════════════════ */
+let auth    = lsGet(LS_AUTH, null);          // {token, refresh, uid, name}
+let members = lsGet(LS_MEM, []);             // [{id, display_name}]
+let prefs   = Object.assign({ names:['',''], pids:[null,null], targets:[10,10], first:0 },
+                            lsGet(LS_PREFS, {}));
+let S       = null;                          // 진행 중 경기
 
-function save(){
-  try {
-    localStorage.setItem(LS_STATE, S ? JSON.stringify(S) : '');
-    localStorage.setItem(LS_PREFS, JSON.stringify(prefs));
-  } catch(e){}
+/* ═══ Supabase 최소 클라이언트 ═══════════════
+ * supabase-js(CDN)를 쓰지 않는다 — 외부 스크립트에 의존하면
+ * 당구장에서 인터넷이 없을 때 앱 자체가 안 열린다.
+ */
+async function sbFetch(path, opts = {}, retry = true){
+  const h = Object.assign({ apikey: SB_KEY, 'Content-Type': 'application/json' }, opts.headers || {});
+  if (auth && auth.token) h['Authorization'] = 'Bearer ' + auth.token;
+  const res = await fetch(SB_URL + path, Object.assign({}, opts, { headers: h }));
+  if (res.status === 401 && retry && auth && auth.refresh) {
+    if (await refreshToken()) return sbFetch(path, opts, false);   // 토큰 만료 → 갱신 후 1회 재시도
+  }
+  const text = await res.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch(e){ body = text; }
+  if (!res.ok) {
+    const msg = (body && (body.msg || body.message || body.error_description)) || ('오류 ' + res.status);
+    throw Object.assign(new Error(msg), { status: res.status, body });
+  }
+  return body;
 }
 
-function newState(){
-  return {
-    names:[prefs.names[0]||'흰 공', prefs.names[1]||'노란 공'],
-    targets:[...prefs.targets],
+async function refreshToken(){
+  try {
+    const r = await fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method:'POST', headers:{ apikey: SB_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify({ refresh_token: auth.refresh })
+    });
+    if (!r.ok) throw 0;
+    const d = await r.json();
+    auth = { token:d.access_token, refresh:d.refresh_token, uid:d.user.id, name:auth.name };
+    lsSet(LS_AUTH, auth);
+    return true;
+  } catch(e){ return false; }
+}
+
+async function authRequest(kind, email, password){
+  const path = kind === 'signup' ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password';
+  const r = await fetch(SB_URL + path, {
+    method:'POST', headers:{ apikey: SB_KEY, 'Content-Type':'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.msg || d.error_description || d.message || '요청 실패');
+  if (!d.access_token) throw new Error('이메일 인증이 필요한 계정입니다');
+  return { token:d.access_token, refresh:d.refresh_token, uid:d.user.id };
+}
+
+const api = {
+  members: () => sbFetch('/rest/v1/profiles?select=id,display_name&order=display_name'),
+  myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
+  createProfile: (uid, name) => sbFetch('/rest/v1/profiles', {
+    method:'POST', headers:{ Prefer:'return=representation' },
+    body: JSON.stringify({ id:uid, display_name:name })
+  }),
+  saveGame: payload => sbFetch('/rest/v1/games', {
+    method:'POST', headers:{ Prefer:'return=representation' }, body: JSON.stringify(payload)
+  }),
+};
+
+/* ═══ 오프라인 저장 대기열 ═══════════════════
+ * 당구장 인터넷이 끊겨도 경기 기록이 사라지지 않도록,
+ * 전송 실패 시 폰에 쌓아두고 나중에 자동으로 올린다.
+ */
+function queueAdd(payload){
+  const q = lsGet(LS_QUEUE, []); q.push(payload); lsSet(LS_QUEUE, q);
+}
+async function queueFlush(){
+  if (!auth) return 0;
+  let q = lsGet(LS_QUEUE, []);
+  if (!q.length) return 0;
+  let sent = 0;
+  for (const p of [...q]) {
+    try { await api.saveGame(p); q = q.filter(x => x !== p); sent++; }
+    catch(e){ break; }                       // 아직 안 되면 다음 기회에
+  }
+  lsSet(LS_QUEUE, q);
+  if (sent) toast(`밀려있던 기록 ${sent}건을 서버에 올렸어요`);
+  return sent;
+}
+addEventListener('online', () => queueFlush());
+
+/* ═══ 화면 전환 ═══════════════════════════════ */
+function show(name){
+  for (const id of ['auth','setup','game']) $('#'+id).classList.toggle('on', id === name);
+  if (name === 'game') wakeLock();
+  if (name === 'setup') syncSetup();
+}
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._tm); t._tm = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+/* ═══ 로그인 화면 ═════════════════════════════ */
+let authMode = 'login';
+function setMode(m){
+  authMode = m;
+  $('#tabLogin').classList.toggle('on', m === 'login');
+  $('#tabSignup').classList.toggle('on', m === 'signup');
+  $('#aName').style.display = m === 'signup' ? '' : 'none';
+  $('#aPass').autocomplete = m === 'signup' ? 'new-password' : 'current-password';
+  $('#btnAuth').textContent = m === 'signup' ? '가입하고 시작' : '로그인';
+  $('#aErr').textContent = '';
+}
+$('#tabLogin').onclick  = () => setMode('login');
+$('#tabSignup').onclick = () => setMode('signup');
+
+$('#btnAuth').onclick = async () => {
+  const email = $('#aEmail').value.trim();
+  const pass  = $('#aPass').value;
+  const name  = $('#aName').value.trim();
+  const err = $('#aErr'); err.textContent = '';
+  if (!email || !pass) return err.textContent = '이메일과 비밀번호를 입력하세요';
+  if (authMode === 'signup' && !name) return err.textContent = '이름을 입력하세요';
+
+  const btn = $('#btnAuth'); btn.disabled = true;
+  btn.textContent = authMode === 'signup' ? '가입 중…' : '로그인 중…';
+  try {
+    const a = await authRequest(authMode, email, pass);
+    auth = { token:a.token, refresh:a.refresh, uid:a.uid, name };
+    lsSet(LS_AUTH, auth);
+
+    if (authMode === 'signup') {
+      try { await api.createProfile(a.uid, name); }
+      catch(e){
+        // 이름 중복 등으로 프로필 생성 실패 → 계정만 남으면 혼란스러우므로 롤백
+        auth = null; localStorage.removeItem(LS_AUTH);
+        throw new Error(/duplicate|unique/i.test(e.message) ? '이미 쓰고 있는 이름이에요' : e.message);
+      }
+    } else {
+      const p = await api.myProfile(a.uid);
+      if (p && p[0]) { auth.name = p[0].display_name; lsSet(LS_AUTH, auth); }
+    }
+    await loadMembers();
+    upsertMember(auth.uid, auth.name);   // 내 프로필이 아직 조회에 안 잡혀도 목록에 보이게
+    queueFlush();
+    show('setup');
+    toast(`${auth.name}님, 환영합니다!`);
+  } catch(e){
+    err.textContent = translateAuthError(e.message);
+  } finally {
+    btn.disabled = false; setMode(authMode);
+  }
+};
+
+function translateAuthError(m){
+  if (/Invalid login credentials/i.test(m)) return '이메일 또는 비밀번호가 틀렸어요';
+  if (/User already registered/i.test(m))   return '이미 가입된 이메일이에요. 로그인해 주세요';
+  if (/Password should be/i.test(m))        return '비밀번호는 6자 이상이어야 해요';
+  if (/email.*invalid/i.test(m))            return '이메일 형식을 확인해 주세요';
+  if (/rate limit/i.test(m))                return '요청이 너무 잦아요. 잠시 후 다시 시도해 주세요';
+  if (/Failed to fetch|NetworkError/i.test(m)) return '인터넷 연결을 확인해 주세요';
+  return m;
+}
+
+$('#btnGuest').onclick = () => { show('setup'); toast('게스트 모드 — 기록은 저장되지 않아요'); };
+
+/* ═══ 회원 목록 ═══════════════════════════════ */
+async function loadMembers(){
+  try { members = await api.members(); lsSet(LS_MEM, members); }
+  catch(e){ /* 오프라인이면 캐시된 목록 사용 */ }
+}
+
+/* 방금 만든 프로필은 서버 조회에 곧바로 안 잡힌다 (INSERT 직후 SELECT 가
+ * 같은 커넥션을 쓰지 않아 생기는 시차). 값은 우리가 아는 것이므로 직접 넣는다. */
+function upsertMember(id, name){
+  if (!id || !name) return;
+  const i = members.findIndex(m => m.id === id);
+  if (i >= 0) members[i].display_name = name;
+  else members.push({ id, display_name:name });
+  members.sort((a, b) => a.display_name.localeCompare(b.display_name, 'ko'));
+  lsSet(LS_MEM, members);
+}
+
+function fillSelect(i){
+  const sel = $('#sel'+i);
+  const cur = prefs.pids[i];
+  sel.innerHTML =
+    '<option value="">선수 선택…</option>' +
+    members.map(m => `<option value="${esc(m.id)}">${esc(m.display_name)}</option>`).join('') +
+    `<option value="${MANUAL}">✏️ 직접 입력</option>`;
+  sel.value = cur ? cur : (prefs.names[i] ? MANUAL : '');
+  applySel(i);
+}
+
+function applySel(i){
+  const v = $('#sel'+i).value;
+  const manual = (v === MANUAL);
+  $('#name'+i).style.display = manual ? '' : 'none';
+  if (manual) { prefs.pids[i] = null; }
+  else if (v) {
+    const m = members.find(x => x.id === v);
+    prefs.pids[i] = v; prefs.names[i] = m ? m.display_name : '';
+  } else { prefs.pids[i] = null; prefs.names[i] = ''; }
+  lsSet(LS_PREFS, prefs);
+}
+
+/* ═══ 설정 화면 ═══════════════════════════════ */
+function syncSetup(){
+  // 상단: 누구로 로그인했는지
+  $('#whoBar').innerHTML = auth
+    ? `<span>👤 <b>${esc(auth.name || '회원')}</b></span><button class="linkbtn" id="btnLogout">로그아웃</button>`
+    : `<span>게스트 모드</span><button class="linkbtn acc" id="btnToLogin">로그인하기</button>`;
+  const lo = $('#btnLogout'), li = $('#btnToLogin');
+  if (lo) lo.onclick = () => {
+    if (!confirm('로그아웃할까요?')) return;
+    auth = null; localStorage.removeItem(LS_AUTH); show('auth');
+  };
+  if (li) li.onclick = () => show('auth');
+
+  // 선수 선택: 로그인 상태에서만 드롭다운, 게스트는 직접 입력만
+  for (const i of [0,1]) {
+    const showSel = !!auth && members.length > 0;
+    $('#sel'+i).style.display = showSel ? '' : 'none';
+    if (showSel) fillSelect(i);
+    else { $('#name'+i).style.display = ''; prefs.pids[i] = null; }
+    $('#name'+i).value = prefs.names[i];
+    $('#tval'+i).textContent = prefs.targets[i];
+  }
+  $('#first0').classList.toggle('on', prefs.first === 0);
+  $('#first1').classList.toggle('on', prefs.first === 1);
+
+  const q = lsGet(LS_QUEUE, []).length;
+  $('#saveNote').innerHTML = auth
+    ? `<span class="pip"></span> 경기 종료 시 서버에 자동 저장${q ? ` · 대기 ${q}건` : ''}`
+    : `<span class="pip off"></span> 게스트 모드 — 기록이 저장되지 않아요`;
+}
+
+for (const i of [0,1]) {
+  $('#sel'+i).onchange  = () => { applySel(i); $('#name'+i).value = prefs.names[i]; };
+  $('#name'+i).oninput  = e => { prefs.names[i] = e.target.value; lsSet(LS_PREFS, prefs); };
+}
+document.querySelectorAll('.step button').forEach(b => {
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const t = +b.dataset.t, d = +b.dataset.d;
+    prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + d));
+    $('#tval'+t).textContent = prefs.targets[t]; lsSet(LS_PREFS, prefs); vib(8);
+  });
+});
+$('#first0').onclick = () => { prefs.first = 0; lsSet(LS_PREFS, prefs); syncSetup(); };
+$('#first1').onclick = () => { prefs.first = 1; lsSet(LS_PREFS, prefs); syncSetup(); };
+
+$('#btnStart').onclick = () => {
+  const err = $('#sErr'); err.textContent = '';
+  const n = [$('#name0').value.trim() || prefs.names[0], $('#name1').value.trim() || prefs.names[1]];
+  if (!n[0] || !n[1]) return err.textContent = '두 선수 모두 선택하거나 이름을 입력하세요';
+  if (prefs.pids[0] && prefs.pids[0] === prefs.pids[1]) return err.textContent = '같은 선수를 양쪽에 넣을 수 없어요';
+  prefs.names = n; lsSet(LS_PREFS, prefs);
+  S = {
+    names:[...n], pids:[...prefs.pids], targets:[...prefs.targets],
     sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0],
     tp:0, turn:prefs.first, first:prefs.first,
-    hist:[], fin:false, t0:Date.now()
+    hist:[], fin:false, saved:false, t0:Date.now()
   };
-}
+  save(); render(); show('game');
+  toast(`${S.names[S.first]} 선공으로 시작!`);
+};
 
-/* ── 진동 (아이폰은 미지원 → 조용히 무시) ── */
-const vib = ms => { try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} };
+/* ═══ 게임 로직 ═══════════════════════════════ */
+const vib = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} };
+function save(){ lsSet(LS_STATE, S); }
 
-/* ── 화면 꺼짐 방지 ───────────────────────── */
 let wl = null;
-async function wakeLock(){
-  try { wl = await navigator.wakeLock.request('screen'); } catch(e){}
-}
+async function wakeLock(){ try { wl = await navigator.wakeLock.request('screen'); } catch(e){} }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && S) wakeLock();
-  save();
+  if (document.visibilityState === 'visible') { if (S) wakeLock(); queueFlush(); }
+  else save();
 });
 
-/* ── 게임 동작 ────────────────────────────── */
+function popScore(i){
+  const el = $('#score'+i);
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+}
+
 function tapZone(i){
   if (!S || S.fin) return;
-  if (i === S.turn){                       // 자기 칸 → 득점
-    S.sc[i]++; S.tp++;
-    S.hist.push({t:'s', p:i});
+  if (i === S.turn) {
+    S.sc[i]++; S.tp++; S.hist.push({ t:'s', p:i });
     vib(12); popScore(i);
-    if (S.sc[i] >= S.targets[i]) return win(i);
-  } else {                                 // 상대 칸 → 턴 넘김
+    if (S.sc[i] >= S.targets[i]) { save(); return win(i); }
+  } else {
     const from = S.turn;
-    S.hist.push({t:'p', from, tp:S.tp, pb:S.br[from], miss:S.tp===0});
+    S.hist.push({ t:'p', from, tp:S.tp, pb:S.br[from], miss:S.tp === 0 });
     if (S.tp === 0) S.miss[from]++;
     if (S.tp > S.br[from]) S.br[from] = S.tp;
     S.inn[from]++; S.turn = i; S.tp = 0;
@@ -302,61 +603,74 @@ function minus(i){
   if (!S || S.fin) return;
   const tpd = (i === S.turn && S.tp > 0) ? 1 : 0;
   S.sc[i]--; S.tp -= tpd;
-  S.hist.push({t:'m', p:i, tpd});
-  vib([20,40,20]); popScore(i);
-  save(); render();
+  S.hist.push({ t:'m', p:i, tpd });
+  vib([20,40,20]); popScore(i); save(); render();
 }
 
 function undo(){
   if (!S) return;
   const a = S.hist.pop();
-  if (!a){ toast('되돌릴 동작이 없어요'); return; }
-  if (a.t === 's'){ S.sc[a.p]--; S.tp--; }
-  else if (a.t === 'm'){ S.sc[a.p]++; S.tp += a.tpd; }
-  else { S.turn = a.from; S.inn[a.from]--; S.br[a.from] = a.pb;
-         if (a.miss) S.miss[a.from]--; S.tp = a.tp; }
+  if (!a) { toast('되돌릴 동작이 없어요'); return; }
+  if (a.t === 's') { S.sc[a.p]--; S.tp--; }
+  else if (a.t === 'm') { S.sc[a.p]++; S.tp += a.tpd; }
+  else {
+    S.turn = a.from; S.inn[a.from]--; S.br[a.from] = a.pb;
+    if (a.miss) S.miss[a.from]--; S.tp = a.tp;
+  }
   S.fin = false; $('#winOvl').classList.remove('on');
   vib(15); save(); render();
 }
 
+function finalStats(winner){
+  return [0,1].map(p => {
+    const innings = p === winner ? S.inn[p] + 1 : Math.max(S.inn[p], 1);
+    const run = Math.max(S.br[p], p === S.turn ? S.tp : 0);
+    return { pid:S.pids[p] || null, name:S.names[p], target:S.targets[p], score:S.sc[p],
+             innings, highRun:run, misses:S.miss[p], win:p === winner };
+  });
+}
+
 function win(i){
   S.fin = true; save(); render();
+  const f = finalStats(i);
   $('#winTitle').textContent = `${S.names[i]} 목표 달성!`;
-  const liveInn = p => Math.max(1, S.inn[p] + (p === S.turn ? 1 : 0));
-  const fin = [0,1].map(p => {
-    const innings = p === i ? S.inn[p] + 1 : Math.max(S.inn[p], 1);
-    const run = Math.max(S.br[p], p === S.turn ? S.tp : 0);
-    return { name:S.names[p], sc:S.sc[p], inn:innings,
-             avg:(S.sc[p]/innings).toFixed(2), run, miss:S.miss[p] };
-  });
   $('#winStats').innerHTML =
     '<tr><th></th><th>점수</th><th>이닝</th><th>에버</th><th>하이런</th><th>공타</th></tr>' +
-    fin.map((f,p) =>
-      `<tr><td>${p===0?'⚪':'🟡'} ${esc(f.name)}${p===i?' 🏆':''}</td>` +
-      `<td><b>${f.sc}</b></td><td>${f.inn}</td><td>${f.avg}</td><td>${f.run}</td><td>${f.miss}</td></tr>`
+    f.map((x,p) =>
+      `<tr><td>${p === 0 ? '⚪' : '🟡'} ${esc(x.name)}${x.win ? ' 🏆' : ''}</td>` +
+      `<td><b>${x.score}</b></td><td>${x.innings}</td>` +
+      `<td>${(x.score / x.innings).toFixed(2)}</td><td>${x.highRun}</td><td>${x.misses}</td></tr>`
     ).join('');
   $('#winOvl').classList.add('on');
   vib([40,60,40,60,80]);
+  if (!S.saved) sendResult(f);
 }
 
-/* ── 렌더링 ───────────────────────────────── */
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-function popScore(i){
-  const el = $('#score'+i);
-  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+async function sendResult(players){
+  const st = $('#saveStat'); st.className = 'savestat';
+  if (!auth) { st.textContent = '게스트 모드 — 기록이 저장되지 않았어요'; return; }
+  const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players };
+  st.textContent = '기록 저장 중…';
+  try {
+    await api.saveGame(payload);
+    S.saved = true; save();
+    st.className = 'savestat ok'; st.textContent = '✅ 서버에 저장했어요';
+  } catch(e){
+    queueAdd(payload); S.saved = true; save();
+    st.className = 'savestat warn';
+    st.textContent = '📥 지금은 못 올려서 폰에 저장했어요 — 인터넷 되면 자동 전송됩니다';
+  }
 }
 
 function render(){
   if (!S) return;
-  for (const i of [0,1]){
+  for (const i of [0,1]) {
     $('#gname'+i).textContent = S.names[i];
     $('#score'+i).textContent = S.sc[i];
     $('#target'+i).textContent = '/ ' + S.targets[i];
     const liveInn = Math.max(1, S.inn[i] + (i === S.turn ? 1 : 0));
-    const avg = (S.sc[i] / liveInn).toFixed(2);
     const run = Math.max(S.br[i], i === S.turn ? S.tp : 0);
-    $('#stats'+i).textContent = `이닝 ${liveInn} · 에버 ${avg} · 최고런 ${run}`;
+    $('#stats'+i).textContent = `이닝 ${liveInn} · 에버 ${(S.sc[i]/liveInn).toFixed(2)} · 최고런 ${run}`;
     $('#zone'+i).classList.toggle('on', S.turn === i && !S.fin);
     $('#zone'+i).classList.toggle('off', S.turn !== i || S.fin);
     $('#prog'+i).style.width = Math.min(S.sc[i] / S.targets[i] * 100, 100) + '%';
@@ -367,99 +681,54 @@ function render(){
   $('#inning').textContent = (S.inn[S.turn] + 1) + '이닝';
 }
 
-function show(screen){
-  $('#setup').classList.toggle('on', screen === 'setup');
-  $('#game').classList.toggle('on', screen === 'game');
-  if (screen === 'game') wakeLock();
-}
-
-function toast(msg){
-  const t = $('#toast');
-  t.textContent = msg; t.classList.add('on');
-  clearTimeout(t._tm); t._tm = setTimeout(() => t.classList.remove('on'), 2200);
-}
-
-/* ── 설정 화면 바인딩 ─────────────────────── */
-function syncSetup(){
-  $('#name0').value = prefs.names[0]; $('#name1').value = prefs.names[1];
-  $('#tval0').textContent = prefs.targets[0]; $('#tval1').textContent = prefs.targets[1];
-  $('#first0').classList.toggle('on', prefs.first === 0);
-  $('#first1').classList.toggle('on', prefs.first === 1);
-}
-document.querySelectorAll('.step button').forEach(b => {
-  const bump = () => {
-    const t = +b.dataset.t, d = +b.dataset.d;
-    prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + d));
-    syncSetup(); save(); vib(8);
-  };
-  b.addEventListener('pointerdown', e => { e.preventDefault(); bump(); });
-});
-$('#first0').addEventListener('click', () => { prefs.first = 0; syncSetup(); save(); });
-$('#first1').addEventListener('click', () => { prefs.first = 1; syncSetup(); save(); });
-$('#name0').addEventListener('input', e => { prefs.names[0] = e.target.value; save(); });
-$('#name1').addEventListener('input', e => { prefs.names[1] = e.target.value; save(); });
-$('#btnStart').addEventListener('click', () => {
-  S = newState(); save(); render(); show('game');
-  toast(`${S.names[S.first]} 선공으로 시작!`);
-});
-
-/* ── 게임 화면 바인딩 ─────────────────────── */
-for (const i of [0,1]){
+/* ═══ 게임 화면 바인딩 ════════════════════════ */
+for (const i of [0,1]) {
   $('#zone'+i).addEventListener('pointerdown', e => {
-    if (!e.isPrimary) return;
-    if (e.target.closest('.minusbtn')) return;
+    if (!e.isPrimary || e.target.closest('.minusbtn')) return;
     tapZone(i);
   });
   $('#zone'+i).addEventListener('contextmenu', e => e.preventDefault());
 }
 document.querySelectorAll('.minusbtn').forEach(b =>
-  b.addEventListener('pointerdown', e => {
-    e.stopPropagation(); if (!e.isPrimary) return;
-    minus(+b.dataset.p);
-  }));
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); if (e.isPrimary) minus(+b.dataset.p); }));
 $('#btnUndo').addEventListener('pointerdown', e => { e.stopPropagation(); undo(); });
-$('#btnMenu').addEventListener('pointerdown', e => {
-  e.stopPropagation(); $('#menuOvl').classList.add('on');
-});
+$('#btnMenu').addEventListener('pointerdown', e => { e.stopPropagation(); $('#menuOvl').classList.add('on'); });
 
-/* 승리 오버레이 */
-$('#btnWinCont').addEventListener('click', () => {
-  S.fin = false; $('#winOvl').classList.remove('on'); save(); render();
-});
-$('#btnWinUndo').addEventListener('click', undo);
-$('#btnWinNew').addEventListener('click', () => {
-  S = null; save(); $('#winOvl').classList.remove('on'); syncSetup(); show('setup');
-});
+$('#btnWinCont').onclick = () => { S.fin = false; $('#winOvl').classList.remove('on'); save(); render(); };
+$('#btnWinUndo').onclick = undo;
+$('#btnWinNew').onclick  = () => { S = null; save(); $('#winOvl').classList.remove('on'); show('setup'); };
 
-/* 메뉴 오버레이 */
-$('#btnMenuClose').addEventListener('click', () => $('#menuOvl').classList.remove('on'));
-$('#btnMenuRestart').addEventListener('click', () => {
+$('#btnMenuClose').onclick   = () => $('#menuOvl').classList.remove('on');
+$('#btnMenuRestart').onclick = () => {
   if (!confirm('점수를 0으로 초기화할까요?')) return;
-  S = newState(); save(); render(); $('#menuOvl').classList.remove('on');
-});
-$('#btnMenuNew').addEventListener('click', () => {
+  Object.assign(S, { sc:[0,0], inn:[0,0], br:[0,0], miss:[0,0], tp:0,
+                     turn:S.first, hist:[], fin:false, saved:false, t0:Date.now() });
+  save(); render(); $('#menuOvl').classList.remove('on');
+};
+$('#btnMenuNew').onclick = () => {
   if (!confirm('현재 경기를 버리고 설정 화면으로 갈까요?')) return;
-  S = null; save(); $('#menuOvl').classList.remove('on'); syncSetup(); show('setup');
-});
+  S = null; save(); $('#menuOvl').classList.remove('on'); show('setup');
+};
 
-/* ── 시작: 진행 중 경기 복원 ───────────────── */
-(function init(){
-  syncSetup();
-  try {
-    const raw = localStorage.getItem(LS_STATE);
-    if (raw){
-      const st = JSON.parse(raw);
-      if (st && st.sc && !st.fin){
-        S = st; render(); show('game');
-        toast('진행 중이던 경기를 불러왔어요');
-        return;
-      }
-    }
-  } catch(e){}
-  show('setup');
+/* ═══ 시작 ═══════════════════════════════════ */
+(async function init(){
+  const st = lsGet(LS_STATE, null);
+  if (st && st.sc && !st.fin) {          // 진행 중이던 경기 복원 (앱이 죽어도 이어서)
+    S = st; render(); show('game');
+    toast('진행 중이던 경기를 불러왔어요');
+  } else {
+    show(auth ? 'setup' : 'auth');
+  }
+  if (auth) {
+    loadMembers().then(() => {
+      upsertMember(auth.uid, auth.name);
+      if ($('#setup').classList.contains('on')) syncSetup();
+    });
+    queueFlush();
+  }
+  setMode('login');
 })();
 
-/* ── 서비스 워커 (오프라인 캐시) ───────────── */
 if ('serviceWorker' in navigator && location.protocol !== 'file:')
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
