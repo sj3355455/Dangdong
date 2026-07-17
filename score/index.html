@@ -30,7 +30,7 @@ input,select{font:inherit;user-select:text;-webkit-user-select:text}
 .screen{position:fixed;inset:0;display:none}
 .screen.on{display:flex}
 .scroller{flex-direction:column;align-items:center;justify-content:flex-start;
-  padding:calc(16px + var(--sat)) 20px calc(16px + var(--sab));gap:12px;overflow-y:auto}
+  padding:calc(32px + var(--sat)) 20px calc(16px + var(--sab));gap:12px;overflow-y:auto}
 
 /* ── 공통 부품 ─────────────────────────────── */
 .field{width:100%;background:#12161b;border:1px solid var(--line);color:var(--text);
@@ -50,6 +50,9 @@ select.field{appearance:none;background-image:
 .linkbtn{color:var(--muted);font-size:.88rem;text-decoration:underline;text-underline-offset:3px}
 .linkbtn.acc{color:var(--accent)}
 .err{color:var(--danger);font-size:.85rem;text-align:center;min-height:1em;max-width:420px}
+.nav-toggle{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:16px;width:100%;max-width:420px}
+.nav-btn{flex:1;text-align:center;padding:10px 0;text-decoration:none;color:var(--muted);font-weight:600;font-size:.95rem;border-radius:8px;transition:all .2s}
+.nav-btn.on{background:var(--accent);color:#fff}
 
 /* ── 로그인 화면 ───────────────────────────── */
 #auth h1{font-size:1.5rem}
@@ -170,11 +173,12 @@ select.field{appearance:none;background-image:
 
 <!-- ══ 로그인 화면 ══ -->
 <div id="auth" class="screen scroller">
-  <div style="position:relative; display:flex; align-items:center; justify-content:center; margin-bottom:4px; height:44px; width:100%; max-width:420px;">
-    <h1 style="margin:0; font-size:1.4rem; white-space:nowrap;">🎱 당동 점수판</h1>
-    <a class="tab" href="../record/" style="position:absolute; right:0; text-decoration:none; z-index:2;">📊 기록실</a>
+  <h1 style="margin:0 0 16px 0; font-size:1.6rem; text-align:center;">🎱 당동 점수판</h1>
+  <div class="nav-toggle">
+    <a href="../score/" class="nav-btn on">🎱 점수판</a>
+    <a href="../record/" class="nav-btn">📊 기록실</a>
   </div>
-  <div class="sub" style="margin-bottom:4px">로그인하면 경기 기록이 서버에 저장되고<br>선수를 목록에서 고를 수 있어요</div>
+  <div class="sub" style="margin-bottom:16px">로그인하면 경기 기록이 서버에 저장되고<br>선수를 목록에서 고를 수 있어요</div>
 
   <div class="seg">
     <button id="tabLogin" class="on">로그인</button>
@@ -195,9 +199,10 @@ select.field{appearance:none;background-image:
 
 <!-- ══ 설정 화면 ══ -->
 <div id="setup" class="screen scroller">
-  <div style="position:relative; display:flex; align-items:center; justify-content:center; margin-bottom:16px; height:44px; width:100%; max-width:420px;">
-    <h1 style="margin:0; font-size:1.4rem; white-space:nowrap;">🎱 당동 점수판</h1>
-    <a class="tab" href="../record/" style="position:absolute; right:0; text-decoration:none; z-index:2;">📊 기록실</a>
+  <h1 style="margin:0 0 16px 0; font-size:1.6rem; text-align:center;">🎱 당동 점수판</h1>
+  <div class="nav-toggle">
+    <a href="../score/" class="nav-btn on">🎱 점수판</a>
+    <a href="../record/" class="nav-btn">📊 기록실</a>
   </div>
   <div class="who" id="whoBar"></div>
 
