@@ -203,12 +203,6 @@ select.field{appearance:none;background-image:
     <a href="../record/" class="nav-btn">📊 기록실</a>
   </div>
 
-  <div style="display:flex; align-items:center; justify-content:flex-end; margin-bottom:16px;">
-    <a href="../record/?tab=me" style="text-decoration:none; color:var(--text); display:flex; align-items:center; gap:4px; padding:6px 12px; margin-right:2px; border:1px solid var(--line); background:var(--card); border-radius:20px; font-size:0.9rem;">
-      <span style="font-size:1.1rem">👤</span> <b id="topUserName">로그인</b>
-    </a>
-  </div>
-
   <div class="pcard">
     <div class="prow"><span class="dot w"></span>
       <select class="field" id="sel0"></select></div>
@@ -559,7 +553,6 @@ function applySel(i, isUserAction){
 
 /* ═══ 설정 화면 ═══════════════════════════════ */
 function syncSetup(){
-  $('#topUserName').textContent = auth ? (auth.name || '회원') : '게스트';
   const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
     if (!confirm('처음 화면으로 돌아갈까요?')) return;
