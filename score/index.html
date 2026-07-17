@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v50</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v52</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v50</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v52</span>
   </div>
 </div>
 
@@ -560,7 +560,7 @@ $('#btnStart').onclick = () => {
   }
   
   if (isTeam) {
-    pTargets = [prefs.targets[0], prefs.targets[1]];
+    pTargets = [prefs.targets[0], prefs.targets[1], prefs.targets[0], prefs.targets[1]];
   } else {
     for(let i=0; i<N; i++) pTargets.push(prefs.targets[i]);
   }
@@ -679,28 +679,27 @@ function tapZone(i){
     if (!S.done[i]) {
       pushHist();
       S.sc[i]++; S.tp++;
+      if (S.type === '팀전' && S.sc.length === 4) S.sc[(i+2)%4]++;
       vib(12); popScore(i);
       if (S.sc[i] >= S.targets[i]) {
         S.done[i] = true;
         S.cushInn[i]++;
+        if (S.type === '팀전' && S.sc.length === 4) { const p = (i+2)%4; S.done[p] = true; S.cushInn[p]++; }
         toast(`🎯 마무리 쿠션!`);
       }
     } else if (S.cush[i] < S.round) {
       pushHist();
       S.cush[i]++; S.tp++;
+      if (S.type === '팀전' && S.sc.length === 4) S.cush[(i+2)%4]++;
       vib(12); popScore(i);
       if (S.tp > S.br[i]) S.br[i] = S.tp;
       
       S.lastInning = true;
-      S.winners.push(i);
+      if (!S.winners.includes(i)) S.winners.push(i);
+      if (S.type === '팀전' && S.sc.length === 4) { if (!S.winners.includes((i+2)%4)) S.winners.push((i+2)%4); }
       toast(`🎯 목표 달성!`);
       
-      const next = nextTurnIndex(S.turn);
-      if (next === S.first) {
-        endInning();
-      } else {
-        passTurnInner(false);
-      }
+      passTurnInner(false);
     } else {
       vib(8);
     }
@@ -718,13 +717,33 @@ function passTurnInner(isMiss) {
   S.inn[S.turn]++; S.tp = 0;
   if (S.done[S.turn]) S.cushInn[S.turn]++;
   
+  const prevTurn = S.turn;
   const next = nextTurnIndex(S.turn);
   S.turn = next;
   S.tc++;
   vib(25);
   
-  if (S.turn === S.first) {
-    if (S.lastInning) endInning();
+  const isTeam = S.type === '팀전' && S.sc.length === 4;
+  const is2p = S.sc.length === 2;
+
+  if (isTeam || is2p) {
+    const teamOf = i => isTeam ? (i % 2) : i;
+    if (teamOf(prevTurn) !== teamOf(S.first)) {
+      if (S.lastInning) endInning();
+    }
+  } else {
+    if (S.lastInning) {
+      S.winners.forEach(w => {
+         if (!S.finished[w]) {
+           S.finished[w] = true; 
+           toast(`${S.names[w]} 완주!`);
+         }
+      });
+      S.lastInning = false;
+    }
+    if (activePlayerCount() <= 1) {
+       endInning();
+    }
   }
 }
 
@@ -735,20 +754,29 @@ window.passTurn = function(){
 };
 
 function endInning() {
+  const isTeam = S.type === '팀전' && S.sc.length === 4;
+  const is2p = S.sc.length === 2;
+
   if (S.winners.length > 0) {
-    const active = activePlayerCount();
-    // 2인 남은 상태에서 둘 다 목표를 달성했다면 연장전(Round 증가)
-    if (active === 2 && S.winners.length === 2) {
-      S.round++;
-      S.lastInning = false;
-      S.winners = [];
-      S.cushInn[S.first]++; // 쿠션 이닝 추가
-      vib([40,40,40]);
-      toast(`동점! 마무리 쿠션 ${S.round} — 연장`);
-      return;
+    if (isTeam || is2p) {
+      const teamWins = new Set(S.winners.map(i => isTeam ? (i%2) : i));
+      if (teamWins.size === 2) {
+        S.round++;
+        S.lastInning = false;
+        S.winners = [];
+        S.cushInn[S.first]++;
+        if (isTeam) S.cushInn[(S.first+2)%4]++;
+        vib([40,40,40]);
+        toast(`동점! 마무리 쿠션 ${S.round} — 연장`);
+        return;
+      }
+      save(); render(); return win(S.winners[0]);
+    } else {
+      for(let i=0; i<S.sc.length; i++) {
+        if (!S.finished[i] && !S.winners.includes(i)) S.winners.push(i);
+      }
+      save(); render(); return win(S.winners[0]);
     }
-    
-    save(); render(); return win(S.winners[0]);
   }
 }
 
@@ -764,14 +792,21 @@ window.undoTurn = function(){
 window.undoScore = function(i){
   if (!S || S.fin || i !== S.turn || S.tp === 0) return;
   pushHist();
-  if (S.done[i]) {
+  if (S.done[i] && S.cush[i] === 0) {
+    S.done[i] = false; S.cushInn[i]--; S.sc[i]--; S.tp--;
+  } else if (S.done[i] && S.cush[i] > 0) {
     S.cush[i]--; S.tp--;
     if (S.cush[i] < S.round) {
       S.lastInning = false;
-      S.winners = S.winners.filter(x => x !== i);
+      S.winners = S.winners.filter(x => x !== i && x !== ((i+2)%4));
     }
   } else {
     S.sc[i]--; S.tp--;
+  }
+  
+  if (S.type === '팀전' && S.sc.length === 4) {
+    const p = (i+2)%4;
+    S.sc[p] = S.sc[i]; S.done[p] = S.done[i]; S.cush[p] = S.cush[i]; S.cushInn[p] = S.cushInn[i];
   }
   vib(15); popScore(i);
   save(); render();
@@ -848,8 +883,14 @@ function win(winnerIdx){
   
   const isTeam = S.type === '팀전';
   const N = S.sc.length;
-  
-  let title = S.winners.length > 1 ? '공동 목표 달성!' : `${isTeam ? TZNAMES[S.winners[0]] : S.names[S.winners[0]]} 승리!`;
+  let isTie = false;
+  if (isTeam && N === 4) {
+    const teamWins = new Set(S.winners.map(i => i%2));
+    isTie = teamWins.size > 1;
+  } else {
+    isTie = S.winners.length > 1;
+  }
+  let title = isTie ? '공동 목표 달성!' : `${isTeam ? TZNAMES[S.winners[0]%2] : S.names[S.winners[0]]} 승리!`;
   $('#winTitle').textContent = title;
   
   let html = '<tr><th>선수</th><th>점수</th><th>에버</th><th>하이런</th></tr>';
@@ -868,12 +909,12 @@ function win(winnerIdx){
       if (isTeam) {
         for(let t=0; t<2; t++) {
           const tW = S.winners.includes(t);
-          if (S.pids[t*2]) pl.push({ id: S.pids[t*2], name: S.names[t*2], win: tW, score: S.sc[t], target: S.targets[t], innings: S.inn[t], highRun: S.br[t], misses: S.miss[t], cushMade: S.cush[t], cushInn: S.cushInn[t] });
-          if (S.pids[t*2+1]) pl.push({ id: S.pids[t*2+1], name: S.names[t*2+1], win: tW, score: S.sc[t], target: S.targets[t], innings: S.inn[t], highRun: S.br[t], misses: S.miss[t], cushMade: S.cush[t], cushInn: S.cushInn[t] });
+          pl.push({ id: S.pids[t*2] || null, name: S.names[t*2], win: tW, score: S.sc[t*2], target: S.targets[t*2], innings: S.inn[t*2], highRun: S.br[t*2], misses: S.miss[t*2], cushMade: S.cush[t*2], cushInn: S.cushInn[t*2] });
+          pl.push({ id: S.pids[t*2+1] || null, name: S.names[t*2+1], win: tW, score: S.sc[t*2+1], target: S.targets[t*2+1], innings: S.inn[t*2+1], highRun: S.br[t*2+1], misses: S.miss[t*2+1], cushMade: S.cush[t*2+1], cushInn: S.cushInn[t*2+1] });
         }
       } else {
         for(let i=0; i<N; i++){
-          if (S.pids[i]) pl.push({ id: S.pids[i], name: S.names[i], win: S.winners.includes(i), score: S.sc[i], target: S.targets[i], innings: S.inn[i], highRun: S.br[i], misses: S.miss[i], cushMade: S.cush[i], cushInn: S.cushInn[i] });
+          pl.push({ id: S.pids[i] || null, name: S.names[i], win: S.winners.includes(i), score: S.sc[i], target: S.targets[i], innings: S.inn[i], highRun: S.br[i], misses: S.miss[i], cushMade: S.cush[i], cushInn: S.cushInn[i] });
         }
       }
       
