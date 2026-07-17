@@ -174,11 +174,8 @@ select.field{appearance:none;background-image:
   </div>
 
   <div class="pcard">
-    <input class="field" id="aEmail" type="email" inputmode="email" autocomplete="email"
-           autocapitalize="off" spellcheck="false" placeholder="이메일">
-    <input class="field" id="aPass" type="password" autocomplete="current-password"
-           placeholder="비밀번호 (6자 이상)">
-    <input class="field" id="aName" placeholder="이름 (기록에 표시됨)" maxlength="10" style="display:none">
+    <input class="field" id="aName" autocomplete="username" autocapitalize="off"
+           spellcheck="false" maxlength="10" placeholder="이름">
   </div>
 
   <div class="err" id="aErr"></div>
@@ -342,6 +339,36 @@ async function refreshToken(){
   } catch(e){ return false; }
 }
 
+/* 한글 이름을 영문으로 변환하여 가상 이메일 생성 */
+function syntheticEmail(name){
+  const norm = name.normalize('NFC').trim();
+  const leads = ['g','gg','n','d','dd','r','m','b','bb','s','ss','','j','jj','ch','k','t','p','h'];
+  const vowels = ['a','ae','ya','yae','eo','e','yeo','ye','o','wa','wae','oe','yo','u','wo','we','wi','yu','eu','ui','i'];
+  const tails = ['','g','gg','gs','n','nj','nh','d','l','lg','lm','lb','ls','lt','lp','lh','m','b','bs','s','ss','ng','j','ch','k','t','p','h'];
+  
+  let res = '';
+  for(let i=0; i<norm.length; i++){
+    const code = norm.charCodeAt(i);
+    if(code >= 0xAC00 && code <= 0xD7A3){
+      const offset = code - 0xAC00;
+      const l = Math.floor(offset / 588);
+      const v = Math.floor((offset % 588) / 28);
+      const t = offset % 28;
+      
+      // 첫 글자(성씨) 예외 처리
+      if (i === 0) {
+        if (norm[0] === '김') { res += 'kim'; continue; }
+        if (norm[0] === '박') { res += 'park'; continue; }
+        if (norm[0] === '최') { res += 'choi'; continue; }
+      }
+      res += leads[l] + vowels[v] + tails[t];
+    } else {
+      res += norm[i].toLowerCase();
+    }
+  }
+  return `${res.replace(/[^a-z0-9]/g, '')}@dangdong.app`;
+}
+
 async function authRequest(kind, email, password){
   const path = kind === 'signup' ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password';
   const r = await fetch(SB_URL + path, {
@@ -406,8 +433,6 @@ function setMode(m){
   authMode = m;
   $('#tabLogin').classList.toggle('on', m === 'login');
   $('#tabSignup').classList.toggle('on', m === 'signup');
-  $('#aName').style.display = m === 'signup' ? '' : 'none';
-  $('#aPass').autocomplete = m === 'signup' ? 'new-password' : 'current-password';
   $('#btnAuth').textContent = m === 'signup' ? '가입하고 시작' : '로그인';
   $('#aErr').textContent = '';
 }
@@ -415,16 +440,15 @@ $('#tabLogin').onclick  = () => setMode('login');
 $('#tabSignup').onclick = () => setMode('signup');
 
 $('#btnAuth').onclick = async () => {
-  const email = $('#aEmail').value.trim();
-  const pass  = $('#aPass').value;
-  const name  = $('#aName').value.trim();
+  const name = $('#aName').value.trim();
+  const pass = 'dangdong123!'; // 내부 공통 비밀번호
   const err = $('#aErr'); err.textContent = '';
-  if (!email || !pass) return err.textContent = '이메일과 비밀번호를 입력하세요';
-  if (authMode === 'signup' && !name) return err.textContent = '이름을 입력하세요';
+  if (!name) return err.textContent = '이름을 입력하세요';
 
   const btn = $('#btnAuth'); btn.disabled = true;
   btn.textContent = authMode === 'signup' ? '가입 중…' : '로그인 중…';
   try {
+    const email = syntheticEmail(name);   // 서버엔 이름 기반 내부용 주소만 전달
     const a = await authRequest(authMode, email, pass);
     auth = { token:a.token, refresh:a.refresh, uid:a.uid, name };
     lsSet(LS_AUTH, auth);
@@ -453,12 +477,12 @@ $('#btnAuth').onclick = async () => {
 };
 
 function translateAuthError(m){
-  if (/Invalid login credentials/i.test(m)) return '이메일 또는 비밀번호가 틀렸어요';
-  if (/User already registered/i.test(m))   return '이미 가입된 이메일이에요. 로그인해 주세요';
-  if (/Password should be/i.test(m))        return '비밀번호는 6자 이상이어야 해요';
-  if (/email.*invalid/i.test(m))            return '이메일 형식을 확인해 주세요';
+  if (/Invalid login credentials/i.test(m)) return '등록되지 않은 이름이거나 연결에 실패했어요';
+  if (/User already registered/i.test(m))   return '이미 등록된 이름이에요. 로그인해 주세요';
+  if (/Password should be/i.test(m))        return '내부 오류가 발생했어요';
   if (/rate limit/i.test(m))                return '요청이 너무 잦아요. 잠시 후 다시 시도해 주세요';
   if (/Failed to fetch|NetworkError/i.test(m)) return '인터넷 연결을 확인해 주세요';
+  if (/email/i.test(m))                     return '처리 중 문제가 발생했어요. 다시 시도해 주세요';
   return m;
 }
 
