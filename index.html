@@ -391,10 +391,34 @@ function renderGames(){
     <tbody>${rows}</tbody></table></div></div>`);
 }
 
+async function queueFlush() {
+  try {
+    const auth = JSON.parse(localStorage.getItem('dangScoreAuth_v1'));
+    if (!auth || !auth.token) return;
+    
+    let q = JSON.parse(localStorage.getItem('dangScoreQueue_v1') || '[]');
+    if (!q.length) return;
+    
+    for (const p of [...q]) {
+      try {
+        const res = await fetch(SB_URL + '/rest/v1/games', {
+          method: 'POST',
+          headers: { apikey: SB_KEY, Authorization: 'Bearer ' + auth.token, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+          body: JSON.stringify(p)
+        });
+        if (!res.ok) throw new Error();
+        q = q.filter(x => x !== p);
+      } catch(e) { break; }
+    }
+    localStorage.setItem('dangScoreQueue_v1', JSON.stringify(q));
+  } catch(e) {}
+}
+
 async function initDashboard() {
   const sub = document.getElementById('sub');
   if (sub) sub.textContent = '서버에서 데이터를 불러오는 중입니다...';
   try {
+    await queueFlush(); // 먼저 폰에 밀린 기록이 있으면 올리기
     const games = await fetchGames();
     DATA = processData(games);
     if (sub) sub.textContent =
