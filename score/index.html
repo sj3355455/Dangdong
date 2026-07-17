@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v52</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v53</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v52</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v53</span>
   </div>
 </div>
 
@@ -544,8 +544,8 @@ window.applyMyBall = function(i) {
 $('#btnStart').onclick = () => {
   const err = $('#sErr'); err.textContent = '';
   const isTeam = prefs.gameType === '팀전';
-  const N = isTeam ? 2 : parseInt(prefs.gameType.replace('인',''), 10);
-  const totalPlayers = isTeam ? 4 : N;
+  const N = isTeam ? 4 : parseInt(prefs.gameType.replace('인',''), 10);
+  const totalPlayers = N;
   
   let pNames = [], pPids = [], pTargets = [];
   for(let i=0; i<totalPlayers; i++){
@@ -606,7 +606,9 @@ function buildGameZones() {
   let gameHtml = '';
   for(let i=0; i<N; i++){
     let zname = (S.names && S.names[i]) ? S.names[i] : 'Player';
-    if (isTeam && S.names) zname = `${TZNAMES[i]} <span style="font-size:0.75rem; font-weight:normal; opacity:0.8;">(${S.names[i*2]}, ${S.names[i*2+1]})</span>`;
+    if (isTeam && S.names) {
+      zname = `${i%2 === 0 ? 'A팀' : 'B팀'} ${S.names[i]}`;
+    }
     let tgt = (S.targets && S.targets[i]) ? S.targets[i] : 15;
     
     gameHtml += `

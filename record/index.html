@@ -100,7 +100,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v52</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v53</span>
   </div>
 </div>
 <script>
@@ -117,7 +117,7 @@ async function fetchGames() {
     if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
   } catch(e) {}
   
-  const res = await fetch(SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc', {
+  const res = await fetch(SB_URL + '/rest/v1/games?select=id,played_at,players,game_type&order=played_at.asc', {
     headers: headers
   });
   if (!res.ok) throw new Error('fetch error');
