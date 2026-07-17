@@ -88,7 +88,7 @@ h1{font-size:1.5rem;margin:0 0 4px}
 .tab{padding:8px 16px;border:1px solid var(--line);background:var(--card);
   color:var(--text);border-radius:20px;cursor:pointer;font:inherit;outline:none;transition:all .2s}
 .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-.field{width:100%;background:#12161b;border:1px solid var(--line);color:var(--text);
+.field{width:100%;background:#12161b;border:1px solid var(--line);color:#fff;
   padding:12px;border-radius:8px;outline:none;transition:border-color .2s;font-size:1rem;margin-bottom:12px;}
 .field:focus{border-color:var(--accent)}
 .bigbtn{width:100%;max-width:420px;padding:15px 0;border-radius:14px;background:var(--accent);
@@ -145,7 +145,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
       <button class="tab on" data-v="rank">🏆 순위</button>
       <button class="tab" data-v="games">🕒 경기</button>
     </div>
-    <button class="tab" data-v="me" style="border-color:transparent; background:transparent; display:flex; align-items:center; gap:4px; padding:8px 4px;">
+    <button class="tab" data-v="me" style="display:flex; align-items:center; gap:4px; padding:6px 12px; margin-right:2px;">
       <span style="font-size:1.1rem">👤</span> <b id="topUserName">로그인</b>
     </button>
   </div>
