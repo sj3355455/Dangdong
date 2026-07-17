@@ -74,6 +74,8 @@ select.field{appearance:none;background-image:
 .pip.off{background:var(--muted)}
 
 #game{padding:0;display:flex;flex-direction:column;align-items:stretch}
+#gameZones{flex:1;display:flex;flex-direction:column;width:100%;height:100%}
+@media (orientation:landscape){ #gameZones{flex-direction:row} }
 @media (orientation:landscape){ #game{flex-direction:row} }
 .zone{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;
   justify-content:center;transition:filter .25s;overflow:hidden;cursor:pointer;width:100%}
@@ -207,12 +209,13 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v45</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v46</span>
   </div>
 </div>
 
 <!-- ══ 게임 화면 ══ -->
 <div id="game" class="screen">
+  <div id="gameZones"></div>
   <div id="mid">
     <button class="midbtn" id="btnUndo" title="되돌리기">↩</button>
     <span class="midpill" id="inning">1이닝</span>
@@ -622,9 +625,8 @@ function buildGameZones() {
     `;
   }
   
-  // Create a wrapper or just insert before #mid
-  $('#game').querySelectorAll('.zone').forEach(e => e.remove());
-  $('#game').insertAdjacentHTML('afterbegin', gameHtml);
+  // insert zones into #gameZones
+  $('#gameZones').innerHTML = gameHtml;
   
   
   
