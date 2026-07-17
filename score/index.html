@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v61</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v62</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v61</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v62</span>
   </div>
 </div>
 
@@ -344,7 +344,7 @@ function upsertMember(id, name){
 }
 
 // ══ Setup UI ══
-function renderSetupCards() {
+function renderSetupCards(modeChanged = false) {
   const isTeam = prefs.gameType === '팀전';
   const N = isTeam ? 2 : parseInt(prefs.gameType.replace('인',''), 10);
   const totalPlayers = isTeam ? 4 : N;
@@ -357,12 +357,12 @@ function renderSetupCards() {
           <div class="prow"><span class="dot ${ZCOLORS[i]}"></span> <span class="plbl ${prefs.myBall === i ? 'me' : 'opp'}">${prefs.myBall === i ? '나' : '상대'}</span></div>
           <div style="font-weight:bold; margin-bottom:8px;">${TZNAMES[i]}</div>
           <div style="display:flex; gap:8px; margin-bottom:8px;">
-            <select class="field" id="sel${i}" style="flex:1; margin:0; padding:10px;"></select>
-            <input class="field" id="name${i}" maxlength="10" placeholder="선수 1" style="flex:1; margin:0; padding:10px;">
+            <select class="field" id="sel${i*2}" style="flex:1; margin:0; padding:10px;"></select>
+            <input class="field" id="name${i*2}" maxlength="10" placeholder="선수 1" style="flex:1; margin:0; padding:10px;">
           </div>
           <div style="display:flex; gap:8px; margin-bottom:8px;">
-            <select class="field" id="sel${i+2}" style="flex:1; margin:0; padding:10px;"></select>
-            <input class="field" id="name${i+2}" maxlength="10" placeholder="선수 2" style="flex:1; margin:0; padding:10px;">
+            <select class="field" id="sel${i*2+1}" style="flex:1; margin:0; padding:10px;"></select>
+            <input class="field" id="name${i*2+1}" maxlength="10" placeholder="선수 2" style="flex:1; margin:0; padding:10px;">
           </div>
           <div class="trow" style="justify-content:flex-start; gap:12px; align-items:center;">
             <span class="lbl">팀 목표 점수</span>
@@ -401,7 +401,7 @@ function renderSetupCards() {
   $('#myBallSeg').innerHTML = mbHtml;
 
   for (let i = 0; i < totalPlayers; i++) {
-    fillSelect(i);
+    fillSelect(i, modeChanged);
     const sel = $('#sel'+i);
     if(sel) {
       sel.onchange = () => { applySel(i, true); $('#name'+i).value = prefs.names[i]; };
@@ -431,7 +431,7 @@ function renderSetupCards() {
   }
 }
 
-function fillSelect(i){
+function fillSelect(i, isUserAction = false){
   const sel = $('#sel'+i);
   if(!sel) return;
   const cur = prefs.pids[i];
@@ -439,7 +439,7 @@ function fillSelect(i){
     members.map(m => `<option value="${esc(m.id)}">${esc(m.display_name)}</option>`).join('') +
     `<option value="${MANUAL}">✏️ 직접 입력</option>`;
   sel.value = cur ? cur : (prefs.names[i] ? MANUAL : '');
-  applySel(i);
+  applySel(i, isUserAction);
 }
 
 function applySel(i, isUserAction){
@@ -477,14 +477,16 @@ function applySel(i, isUserAction){
 
 document.querySelectorAll('#gameTypeSeg button').forEach(b => {
   b.onclick = () => {
-    prefs.gameType = b.dataset.v || b.innerText;
+    const newVal = b.dataset.v || b.innerText;
+    const modeChanged = (prefs.gameType !== newVal);
+    prefs.gameType = newVal;
     lsSet(LS_PREFS, prefs);
-    prefs.myBall = 0; // reset to 0
-    syncSetup();
+    prefs.myBall = 0;
+    syncSetup(modeChanged);
   };
 });
 
-function syncSetup(){
+function syncSetup(modeChanged = false){
   const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
     if (!confirm('처음 화면으로 돌아갈까요?')) return;
@@ -496,7 +498,7 @@ function syncSetup(){
     else b.classList.remove('on');
   });
   
-  renderSetupCards();
+  renderSetupCards(modeChanged);
 
   const q = lsGet(LS_QUEUE, []).length;
   $('#saveNote').innerHTML = auth
