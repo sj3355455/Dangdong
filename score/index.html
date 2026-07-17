@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v58</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v59</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v58</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v59</span>
   </div>
 </div>
 
@@ -572,10 +572,10 @@ $('#btnStart').onclick = () => {
   S = {
     type: prefs.gameType,
     names: [...pNames], pids: [...pPids], targets: [...pTargets],
-    sc: Array(N).fill(0),
+    sc: Array(N).fill(0), indSc: Array(N).fill(0),
     inn: Array(N).fill(0), br: Array(N).fill(0), miss: Array(N).fill(0),
     done: Array(N).fill(false),
-    cush: Array(N).fill(0), cushInn: Array(N).fill(0),
+    cush: Array(N).fill(0), indCush: Array(N).fill(0), cushInn: Array(N).fill(0),
     finished: Array(N).fill(false),
     round: 1, lastInning: false, winners: [],
     tp: 0, turn: 0, first: 0, tc: 0,
@@ -644,8 +644,9 @@ function buildGameZones() {
 
 function pushHist(){
   S.hist.push(JSON.stringify({
-    sc:[...S.sc], inn:[...S.inn], br:[...S.br], miss:[...S.miss],
-    done:[...S.done], cush:[...S.cush], cushInn:[...S.cushInn],
+    sc:[...S.sc], indSc: S.indSc ? [...S.indSc] : [...S.sc],
+    inn:[...S.inn], br:[...S.br], miss:[...S.miss],
+    done:[...S.done], cush:[...S.cush], indCush: S.indCush ? [...S.indCush] : [...S.cush], cushInn:[...S.cushInn],
     finished:[...S.finished], round:S.round, lastInning:S.lastInning, winners:[...S.winners],
     tp:S.tp, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin
   }));
@@ -680,7 +681,8 @@ function tapZone(i){
   if (i === S.turn) {
     if (!S.done[i]) {
       pushHist();
-      S.sc[i]++; S.tp++;
+      if (!S.indSc) S.indSc = [...S.sc];
+      S.sc[i]++; S.indSc[i]++; S.tp++;
       if (S.type === '팀전' && S.sc.length === 4) S.sc[(i+2)%4]++;
       vib(12); popScore(i);
       if (S.sc[i] >= S.targets[i]) {
@@ -691,7 +693,8 @@ function tapZone(i){
       }
     } else if (S.cush[i] < S.round) {
       pushHist();
-      S.cush[i]++; S.tp++;
+      if (!S.indCush) S.indCush = [...S.cush];
+      S.cush[i]++; S.indCush[i]++; S.tp++;
       if (S.type === '팀전' && S.sc.length === 4) S.cush[(i+2)%4]++;
       vib(12); popScore(i);
       if (S.tp > S.br[i]) S.br[i] = S.tp;
@@ -795,15 +798,15 @@ window.undoScore = function(i){
   if (!S || S.fin || i !== S.turn || S.tp === 0) return;
   pushHist();
   if (S.done[i] && S.cush[i] === 0) {
-    S.done[i] = false; S.cushInn[i]--; S.sc[i]--; S.tp--;
+    S.done[i] = false; S.cushInn[i]--; S.sc[i]--; if(S.indSc) S.indSc[i]--; S.tp--;
   } else if (S.done[i] && S.cush[i] > 0) {
-    S.cush[i]--; S.tp--;
+    S.cush[i]--; if(S.indCush) S.indCush[i]--; S.tp--;
     if (S.cush[i] < S.round) {
       S.lastInning = false;
       S.winners = S.winners.filter(x => x !== i && x !== ((i+2)%4));
     }
   } else {
-    S.sc[i]--; S.tp--;
+    S.sc[i]--; if(S.indSc) S.indSc[i]--; S.tp--;
   }
   
   if (S.type === '팀전' && S.sc.length === 4) {
@@ -912,8 +915,8 @@ function win(winnerIdx){
         const isWin = S.winners.includes(i);
         pl.push({
           id: S.pids[i] || null, name: S.names[i], win: isWin,
-          score: S.sc[i], target: S.targets[i], innings: S.inn[i],
-          highRun: S.br[i], misses: S.miss[i], cushMade: S.cush[i],
+          score: S.indSc ? S.indSc[i] : S.sc[i], target: S.targets[i], innings: S.inn[i],
+          highRun: S.br[i], misses: S.miss[i], cushMade: S.indCush ? S.indCush[i] : S.cush[i],
           cushInn: S.cushInn[i], isTeam: isTeam
         });
       }
