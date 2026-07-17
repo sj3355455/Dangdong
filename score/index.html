@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v53</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v54</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v53</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v54</span>
   </div>
 </div>
 
@@ -911,8 +911,8 @@ function win(winnerIdx){
       if (isTeam) {
         for(let t=0; t<2; t++) {
           const tW = S.winners.includes(t);
-          pl.push({ id: S.pids[t*2] || null, name: S.names[t*2], win: tW, score: S.sc[t*2], target: S.targets[t*2], innings: S.inn[t*2], highRun: S.br[t*2], misses: S.miss[t*2], cushMade: S.cush[t*2], cushInn: S.cushInn[t*2] });
-          pl.push({ id: S.pids[t*2+1] || null, name: S.names[t*2+1], win: tW, score: S.sc[t*2+1], target: S.targets[t*2+1], innings: S.inn[t*2+1], highRun: S.br[t*2+1], misses: S.miss[t*2+1], cushMade: S.cush[t*2+1], cushInn: S.cushInn[t*2+1] });
+          pl.push({ id: S.pids[t*2] || null, name: S.names[t*2], win: tW, score: S.sc[t*2], target: S.targets[t*2], innings: S.inn[t*2], highRun: S.br[t*2], misses: S.miss[t*2], cushMade: S.cush[t*2], cushInn: S.cushInn[t*2], isTeam: true });
+          pl.push({ id: S.pids[t*2+1] || null, name: S.names[t*2+1], win: tW, score: S.sc[t*2+1], target: S.targets[t*2+1], innings: S.inn[t*2+1], highRun: S.br[t*2+1], misses: S.miss[t*2+1], cushMade: S.cush[t*2+1], cushInn: S.cushInn[t*2+1], isTeam: true });
         }
       } else {
         for(let i=0; i<N; i++){
@@ -920,7 +920,7 @@ function win(winnerIdx){
         }
       }
       
-      const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl, game_type: S.type };
+      const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl };
       api.submitGame(payload).then(() => {
         S.saved = true; save();
         $('#saveStat').className = 'savestat ok'; $('#saveStat').textContent = '기록 저장 완료 ✓';
