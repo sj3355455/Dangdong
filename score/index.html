@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v63</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v64</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v63</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v64</span>
   </div>
 </div>
 
@@ -747,24 +747,19 @@ function passTurnInner(isMiss) {
   const isTeam = S.type === '팀전' && S.sc.length === 4;
   const is2p = S.sc.length === 2;
 
+  let inningEnded = false;
   if (isTeam || is2p) {
     const teamOf = i => isTeam ? (i % 2) : i;
-    if (teamOf(prevTurn) !== teamOf(S.first)) {
-      if (S.lastInning) endInning();
-    }
+    if (teamOf(prevTurn) !== teamOf(S.first)) inningEnded = true;
   } else {
-    if (S.lastInning) {
-      S.winners.forEach(w => {
-         if (!S.finished[w]) {
-           S.finished[w] = true; 
-           toast(`${S.names[w]} 완주!`);
-         }
-      });
-      S.lastInning = false;
+    const activeInns = S.inn.filter((_, idx) => !S.finished[idx]);
+    if (activeInns.length > 0 && activeInns.every(v => v === activeInns[0])) {
+      inningEnded = true;
     }
-    if (activePlayerCount() <= 1) {
-       endInning();
-    }
+  }
+
+  if (inningEnded && S.lastInning) {
+    endInning();
   }
 }
 
@@ -792,9 +787,6 @@ function endInning() {
       }
       save(); render(); return win(S.winners[0]);
     } else {
-      for(let i=0; i<S.sc.length; i++) {
-        if (!S.finished[i] && !S.winners.includes(i)) S.winners.push(i);
-      }
       save(); render(); return win(S.winners[0]);
     }
   }
@@ -968,8 +960,8 @@ $('#btnWinCont').onclick = () => {
     S.fin = true; save(); return;
   }
   
-  // Set turn to the next non-finished player
-  S.turn = nextTurnIndex(S.turn - 1);
+  // Set turn to the next non-finished player if current is finished
+  if (S.finished[S.turn]) S.turn = nextTurnIndex(S.turn);
   save(); render();
 };
 
