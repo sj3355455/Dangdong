@@ -170,7 +170,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v54</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v55</span>
   </div>
 </div>
 
@@ -204,7 +204,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v54</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v55</span>
   </div>
 </div>
 
@@ -908,16 +908,14 @@ function win(winnerIdx){
     if (auth) {
       $('#saveStat').className = 'savestat'; $('#saveStat').textContent = '서버에 기록 저장 중...';
       const pl = [];
-      if (isTeam) {
-        for(let t=0; t<2; t++) {
-          const tW = S.winners.includes(t);
-          pl.push({ id: S.pids[t*2] || null, name: S.names[t*2], win: tW, score: S.sc[t*2], target: S.targets[t*2], innings: S.inn[t*2], highRun: S.br[t*2], misses: S.miss[t*2], cushMade: S.cush[t*2], cushInn: S.cushInn[t*2], isTeam: true });
-          pl.push({ id: S.pids[t*2+1] || null, name: S.names[t*2+1], win: tW, score: S.sc[t*2+1], target: S.targets[t*2+1], innings: S.inn[t*2+1], highRun: S.br[t*2+1], misses: S.miss[t*2+1], cushMade: S.cush[t*2+1], cushInn: S.cushInn[t*2+1], isTeam: true });
-        }
-      } else {
-        for(let i=0; i<N; i++){
-          pl.push({ id: S.pids[i] || null, name: S.names[i], win: S.winners.includes(i), score: S.sc[i], target: S.targets[i], innings: S.inn[i], highRun: S.br[i], misses: S.miss[i], cushMade: S.cush[i], cushInn: S.cushInn[i] });
-        }
+      for(let i=0; i<N; i++){
+        const isWin = S.winners.includes(i);
+        pl.push({
+          id: S.pids[i] || null, name: S.names[i], win: isWin,
+          score: S.sc[i], target: S.targets[i], innings: S.inn[i],
+          highRun: S.br[i], misses: S.miss[i], cushMade: S.cush[i],
+          cushInn: S.cushInn[i], isTeam: isTeam
+        });
       }
       
       const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl };
@@ -990,11 +988,26 @@ async function queueFlush(){
   if (!navigator.onLine) return;
   let q = lsGet(LS_QUEUE, []);
   if (!q.length) return;
-  try {
-    for (const p of q) await api.submitGame(p);
-    lsSet(LS_QUEUE, []);
-    toast(`오프라인 기록 ${q.length}건 동기화 완료!`);
-  } catch(e){}
+  let newQ = [];
+  let sent = 0;
+  for (const p of q) {
+    try {
+      await api.submitGame(p);
+      sent++;
+    } catch(e) {
+      if (e.message && e.message.includes('fetch error')) {
+        // network error, keep in queue
+        newQ.push(p);
+      } else if (e.message && e.message.includes('Failed to fetch')) {
+        newQ.push(p);
+      } else {
+        // likely 4xx bad request from supabase, discard to prevent blocking
+        console.error('Discarding bad payload', e);
+      }
+    }
+  }
+  lsSet(LS_QUEUE, newQ);
+  if (sent > 0) toast(`오프라인 기록 ${sent}건 동기화 완료!`);
 }
 
 function init(){
