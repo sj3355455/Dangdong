@@ -102,8 +102,9 @@ select.field{appearance:none;background-image:
 @media (orientation:landscape){
   .zone .runbadge{top:auto;bottom:14px;right:14px}
 }
-.minusbtn{position:absolute;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;
+.minusbtn{display:none;position:absolute;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;
   padding:10px 18px;font-weight:800;font-size:1rem;backdrop-filter:blur(4px); z-index:11;}
+.zone.on .minusbtn{display:block}
 .minusbtn:active{background:var(--danger)}
 .zone .minusbtn{top:calc(12px + var(--sat));left:14px}
 @media (orientation:landscape){ .zone .minusbtn{top:auto;bottom:14px;left:14px} }
@@ -174,7 +175,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v78</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v79</span>
   </div>
 </div>
 
@@ -208,7 +209,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v78</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v79</span>
   </div>
 </div>
 

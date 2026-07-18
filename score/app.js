@@ -389,7 +389,7 @@ function buildGameZones() {
     
     gameHtml += `
       <div class="zone" id="zone${i}">
-        <button class="minusbtn" id="mbtn${i}">-1</button>
+        <button class="minusbtn" id="mbtn${i}">파울</button>
         <span class="runbadge" id="run${i}">+0</span>
         <div class="zname">
           <div class="zname-text"><span id="gball${i}"></span><span id="gname${i}">${esc(zname)}</span></div>
@@ -412,7 +412,7 @@ function buildGameZones() {
       tapZone(i);
     });
     $('#zone'+i).addEventListener('contextmenu', e => e.preventDefault());
-    $('#mbtn'+i).addEventListener('pointerdown', e => { e.stopPropagation(); undoScore(i); });
+    $('#mbtn'+i).addEventListener('pointerdown', e => { e.stopPropagation(); foul(i); });
   }
   
   if ($('#btnUndo')) {
@@ -558,26 +558,28 @@ window.undoTurn = function(){
   } catch(e){}
 };
 
-window.undoScore = function(i){
-  if (!S || S.fin || i !== S.turn || S.tp === 0) return;
+// 파울: 현재 치는 선수의 점수를 실제로 1점 깎고(음수 허용) 턴을 넘긴다.
+window.foul = function(i){
+  if (!S || S.fin || i !== S.turn || S.finished[i]) return;
   pushHist();
-  if (S.done[i] && S.cush[i] === 0) {
-    S.done[i] = false; S.cushInn[i]--; S.sc[i]--; if(S.indSc) S.indSc[i]--; S.tp--;
-  } else if (S.done[i] && S.cush[i] > 0) {
-    S.cush[i]--; if(S.indCush) S.indCush[i]--; S.tp--;
-    if (S.cush[i] < S.round) {
-      S.lastInning = false;
-      S.winners = S.winners.filter(x => x !== i && x !== ((i+2)%4));
-    }
-  } else {
-    S.sc[i]--; if(S.indSc) S.indSc[i]--; S.tp--;
+  S.sc[i]--; if (S.indSc) S.indSc[i]--;
+  // 이미 목표를 달성해 마무리 쿠션 중이었는데 점수가 목표 밑으로 내려가면 완주 상태 해제
+  if (S.done[i] && S.sc[i] < S.targets[i]) {
+    S.done[i] = false;
+    S.cush[i] = 0; if (S.indCush) S.indCush[i] = 0;
+    S.lastInning = false;
+    S.winners = S.winners.filter(x => x !== i && x !== ((i+2)%4));
   }
-  
   if (S.type === '팀전' && S.sc.length === 4) {
     const p = (i+2)%4;
     S.sc[p] = S.sc[i]; S.done[p] = S.done[i]; S.cush[p] = S.cush[i];
+    if (S.indSc) S.indSc[p] = S.indSc[i];
+    if (S.indCush) S.indCush[p] = S.indCush[i];
   }
-  vib(15); popScore(i);
+  vib(30); popScore(i);
+  toast('⚠️ 파울 −1');
+  // 파울은 이닝 종료 → 턴 넘김 (스냅샷은 위에서 이미 저장했으므로 skipHist)
+  passTurnInner(true, true);
   save(); render();
 };
 
