@@ -42,8 +42,6 @@ select.field{appearance:none;background-image:
 .dot{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 -2px 4px rgba(0,0,0,.15);flex-shrink:0}
 .dot.w{background:linear-gradient(135deg,var(--wz-hi),var(--wz))}
 .dot.y{background:linear-gradient(135deg,var(--yz-hi),var(--yz))}
-.dot.r{background:linear-gradient(135deg,var(--rz-hi),var(--rz))}
-.dot.b{background:linear-gradient(135deg,var(--bz-hi),var(--bz))}
 .plbl{font-size:.85rem;font-weight:700;padding:3px 8px;border-radius:6px;margin-right:auto}
 .plbl.me{background:rgba(0,122,255,.15);color:var(--accent)}
 .plbl.opp{background:#232a33;color:var(--muted)}
@@ -176,7 +174,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v76</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v77</span>
   </div>
 </div>
 
@@ -210,7 +208,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v76</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v77</span>
   </div>
 </div>
 
@@ -747,8 +745,8 @@ function tapZone(i){
       if (!S.winners.includes(i)) S.winners.push(i);
       if (S.type === '팀전' && S.sc.length === 4) { if (!S.winners.includes((i+2)%4)) S.winners.push((i+2)%4); }
       toast(`🎯 목표 달성!`);
-      
-      passTurnInner(false);
+
+      passTurnInner(false, true);
     } else {
       vib(8);
     }
@@ -758,8 +756,8 @@ function tapZone(i){
   save(); render();
 }
 
-function passTurnInner(isMiss) {
-  pushHist();
+function passTurnInner(isMiss, skipHist) {
+  if (!skipHist) pushHist();
   if (S.tp > S.br[S.turn]) S.br[S.turn] = S.tp;
   if (isMiss && S.tp === 0) S.miss[S.turn]++;
   
@@ -791,11 +789,6 @@ function passTurnInner(isMiss) {
   }
 }
 
-window.passTurn = function(){
-  if (!S || S.fin || S.finished[S.turn]) return;
-  passTurnInner(true);
-  save(); render();
-};
 
 function endInning() {
   const isTeam = S.type === '팀전' && S.sc.length === 4;
@@ -1072,8 +1065,6 @@ async function queueFlush(){
 }
 
 function init(){
-  const tk = new URLSearchParams(window.location.hash.substring(1)).get('access_token');
-  if (tk) { window.location.hash = ''; return toast('로그인 처리되었습니다. 앱을 다시 열어주세요.'); }
   setMode('login');
   if (auth) { if (auth.loginId) $('#aId').value = auth.loginId; loadMembers().then(()=>queueFlush()); }
   else { show('auth'); }
