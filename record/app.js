@@ -229,9 +229,9 @@ const cell = (p, c) => p[c.k]==null ? '—' : (c.fmt ? c.fmt(p[c.k]) : p[c.k]);
 let rankMode='통합', sortKey='avgAvg', sortAsc=false;
 
 function rankRows(mode){
-  if(mode==='통합') return DATA.players.filter(p=>p.games>0);
+  if(mode==='통합') return DATA.players.filter(p=>p.games>0 && p.id);
   return DATA.players
-    .filter(p=>p.modes[mode] && p.modes[mode].games>0)
+    .filter(p=>p.modes[mode] && p.modes[mode].games>0 && p.id)
     .map(p=>({name:p.name, handicap:p.handicap, ...p.modes[mode]}));
 }
 
