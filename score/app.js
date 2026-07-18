@@ -11,7 +11,8 @@ const MANUAL = '__MANUAL__';
 
 let auth = lsGet(LS_AUTH, null);
 let members = lsGet(LS_MEM, []);
-let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:0 });
+let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:0, cushGoal:1 });
+if (prefs.cushGoal == null) prefs.cushGoal = 1;
 let S = lsGet(LS_STATE, null);
 
 const ZCOLORS = ['w','y','w','y'];
@@ -150,6 +151,7 @@ function renderSetupCards(modeChanged = false) {
     mbHtml += `<button id="first${i}" class="${prefs.myBall === i ? 'on' : ''}" onclick="applyMyBall(${i})">${label}</button>`;
   }
   $('#myBallSeg').innerHTML = mbHtml;
+  if($('#cushGoalVal')) $('#cushGoalVal').textContent = prefs.cushGoal || 1;
 
   for (let i = 0; i < totalPlayers; i++) {
     fillSelect(i, modeChanged);
@@ -314,6 +316,20 @@ $('#btnTargetPlus').onclick = (e) => {
   lsSet(LS_PREFS, prefs); vib(8);
 };
 
+window.openCushPopup = function() {
+  $('#cvalEdit').textContent = prefs.cushGoal || 1;
+  $('#cushOvl').classList.add('on');
+};
+function stepCush(d){
+  prefs.cushGoal = Math.max(1, Math.min(9, (prefs.cushGoal || 1) + d));
+  $('#cvalEdit').textContent = prefs.cushGoal;
+  if($('#cushGoalVal')) $('#cushGoalVal').textContent = prefs.cushGoal;
+  lsSet(LS_PREFS, prefs); vib(8);
+}
+$('#btnCushMinus').onclick = (e) => { e.preventDefault(); e.stopPropagation(); stepCush(-1); };
+$('#btnCushPlus').onclick  = (e) => { e.preventDefault(); e.stopPropagation(); stepCush(1); };
+$('#btnCushClose').onclick = () => $('#cushOvl').classList.remove('on');
+
 window.applyMyBall = function(i) {
   if (!auth) return toast('로그인이 필요합니다.');
   
@@ -377,8 +393,9 @@ $('#btnStart').onclick = () => {
     done: Array(N).fill(false),
     cush: Array(N).fill(0), indCush: Array(N).fill(0), cushInn: Array(N).fill(0),
     finished: Array(N).fill(false), rank: Array(N).fill(0),
-    round: 1, lastInning: false, winners: [],
+    round: prefs.cushGoal || 1, lastInning: false, winners: [],
     tp: 0, turn: 0, first: 0, tc: 0,
+    timeMs: Array(N).fill(0), turnStart: Date.now(),
     hist: [], fin: false, saved: false, t0: Date.now()
   };
   save(); buildGameZones(); render(); show('game');
@@ -394,9 +411,22 @@ function save(){ lsSet(LS_STATE, S); }
 let wl = null;
 async function wakeLock(){ try { wl = await navigator.wakeLock.request('screen'); } catch(e){} }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { if (S) wakeLock(); queueFlush(); }
+  if (document.visibilityState === 'visible') {
+    if (S) wakeLock();
+    if (S && S.timeMs && !S.fin) S.turnStart = Date.now();   // 백그라운드 대기 시간은 선수 시간에 넣지 않음
+    queueFlush();
+  }
   else save();
 });
+
+// 게임 시계: 총 경과 시간 표시
+setInterval(() => {
+  if (!S || S.fin) return;
+  const el = $('#gameClock');
+  if (!el) return;
+  const secs = Math.floor((Date.now() - S.t0) / 1000);
+  el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+}, 1000);
 
 function buildGameZones() {
   if (!S) return;
@@ -450,7 +480,8 @@ function pushHist(){
     inn:[...S.inn], br:[...S.br], miss:[...S.miss],
     done:[...S.done], cush:[...S.cush], indCush: S.indCush ? [...S.indCush] : [...S.cush], cushInn:[...S.cushInn],
     finished:[...S.finished], rank: S.rank ? [...S.rank] : [], round:S.round, lastInning:S.lastInning, winners:[...S.winners],
-    tp:S.tp, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin
+    tp:S.tp, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin,
+    timeMs: S.timeMs ? [...S.timeMs] : [], turnStart: S.turnStart
   }));
 }
 
@@ -525,6 +556,12 @@ function passTurnInner(isMiss, skipHist) {
   if (S.done[S.turn]) S.cushInn[S.turn]++;
   
   const prevTurn = S.turn;
+  // 직전 선수가 이번 턴에 소모한 시간을 누적
+  if (S.timeMs) {
+    const nowT = Date.now();
+    S.timeMs[prevTurn] = (S.timeMs[prevTurn] || 0) + (nowT - (S.turnStart || nowT));
+    S.turnStart = nowT;
+  }
   const next = nextTurnIndex(S.turn);
   S.turn = next;
   S.tc++;
@@ -692,6 +729,11 @@ function saveGame(){
     return;
   }
   const N = S.sc.length, isTeam = S.type === '팀전';
+  // 마지막(현재) 턴의 진행 시간을 마감 처리
+  if (S.timeMs && S.turnStart != null) {
+    S.timeMs[S.turn] = (S.timeMs[S.turn] || 0) + (Date.now() - S.turnStart);
+    S.turnStart = Date.now();
+  }
   const lastRank = Math.max(0, ...S.rank) + 1;   // 끝까지 못 친 선수들의 공동 등수
   const pl = [];
   for (let i = 0; i < N; i++) {
@@ -702,7 +744,7 @@ function saveGame(){
       id: S.pids[i] || null, name: S.names[i], win: rank === 1, rank,
       score: indS, target: S.targets[i], innings: S.inn[i],
       highRun: S.br[i], misses: S.miss[i], cushMade: indC,
-      cushInn: S.cushInn[i], isTeam
+      cushInn: S.cushInn[i], timeMs: (S.timeMs && S.timeMs[i]) || 0, isTeam
     });
   }
   const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl };
@@ -794,8 +836,9 @@ $('#btnMenuRestart').onclick = () => {
     const N = S.sc.length;
     Object.assign(S, { sc:Array(N).fill(0), inn:Array(N).fill(0), br:Array(N).fill(0), miss:Array(N).fill(0),
                        done:Array(N).fill(false), cush:Array(N).fill(0), cushInn:Array(N).fill(0),
-                       finished:Array(N).fill(false), round:1, lastInning:false, winners:[],
-                       tp:0, turn:S.first, tc:0, hist:[], fin:false, saved:false, t0:Date.now() });
+                       finished:Array(N).fill(false), round:prefs.cushGoal||1, lastInning:false, winners:[],
+                       tp:0, turn:S.first, tc:0, timeMs:Array(N).fill(0), turnStart:Date.now(),
+                       hist:[], fin:false, saved:false, t0:Date.now() });
     save(); buildGameZones(); render(); toast('점수가 초기화되었습니다.');
   }
 };
@@ -851,6 +894,7 @@ function init(){
     if (typeof S.tc !== 'number') {
       S.tc = S.inn.reduce((a, b) => a + b, 0);
     }
+    if (!Array.isArray(S.timeMs)) { S.timeMs = Array(S.sc.length).fill(0); S.turnStart = Date.now(); }
     save();
   }
 

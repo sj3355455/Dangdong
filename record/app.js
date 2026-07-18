@@ -120,6 +120,7 @@ function processData(games, members) {
         highRun: p.highRun ?? p.high_run ?? 0,
         cushMade: p.cushMade ?? p.cush_made ?? 0,
         cushInn: p.cushInn ?? p.cush_inn ?? 0,
+        timeMs: p.timeMs ?? p.time_ms ?? 0,
         win: p.win,
         adjPt: pt
       });
@@ -157,6 +158,8 @@ function processData(games, members) {
     let totalMisses = 0;
     let cushMade = 0;
     let cushInn = 0;
+    let sumTime = 0;      // 시간 기록이 있는 경기의 누적 소모 시간(ms)
+    let sumTimeInn = 0;   // 그 경기들의 이닝 합 (평균 인터벌 분모)
 
     for (const h of p.history) {
       sumInnings += h.inning;
@@ -165,11 +168,14 @@ function processData(games, members) {
       if (h.highRun > maxHr) maxHr = h.highRun;
       cushMade += h.cushMade;
       cushInn += h.cushInn;
+      if (h.timeMs > 0) { sumTime += h.timeMs; sumTimeInn += h.inning; }
     }
 
     p.avgAvg = sumInnings > 0 ? (sumScore / sumInnings) : 0;
     p.bestHr = maxHr;
     p.hitRate = sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0;
+    // 평균 인터벌 = 이닝당 평균 소모 시간(초). 시간 기록이 없으면 null → '—'
+    p.avgInterval = sumTimeInn > 0 ? (sumTime / sumTimeInn) / 1000 : null;
     // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
     p.cushRate = cushInn > 0 ? (cushMade / cushInn) * 100 : null;
   }
@@ -197,6 +203,7 @@ const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보�
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
+  {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
 ];
 const COLS_VS = [    // 2인 · 팀전: 두 진영 승부
   COL_NAME, COL_HDCP,
