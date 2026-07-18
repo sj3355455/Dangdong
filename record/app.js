@@ -70,8 +70,19 @@ function processData(games, members) {
 
     for (const p of g.players) {
       const pName = p.name || p.id || "알 수 없음";
-      // 회원은 계정 id로 묶어 이름이 바뀌어도 같은 사람으로 집계. 게스트는 이름으로 묶는다.
-      const key = p.id ? ('id:' + p.id) : ('nm:' + pName);
+      let key;
+      if (p.id) {
+        key = 'id:' + p.id;
+      } else {
+        // 게스트 기록(id 없음)일 때, 동일한 이름의 가입된 회원이 있다면 그 회원의 기록으로 자동 병합
+        const m = members && members.find(x => x.display_name === pName);
+        if (m) {
+          p.id = m.id;
+          key = 'id:' + m.id;
+        } else {
+          key = 'nm:' + pName;
+        }
+      }
       if (!pmap[key]) {
         pmap[key] = {
           name: pName,
