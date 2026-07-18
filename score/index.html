@@ -114,14 +114,14 @@ select.field{appearance:none;background-image:
   padding:calc(8px + var(--sat)) 12px 6px;z-index:5;flex-shrink:0}
 @media (orientation:landscape){ #topbar{flex-direction:column;padding:calc(8px + var(--sat)) 8px 8px calc(8px + env(safe-area-inset-left))} }
 #mid{display:flex;align-items:center;justify-content:center;
-  padding:12px;padding-bottom:calc(12px + var(--sab));gap:20px;z-index:5;
+  padding:16px;padding-bottom:calc(24px + var(--sab));gap:24px;z-index:5;
   background:#0f1216;border-top:1px solid #1a1f26;flex-shrink:0}
-@media (orientation:landscape){ #mid{flex-direction:column;padding:16px;padding-right:calc(16px + var(--sab));border-top:none;border-left:1px solid #1a1f26} }
+@media (orientation:landscape){ #mid{flex-direction:column;padding:16px;padding-right:calc(24px + var(--sab));border-top:none;border-left:1px solid #1a1f26} }
 #mid>*{pointer-events:auto}
 .midpill{background:rgba(10,12,15,.88);border:1px solid var(--line);color:var(--text);
   border-radius:999px;padding:12px 26px;font-weight:800;font-size:1.25rem;
   font-variant-numeric:tabular-nums;backdrop-filter:blur(6px);white-space:nowrap}
-.midbtn{width:60px;height:60px;border-radius:50%;flex-shrink:0;background:var(--card);
+.midbtn{width:90px;height:60px;border-radius:30px;flex-shrink:0;background:var(--card);
   border:1px solid var(--line);color:var(--text);font-size:1.6rem;line-height:1;padding:0;
   display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer;
   box-shadow:0 4px 12px rgba(0,0,0,.2);transition:transform .1s}
@@ -179,7 +179,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v99</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v100</span>
   </div>
 </div>
 
@@ -220,7 +220,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v99</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v100</span>
   </div>
 </div>
 
