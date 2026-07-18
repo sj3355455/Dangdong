@@ -72,6 +72,7 @@ select.field{appearance:none;background-image:
 
 #game{flex-direction:column;align-items:stretch}
 #gameZones{flex:1;display:flex;flex-direction:column;gap:16px;width:100%;height:100%}
+#gameZones.paused{pointer-events:none;filter:brightness(.4) saturate(.5)}
 @media (orientation:landscape){ #gameZones{flex-direction:row} }
 @media (orientation:landscape){ #game{flex-direction:row} }
 .zone{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;
@@ -175,7 +176,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v92</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v93</span>
   </div>
 </div>
 
@@ -216,7 +217,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v92</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v93</span>
   </div>
 </div>
 
@@ -227,6 +228,7 @@ select.field{appearance:none;background-image:
     <button class="midbtn" id="btnUndo" title="되돌리기">↩</button>
     <span class="midpill" id="inning">1이닝</span>
     <span class="midpill" id="gameClock" title="경과 시간">0:00</span>
+    <button class="midbtn" id="btnPause" title="일시정지" onclick="togglePause()">⏸</button>
     <button class="midbtn" id="btnMenu" title="메뉴">☰</button>
   </div>
 </div>

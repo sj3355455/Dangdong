@@ -408,20 +408,47 @@ async function wakeLock(){ try { wl = await navigator.wakeLock.request('screen')
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     if (S) wakeLock();
-    if (S && S.timeMs && !S.fin) S.turnStart = Date.now();   // 백그라운드 대기 시간은 선수 시간에 넣지 않음
+    if (S && S.timeMs && !S.fin && !S.paused) S.turnStart = Date.now();   // 백그라운드 대기 시간은 선수 시간에 넣지 않음
     queueFlush();
   }
   else save();
 });
 
-// 게임 시계: 총 경과 시간 표시
+// 게임 시계: 총 경과 시간 표시 (일시정지된 시간은 제외)
 setInterval(() => {
   if (!S || S.fin) return;
   const el = $('#gameClock');
   if (!el) return;
-  const secs = Math.floor((Date.now() - S.t0) / 1000);
+  if (S.paused) return;   // 일시정지 중엔 갱신 안 함(고정 표시)
+  const pausedMs = S.pausedMs || 0;
+  const secs = Math.floor((Date.now() - S.t0 - pausedMs) / 1000);
   el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
 }, 1000);
+
+window.togglePause = function(){
+  if (!S || S.fin) return;
+  const now = Date.now();
+  if (!S.paused) {
+    // 일시정지 시작: 현재 턴 소모 시간을 마감하고, 시계·턴 누적을 멈춘다
+    if (S.timeMs && S.turnStart != null) {
+      S.timeMs[S.turn] = (S.timeMs[S.turn] || 0) + (now - S.turnStart);
+    }
+    S.turnStart = null;
+    S.paused = true;
+    S.pauseStart = now;
+    $('#gameZones').classList.add('paused');
+    $('#btnPause').textContent = '▶';
+    $('#gameClock').textContent += ' ⏸';
+  } else {
+    // 재개: 정지 구간을 누적 정지시간에 더하고, 턴 타이머를 다시 시작
+    S.pausedMs = (S.pausedMs || 0) + (now - (S.pauseStart || now));
+    S.paused = false;
+    S.turnStart = now;
+    $('#gameZones').classList.remove('paused');
+    $('#btnPause').textContent = '⏸';
+  }
+  save();
+};
 
 function buildGameZones() {
   if (!S) return;
@@ -511,7 +538,7 @@ function markGoalReached(i){
 }
 
 function tapZone(i){
-  if (!S || S.fin || S.finished[i]) return;
+  if (!S || S.fin || S.finished[i] || S.paused) return;
 
   if (i === S.turn) {
     if (!S.done[i]) {
@@ -630,7 +657,7 @@ window.undoTurn = function(){
 
 // 파울: 현재 치는 선수의 점수를 실제로 1점 깎고(음수 허용) 턴을 넘긴다.
 window.foul = function(i){
-  if (!S || S.fin || i !== S.turn || S.finished[i]) return;
+  if (!S || S.fin || i !== S.turn || S.finished[i] || S.paused) return;
   pushHist();
   S.sc[i]--; if (S.indSc) S.indSc[i]--;
   // 이미 목표를 달성해 마무리 쿠션 중이었는데 점수가 목표 밑으로 내려가면 완주 상태 해제
@@ -909,6 +936,12 @@ function init(){
 
   if (S && S.sc && !S.fin) {
     buildGameZones(); render(); show('game'); queueFlush();
+    if (S.paused) {
+      $('#gameZones').classList.add('paused');
+      $('#btnPause').textContent = '▶';
+      // 앱이 백그라운드/종료돼 있던 동안은 일시정지 구간에 포함시켜 시계에서 계속 제외
+      S.pauseStart = Date.now();
+    }
   } else if (auth) {
     syncSetup(); show('setup');
   }
