@@ -112,6 +112,7 @@ function processData(games, members) {
       const average = innings ? (p.score / innings) : 0;
       
       st.history.unshift({
+        id: g.id,
         date: dateStr,
         opponents: opp,
         score: p.score,
@@ -369,7 +370,7 @@ function showPlayer(name){
       <div class="scroll"><table>
         <thead><tr><th class="name">날짜</th><th class="name">상대</th><th>점수</th>
           <th>이닝</th><th>에버</th><th>하이런</th><th>결과</th></tr></thead>
-        <tbody>${[...h].reverse().map(r=>`<tr>
+        <tbody>${[...h].reverse().map(r=>`<tr onclick="showGame('${r.id}')" style="cursor:pointer">
           <td class="name">${esc(r.date)}</td><td class="name">${esc(r.opponents)}</td>
           <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
           <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('')}
