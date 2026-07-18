@@ -437,15 +437,14 @@ window.togglePause = function(){
     S.paused = true;
     S.pauseStart = now;
     $('#gameZones').classList.add('paused');
-    $('#btnPause').textContent = '▶';
-    $('#gameClock').textContent += ' ⏸';
+    $('#btnPause').textContent = '►';
   } else {
     // 재개: 정지 구간을 누적 정지시간에 더하고, 턴 타이머를 다시 시작
     S.pausedMs = (S.pausedMs || 0) + (now - (S.pauseStart || now));
     S.paused = false;
     S.turnStart = now;
     $('#gameZones').classList.remove('paused');
-    $('#btnPause').textContent = '⏸';
+    $('#btnPause').textContent = '❚❚';
   }
   save();
 };
@@ -736,9 +735,7 @@ function render(){
   }
   
   if ($('#inning')) {
-    if (S.lastInning) $('#inning').textContent = '⏳ 후구';
-    else if (S.round > 1) $('#inning').textContent = `🔥 쿠션 ${S.round}`;
-    else $('#inning').textContent = `${Math.max(...S.inn) + 1} 이닝`;
+    $('#inning').textContent = `${Math.max(...S.inn) + 1} 이닝`;
   }
 }
 
@@ -938,7 +935,7 @@ function init(){
     buildGameZones(); render(); show('game'); queueFlush();
     if (S.paused) {
       $('#gameZones').classList.add('paused');
-      $('#btnPause').textContent = '▶';
+      $('#btnPause').textContent = '►';
       // 앱이 백그라운드/종료돼 있던 동안은 일시정지 구간에 포함시켜 시계에서 계속 제외
       S.pauseStart = Date.now();
     }

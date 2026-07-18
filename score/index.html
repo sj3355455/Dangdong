@@ -110,6 +110,9 @@ select.field{appearance:none;background-image:
 .zone .minusbtn{top:calc(12px + var(--sat));left:14px}
 @media (orientation:landscape){ .zone .minusbtn{top:auto;bottom:14px;left:14px} }
 
+#topbar{display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:calc(8px + var(--sat)) 12px 6px;z-index:5;flex-shrink:0}
+@media (orientation:landscape){ #topbar{flex-direction:column;padding:calc(8px + var(--sat)) 8px 8px calc(8px + env(safe-area-inset-left))} }
 #mid{display:flex;align-items:center;justify-content:center;
   padding:12px;padding-bottom:calc(12px + var(--sab));gap:12px;z-index:5;
   background:#0f1216;border-top:1px solid #1a1f26;flex-shrink:0}
@@ -118,7 +121,7 @@ select.field{appearance:none;background-image:
 .midpill{background:rgba(10,12,15,.88);border:1px solid var(--line);color:var(--text);
   border-radius:999px;padding:10px 16px;font-weight:800;font-size:.95rem;
   font-variant-numeric:tabular-nums;backdrop-filter:blur(6px);white-space:nowrap}
-.midbtn{width:44px;height:44px;border-radius:50%;background:var(--card);
+.midbtn{width:44px;height:44px;border-radius:50%;flex-shrink:0;background:var(--card);
   border:1px solid var(--line);color:var(--text);font-size:1.2rem;
   display:flex;align-items:center;justify-content:center;cursor:pointer;
   box-shadow:0 4px 12px rgba(0,0,0,.2);transition:transform .1s}
@@ -176,7 +179,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v93</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v94</span>
   </div>
 </div>
 
@@ -217,18 +220,20 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v93</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v94</span>
   </div>
 </div>
 
 <!-- ══ 게임 화면 ══ -->
 <div id="game" class="screen">
+  <div id="topbar">
+    <span class="midpill" id="inning">1 이닝</span>
+    <span class="midpill" id="gameClock" title="경과 시간">0:00</span>
+  </div>
   <div id="gameZones"></div>
   <div id="mid">
     <button class="midbtn" id="btnUndo" title="되돌리기">↩</button>
-    <span class="midpill" id="inning">1이닝</span>
-    <span class="midpill" id="gameClock" title="경과 시간">0:00</span>
-    <button class="midbtn" id="btnPause" title="일시정지" onclick="togglePause()">⏸</button>
+    <button class="midbtn" id="btnPause" title="일시정지" onclick="togglePause()">❚❚</button>
     <button class="midbtn" id="btnMenu" title="메뉴">☰</button>
   </div>
 </div>
