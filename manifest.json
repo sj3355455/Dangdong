@@ -5,7 +5,7 @@
   "lang": "ko",
   "start_url": "/Dangdong/score/",
   "scope": "/Dangdong/",
-  "display": "standalone",
+  "display": "fullscreen",
   "orientation": "any",
   "background_color": "#0e1114",
   "theme_color": "#0e1114",

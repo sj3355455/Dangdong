@@ -5,6 +5,8 @@ const show = id => document.querySelectorAll('.screen').forEach(el => el.style.d
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+const reqFS = () => { try { if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); } catch(e){} };
+const exitFS = () => { try { if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(()=>{}); } catch(e){} };
 
 const LS_AUTH = 'dangScoreAuth', LS_PREFS = 'dangScorePrefs_v4', LS_MEM = 'dangScoreMem', LS_STATE = 'dangScoreState', LS_QUEUE = 'dangScoreQueue';
 const MANUAL = '__MANUAL__';
@@ -274,7 +276,7 @@ function syncSetup(modeChanged = false){
   const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
     if (!confirm('처음 화면으로 돌아갈까요?')) return;
-    auth = null; localStorage.removeItem(LS_AUTH); show('auth');
+    auth = null; localStorage.removeItem(LS_AUTH); exitFS(); show('auth');
   };
   
   document.querySelectorAll('#gameTypeSeg button').forEach(b => {
@@ -393,7 +395,7 @@ $('#btnStart').onclick = () => {
     timeMs: Array(N).fill(0), turnStart: Date.now(),
     hist: [], fin: false, saved: false, t0: Date.now()
   };
-  save(); buildGameZones(); render(); show('game');
+  save(); buildGameZones(); render(); show('game'); reqFS();
   toast(`${isTeam ? TZNAMES[S.first] : S.names[S.first]} 선공으로 시작!`);
 };
 
@@ -830,7 +832,7 @@ function win(winnerIdx){
 // 경기 종료(저장) 후 새 경기 — 꼴등전을 안 하고 바로 끝낼 때도 여기서 저장된다
 $('#btnWinNew').onclick = () => {
   saveGame();
-  $('#winOvl').classList.remove('on'); S = null; save(); show('setup');
+  $('#winOvl').classList.remove('on'); S = null; save(); exitFS(); show('setup');
 };
 
 $('#btnWinCont').onclick = () => {
@@ -860,7 +862,7 @@ $('#btnMenu').onclick = () => $('#menuOvl').classList.add('on');
 $('#btnMenuClose').onclick = () => $('#menuOvl').classList.remove('on');
 $('#btnMenuNew').onclick = () => {
   if(confirm('진행 중인 경기가 사라집니다. 새 경기를 설정할까요?')){
-    $('#menuOvl').classList.remove('on'); S = null; save(); show('setup');
+    $('#menuOvl').classList.remove('on'); S = null; save(); exitFS(); show('setup');
   }
 };
 $('#btnMenuRestart').onclick = () => {
