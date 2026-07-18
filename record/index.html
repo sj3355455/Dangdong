@@ -94,13 +94,16 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
       <button class="tab on" data-v="rank">🏆 순위</button>
       <button class="tab" data-v="games">🕒 경기</button>
     </div>
-    <button class="tab" data-v="me" style="display:flex; align-items:center; gap:4px; padding:6px 12px; margin-right:2px;">
-      <span style="font-size:1.1rem">👤</span> <b id="topUserName">로그인</b>
-    </button>
+    <div style="display:flex; gap:4px; align-items:center;">
+      <button id="btnMyRec" style="display:none; padding:6px 12px; background:var(--card); border:1px solid var(--border); color:var(--text); border-radius:999px; font-weight:600; cursor:pointer; font-size:0.9rem;">📊 내 기록</button>
+      <button class="tab" data-v="me" style="display:flex; align-items:center; gap:4px; padding:6px 12px; margin-right:2px;">
+        <span style="font-size:1.1rem">👤</span> <b id="topUserName">로그인</b>
+      </button>
+    </div>
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v84</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v85</span>
   </div>
 </div>
 <script src="./app.js"></script>

@@ -412,10 +412,7 @@ function renderMe() {
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; margin-top:12px; opacity:0.8;">비밀번호 변경 (변경할 때만 입력)</label>
     <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
     <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
-    <div style="display:flex; gap:8px;">
-      <button id="meRecord" class="bigbtn" style="flex:1; background:var(--card); border:1px solid var(--border); color:var(--text); white-space:nowrap;">📊 내 기록</button>
-      <button id="meSave" class="bigbtn" style="flex:1.5;">저장하기</button>
-    </div>
+    <button id="meSave" class="bigbtn">저장하기</button>
     <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--border); color:#f44336;">로그아웃</button>
   </div>`;
   const myData = DATA.players.find(p => p.name === auth.name);
@@ -423,7 +420,6 @@ function renderMe() {
   d.querySelector('#meName').value = auth.name || '';
   d.querySelector('#meHandicap').value = myHandicap;
   
-  d.querySelector('#meRecord').onclick = () => { showPlayer(auth.name); };
   fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
     headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token }
   })
@@ -541,6 +537,15 @@ function show(v){
   
   const auth = getAuth();
   document.getElementById('topUserName').textContent = auth ? auth.name : '게스트';
+  const myRecBtn = document.getElementById('btnMyRec');
+  if(myRecBtn){
+    if(auth && auth.name && DATA.players.find(p=>p.name===auth.name)) {
+      myRecBtn.style.display = 'block';
+      myRecBtn.onclick = () => showPlayer(auth.name);
+    } else {
+      myRecBtn.style.display = 'none';
+    }
+  }
   
   let node;
   if(v==='rank') node = renderRank();
