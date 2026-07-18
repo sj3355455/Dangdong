@@ -456,10 +456,11 @@ function renderGames(){
 function showGame(id){
   const g = DATA.games.find(v=>v.id===id);
   if(!g) return;
-  // 동순위면 "공동 N등", 아니면 "N등". 등수 오름차순으로 정렬해 표시
+  // 표준 경쟁 순위: 앞선 인원 + 1 (공동 1등이 2명이면 다음은 3등). 동순위면 "공동 N등"
   const rankLabel = p => {
+    const less = g.players.filter(x => x.rank < p.rank).length;
     const same = g.players.filter(x => x.rank === p.rank).length;
-    return (same > 1 ? '공동 ' : '') + p.rank + '등';
+    return (same > 1 ? '공동 ' : '') + (less + 1) + '등';
   };
   const pRows = [...g.players].sort((a,b)=>a.rank-b.rank).map(p => {
     const avg = p.innings ? (p.score / p.innings).toFixed(3) : '0.000';
