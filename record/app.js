@@ -120,7 +120,8 @@ function processData(games, members) {
         highRun: p.highRun ?? p.high_run ?? 0,
         cushMade: p.cushMade ?? p.cush_made ?? 0,
         cushInn: p.cushInn ?? p.cush_inn ?? 0,
-        win: p.win
+        win: p.win,
+        adjPt: pt
       });
     }
   }
@@ -323,9 +324,9 @@ function chart(vals, labels, opt){
 }
 
 const METRICS = [
-  {k:'avg', t:'에버리지', desc:'경기별 에버리지', vals:h=>h.map(r=>r.average), dec:2},
-  {k:'hit', t:'득점률',   desc:'경기별 득점률', vals:h=>h.map(r=>r.inning ? (r.inning-r.miss)/r.inning*100 : 0), max:100, suffix:'%', dec:0},
-  {k:'win', t:'승률',     desc:'그 경기까지의 누적 승률', vals:h=>{let w=0; return h.map((r,i)=>{ if(r.win) w++; return w/(i+1)*100; });}, max:100, suffix:'%', dec:0},
+  {k:'avg', t:'에버리지', desc:'최근 경기부터의 누적/개별 에버리지', vals:h=>h.map(r=>r.average), dec:2},
+  {k:'hit', t:'득점률',   desc:'최근 경기부터의 득점률', vals:h=>h.map(r=>r.inning ? (r.inning-r.miss)/r.inning*100 : 0), max:100, suffix:'%', dec:0},
+  {k:'adj', t:'보정 승률', desc:'그 경기까지의 누적 보정 승률', vals:h=>{let p=0; return h.map((r,i)=>{ p+=(r.adjPt||0); return p/(i+1); });}, max:100, suffix:'%', dec:1},
 ];
 
 function showPlayer(name){
@@ -339,7 +340,6 @@ function showPlayer(name){
       <div class="stats">
         <div class="st"><div class="k">경기</div><div class="v">${p.games}</div></div>
         <div class="st"><div class="k">승 / 패</div><div class="v">${p.wins} / ${p.games-p.wins}</div></div>
-        <div class="st"><div class="k">승률</div><div class="v">${p.winRate.toFixed(0)}%</div></div>
         <div class="st"><div class="k">보정 승률</div><div class="v">${p.adjRate==null?'—':p.adjRate.toFixed(1)+'%'}</div></div>
         <div class="st"><div class="k">에버리지</div><div class="v">${p.avgAvg.toFixed(3)}</div></div>
         <div class="st"><div class="k">쿠션 성공률</div><div class="v">${p.cushRate==null?'—':p.cushRate.toFixed(1)+'%'}</div></div>
@@ -412,13 +412,18 @@ function renderMe() {
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; margin-top:12px; opacity:0.8;">비밀번호 변경 (변경할 때만 입력)</label>
     <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
     <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
-    <button id="meSave" class="bigbtn">저장하기</button>
+    <div style="display:flex; gap:8px;">
+      <button id="meRecord" class="bigbtn" style="flex:1; background:var(--card); border:1px solid var(--border); color:var(--text); white-space:nowrap;">📊 내 기록</button>
+      <button id="meSave" class="bigbtn" style="flex:1.5;">저장하기</button>
+    </div>
     <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--border); color:#f44336;">로그아웃</button>
   </div>`;
   const myData = DATA.players.find(p => p.name === auth.name);
   const myHandicap = myData ? myData.handicap : '';
   d.querySelector('#meName').value = auth.name || '';
   d.querySelector('#meHandicap').value = myHandicap;
+  
+  d.querySelector('#meRecord').onclick = () => { showPlayer(auth.name); };
   fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
     headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token }
   })
