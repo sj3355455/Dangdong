@@ -239,7 +239,7 @@ function renderRank(){
   
   // Re-sort correctly since adjRate is primary fallback for some sortKeys if needed, but above handles the requested keys.
   const subtabs = MODE_TABS.map(m=>
-    `<button class="tab ${m===rankMode?'on':''}" data-m="${m}">${m}</button>`).join('');
+    `<button class="tab ${m===rankMode?'on':''}" data-m="${m}" style="flex:1;padding:8px 4px;text-align:center">${m}</button>`).join('');
   const head = COLS.map(c=>{
     const on = c.k===sortKey;
     const ar = on ? (sortAsc?'▲':'▼') : '↕';
@@ -265,7 +265,7 @@ function renderRank(){
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
   const el = $(`<div class="card">
-      <div class="tabs" style="margin-bottom:14px">${subtabs}</div>
+      <div class="tabs" style="margin-bottom:14px; flex-wrap:nowrap">${subtabs}</div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
   el.querySelectorAll('.tab[data-m]').forEach(t=>t.onclick=()=>{

@@ -187,8 +187,8 @@ function fillSelect(i, isUserAction = false){
   if(!sel) return;
   const cur = prefs.pids[i];
   
-  // 로그인한 사용자 본인은 목록에서 제외
-  const listMembers = members.filter(m => !auth || m.id !== auth.uid);
+  // 본인은 '상대' 슬롯 목록에선 제외하되, 본인이 배정된 '나' 슬롯에선 유지(이름 자동 채움용)
+  const listMembers = members.filter(m => !auth || m.id !== auth.uid || prefs.pids[i] === auth.uid);
   
   sel.innerHTML = listMembers.map(m => `<option value="${esc(m.id)}">${esc(m.display_name)}</option>`).join('') +
     `<option value="${MANUAL}">✏️ 직접 입력</option>`;
