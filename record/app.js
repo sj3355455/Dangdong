@@ -54,6 +54,7 @@ function processData(games, members) {
       players: g.players.map(p => ({
         name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
         rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
+        timeMs: p.timeMs ?? p.time_ms ?? 0,
         target: p.target, score: p.score, innings: p.innings,
         highRun: p.highRun ?? p.high_run ?? 0, misses: p.misses ?? 0, cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0
       }))
@@ -490,25 +491,30 @@ function showGame(id){
   const pRows = [...g.players].sort((a,b)=>a.rank-b.rank).map(p => {
     const avg = p.innings ? (p.score / p.innings).toFixed(3) : '0.000';
     const medal = p.rank===1 ? ' 🏆' : '';
+    const itv = (p.timeMs > 0 && p.innings) ? (p.timeMs / p.innings / 1000).toFixed(1) + '초' : '—';
     return `<tr>
       <td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>${medal}</td>
       <td>${rankLabel(p)}</td>
       <td><b>${p.score}</b> <span class="ar">/ ${p.target||''}</span></td>
       <td>${p.innings}</td>
       <td>${avg}</td>
+      <td>${itv}</td>
       <td>${p.cushInn ? `${p.cushMade}/${p.cushInn}` : '—'}</td>
       <td>${p.highRun}</td>
       <td>${p.misses}</td>
     </tr>`;
   }).join('');
+  // 게임 총 시간 = 선수별 소모 시간 합 (시간 기록이 있는 경기만)
+  const totMs = g.players.reduce((a,p)=>a+(p.timeMs||0), 0);
+  const totStr = totMs > 0 ? ` · 총 ${Math.floor(totMs/60000)}분 ${Math.round(totMs%60000/1000)}초` : '';
   const el = $(`<div>
     <button class="back">← 경기 목록으로</button>
     <div class="card">
       <h2 style="margin:0 0 4px">🎱 ${esc(g.name||g.type)}</h2>
-      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}</div>
+      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}</div>
       <div class="scroll">
         <table class="statgrid">
-          <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>이닝</th><th>에버</th><th>쿠션</th><th>하이런</th><th>공타</th></tr></thead>
+          <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>이닝</th><th>에버</th><th>인터벌</th><th>쿠션</th><th>하이런</th><th>공타</th></tr></thead>
           <tbody>${pRows}</tbody>
         </table>
       </div>

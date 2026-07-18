@@ -151,7 +151,7 @@ function renderSetupCards(modeChanged = false) {
     mbHtml += `<button id="first${i}" class="${prefs.myBall === i ? 'on' : ''}" onclick="applyMyBall(${i})">${label}</button>`;
   }
   $('#myBallSeg').innerHTML = mbHtml;
-  if($('#cushGoalVal')) $('#cushGoalVal').textContent = prefs.cushGoal || 1;
+  syncCushSeg();
 
   for (let i = 0; i < totalPlayers; i++) {
     fillSelect(i, modeChanged);
@@ -316,19 +316,14 @@ $('#btnTargetPlus').onclick = (e) => {
   lsSet(LS_PREFS, prefs); vib(8);
 };
 
-window.openCushPopup = function() {
-  $('#cvalEdit').textContent = prefs.cushGoal || 1;
-  $('#cushOvl').classList.add('on');
-};
-function stepCush(d){
-  prefs.cushGoal = Math.max(1, Math.min(9, (prefs.cushGoal || 1) + d));
-  $('#cvalEdit').textContent = prefs.cushGoal;
-  if($('#cushGoalVal')) $('#cushGoalVal').textContent = prefs.cushGoal;
+window.setCushGoal = function(n){
+  prefs.cushGoal = n;
   lsSet(LS_PREFS, prefs); vib(8);
+  syncCushSeg();
+};
+function syncCushSeg(){
+  [0,1,2].forEach(n => { const b = $('#cushSeg'+n); if(b) b.classList.toggle('on', (prefs.cushGoal ?? 1) === n); });
 }
-$('#btnCushMinus').onclick = (e) => { e.preventDefault(); e.stopPropagation(); stepCush(-1); };
-$('#btnCushPlus').onclick  = (e) => { e.preventDefault(); e.stopPropagation(); stepCush(1); };
-$('#btnCushClose').onclick = () => $('#cushOvl').classList.remove('on');
 
 window.applyMyBall = function(i) {
   if (!auth) return toast('로그인이 필요합니다.');
@@ -508,6 +503,13 @@ function activePlayerCount() {
   return S.finished.filter(x => !x).length;
 }
 
+function markGoalReached(i){
+  S.lastInning = true;
+  if (!S.winners.includes(i)) S.winners.push(i);
+  if (S.type === '팀전' && S.sc.length === 4) { if (!S.winners.includes((i+2)%4)) S.winners.push((i+2)%4); }
+  toast(`🎯 목표 달성!`);
+}
+
 function tapZone(i){
   if (!S || S.fin || S.finished[i]) return;
 
@@ -522,7 +524,13 @@ function tapZone(i){
         S.done[i] = true;
         S.cushInn[i]++;
         if (S.type === '팀전' && S.sc.length === 4) { const p = (i+2)%4; S.done[p] = true; }
-        toast(`🎯 마무리 쿠션!`);
+        if (S.round <= 0) {
+          // 마무리 쿠션 0개 설정: 목표 도달 즉시 달성
+          markGoalReached(i);
+          passTurnInner(false, true);
+        } else {
+          toast(`🎯 마무리 쿠션!`);
+        }
       }
     } else if (S.cush[i] < S.round) {
       pushHist();
@@ -531,13 +539,14 @@ function tapZone(i){
       if (S.type === '팀전' && S.sc.length === 4) S.cush[(i+2)%4]++;
       vib(12); popScore(i);
       if (S.tp > S.br[i]) S.br[i] = S.tp;
-      
-      S.lastInning = true;
-      if (!S.winners.includes(i)) S.winners.push(i);
-      if (S.type === '팀전' && S.sc.length === 4) { if (!S.winners.includes((i+2)%4)) S.winners.push((i+2)%4); }
-      toast(`🎯 목표 달성!`);
 
-      passTurnInner(false, true);
+      if (S.cush[i] >= S.round) {
+        // 설정한 쿠션 개수를 모두 채웠을 때만 목표 달성
+        markGoalReached(i);
+        passTurnInner(false, true);
+      } else {
+        toast(`🎯 쿠션 ${S.cush[i]}/${S.round}`);
+      }
     } else {
       vib(8);
     }
@@ -680,7 +689,7 @@ function render(){
       ballSpan.style.marginRight = '4px';
     }
     
-    if (S.done[i]) {
+    if (S.done[i] && S.round > 0) {
       $('#gsc'+i).innerHTML = `${S.cush[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.round}</span>`;
       $('#gstat'+i).innerHTML = `<span style="color:var(--accent)">마무리 쿠션 단계</span>`;
       $('#gsc'+i).style.fontSize = 'clamp(40px, 15vmin, 100px)';
@@ -782,7 +791,7 @@ function win(winnerIdx){
     const nm = isTeam ? `${i%2===0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
     const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
     const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
-    const scStr = S.done[i] ? `쿠션 ${indC}/${S.round}` : `${indS}/${S.targets[i]}`;
+    const scStr = (S.done[i] && S.round > 0) ? `쿠션 ${indC}/${S.round}` : `${indS}/${S.targets[i]}`;
     const ev = S.inn[i] ? (indS / S.inn[i]).toFixed(3) : '0.000';
     const rankTag = S.rank[i] ? ` <span style="opacity:.6">${S.rank[i]}위</span>` : '';
     html += `<tr><td>${esc(nm)}${rankTag}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
