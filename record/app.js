@@ -58,6 +58,14 @@ function processData(games, members) {
       }))
     });
 
+    // 게임 내 각 선수의 평균순위(분수). 동순위는 공동 점유 구간의 평균: 공동 2등 = 2.5, 공동 3등 = 3.5
+    const ranks = g.players.map(pp => (pp.rank != null ? pp.rank : (pp.win ? 1 : 2)));
+    const fracRank = idx => {
+      const r = ranks[idx]; let less = 0, eq = 0;
+      for (const rr of ranks) { if (rr < r) less++; else if (rr === r) eq++; }
+      return less + (eq + 1) / 2;
+    };
+
     for (const p of g.players) {
       const pName = p.name || p.id || "알 수 없음";
       // 회원은 계정 id로 묶어 이름이 바뀌어도 같은 사람으로 집계. 게스트는 이름으로 묶는다.
@@ -68,6 +76,7 @@ function processData(games, members) {
           handicap: isTeam ? 0 : p.target,
           games: 0,
           wins: 0,
+          modes: {},   // 모드별 집계: {'2인':{games,wins,rankSum}, '3인':..., '4인':..., '팀전':...}
           history: [],
           id: p.id || null
         };
@@ -76,6 +85,11 @@ function processData(games, members) {
       if (!isTeam) st.handicap = Math.max(st.handicap, p.target);
       st.games++;
       if (p.win) st.wins++;
+
+      const M = st.modes[typeStr] || (st.modes[typeStr] = { games: 0, wins: 0, rankSum: 0 });
+      M.games++;
+      if (p.win) M.wins++;
+      M.rankSum += fracRank(g.players.indexOf(p));
 
       const opp = g.players.filter(x => (x.name || x.id) !== pName).map(x => x.name || x.id).join(', ');
       const innings = p.innings || p.turn_count || 0;
@@ -112,8 +126,14 @@ function processData(games, members) {
 
   for (const p of pArr) {
     p.winRate = p.games > 0 ? (p.wins / p.games) * 100 : 0;
-    p.adjRate = p.winRate;
-    
+    p.adjRate = null;   // 보정 승률: 계산식 추후 확정 (지금은 표시 자리만)
+
+    for (const mk in p.modes) {
+      const M = p.modes[mk];
+      M.winRate = M.games > 0 ? (M.wins / M.games) * 100 : 0;
+      M.avgRank = M.games > 0 ? (M.rankSum / M.games) : null;
+    }
+
     let sumInnings = 0;
     let sumScore = 0;
     let maxHr = 0;
@@ -150,52 +170,91 @@ const $ = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); 
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const getAuth = () => { try { return JSON.parse(localStorage.getItem(LS_AUTH)); } catch(e) { return null; } }
 
-const COLS = [
-  {k:'name',     t:'이름',    txt:1},
-  {k:'handicap', t:'수지', fmt:v=>v ? v*10 : '—'},
+const COL_NAME = {k:'name', t:'이름', txt:1};
+const COL_HDCP = {k:'handicap', t:'수지', fmt:v=>v ? v*10 : '—'};
+const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보정 승률(준비 중)
+  COL_NAME, COL_HDCP,
   {k:'games',    t:'경기'},
-  {k:'wins',     t:'승'},
-  {k:'winRate',  t:'승률',    fmt:v=>v.toFixed(0)+'%'},
-  {k:'adjRate',  t:'보정 승률', fmt:v=>v.toFixed(1)+'%'},
-  {k:'avgAvg',   t:'에버리지', fmt:v=>v.toFixed(3)},
-  {k:'cushRate',  t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
-  {k:'hitRate',  t:'득점률',  fmt:v=>v.toFixed(1)+'%'},
+  {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
+  {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
+  {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
+  {k:'adjRate',  t:'보정 승률',  fmt:v=>v.toFixed(1)+'%'},
 ];
+const COLS_VS = [    // 2인 · 팀전: 두 진영 승부
+  COL_NAME, COL_HDCP,
+  {k:'games',   t:'경기'},
+  {k:'wins',    t:'승'},
+  {k:'winRate', t:'승률', fmt:v=>v.toFixed(0)+'%'},
+];
+const COLS_MULTI = [ // 3인 · 4인: 다자전
+  COL_NAME, COL_HDCP,
+  {k:'games',   t:'경기'},
+  {k:'avgRank', t:'평균순위', fmt:v=>v.toFixed(2)+'등'},
+  {k:'winRate', t:'승률(1등)', fmt:v=>v.toFixed(0)+'%'},
+];
+const MODE_TABS = ['통합','2인','3인','4인','팀전'];
+const colsFor = m => m==='통합' ? COLS_ALL : (m==='2인'||m==='팀전') ? COLS_VS : COLS_MULTI;
+const defSort = m => m==='통합' ? 'avgAvg' : 'winRate';
 const cell = (p, c) => p[c.k]==null ? '—' : (c.fmt ? c.fmt(p[c.k]) : p[c.k]);
-let sortKey='winRate', sortAsc=false;
+let rankMode='통합', sortKey='avgAvg', sortAsc=false;
+
+function rankRows(mode){
+  if(mode==='통합') return DATA.players.filter(p=>p.games>0);
+  return DATA.players
+    .filter(p=>p.modes[mode] && p.modes[mode].games>0)
+    .map(p=>({name:p.name, handicap:p.handicap, ...p.modes[mode]}));
+}
 
 function renderRank(){
-  const rows = [...DATA.players].sort((a,b)=>{
+  const COLS = colsFor(rankMode);
+  if(!COLS.some(c=>c.k===sortKey)) sortKey = defSort(rankMode);
+  const rows = rankRows(rankMode).sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey], r;
     if(x==null && y==null) return 0;
     if(x==null) return 1;
     if(y==null) return -1;
     if(typeof x==='string') r = x.localeCompare(y,'ko');
     else r = x-y;
-    if(r===0) r = b.avgAvg-a.avgAvg;
+    if(r===0) r = (b.avgAvg||0)-(a.avgAvg||0);
     return sortAsc ? r : -r;
   });
+  const subtabs = MODE_TABS.map(m=>
+    `<button class="tab ${m===rankMode?'on':''}" data-m="${m}">${m}</button>`).join('');
   const head = COLS.map(c=>{
     const on = c.k===sortKey;
     const ar = on ? (sortAsc?'▲':'▼') : '↕';
     return `<th class="${on?'on':''} ${c.txt?'name':''}" data-k="${c.k}">${c.t} <span class="ar">${ar}</span></th>`;
   }).join('');
-  const body = rows.map((p,i)=>{
-    const medal = ['🥇','🥈','🥉'][i] || (i+1);
-    const tds = COLS.map(c=>{
-      if(c.k==='name') return `<td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a></td>`;
-      return `<td>${cell(p, c)}</td>`;
+  let inner;
+  if(rows.length===0){
+    inner = `<div class="empty">아직 ${rankMode==='통합'?'':rankMode+'전 '}기록이 없습니다</div>`;
+  } else {
+    const body = rows.map((p,i)=>{
+      const medal = ['🥇','🥈','🥉'][i] || (i+1);
+      const tds = COLS.map(c=>{
+        if(c.k==='name') return `<td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a></td>`;
+        return `<td>${cell(p, c)}</td>`;
+      }).join('');
+      return `<tr><td class="rk">${medal}</td>${tds}</tr>`;
     }).join('');
-    return `<tr><td class="rk">${medal}</td>${tds}</tr>`;
-  }).join('');
-  const el = $(`<div class="card"><div class="scroll"><table>
-      <thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
-      <div class="sub" style="margin:10px 0 0">표 제목을 누르면 그 기준으로 정렬됩니다.<br>
-        <b>보정 승률</b>: 인원수가 다른 경기를 공평하게 비교한 값. 50%가 평균입니다.</div></div>`);
+    inner = `<div class="scroll"><table><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+  const note = rankMode==='통합'
+    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>보정 승률</b>은 준비 중입니다.'
+    : (rankMode==='3인'||rankMode==='4인')
+      ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
+      : '표 제목을 누르면 그 기준으로 정렬됩니다.';
+  const el = $(`<div class="card">
+      <div class="tabs" style="margin-bottom:14px">${subtabs}</div>
+      ${inner}
+      <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
+  el.querySelectorAll('.tab[data-m]').forEach(t=>t.onclick=()=>{
+    rankMode = t.dataset.m; sortKey = defSort(rankMode); sortAsc=false; show('rank');
+  });
   el.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
     const k = th.dataset.k;
-    if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'); }
+    if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'||k==='avgRank'); }
     show('rank');
   });
   el.querySelectorAll('a.pl').forEach(a=>a.onclick=()=>showPlayer(a.dataset.p));
