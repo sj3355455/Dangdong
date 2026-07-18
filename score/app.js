@@ -173,7 +173,7 @@ function renderSetupCards(modeChanged = false) {
   for (let i = 0; i < (isTeam ? 2 : N); i++) {
     const isMe = (prefs.myBall === i);
     if (isTeam) {
-      if($('#sel'+(i*2))) $('#sel'+(i*2)).disabled = false;
+      if($('#sel'+(i*2))) $('#sel'+(i*2)).disabled = (i*2 === 0);   // 1번 시드(sel0) = 나 고정
       if($('#sel'+(i*2+1))) $('#sel'+(i*2+1)).disabled = false;
     } else {
       if($('#sel'+i)) $('#sel'+i).disabled = isMe;
