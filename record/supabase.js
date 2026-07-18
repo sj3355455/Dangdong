@@ -41,6 +41,7 @@ export async function sbFetch(path, opts = {}, retry = true){
   return body;
 }
 
+// 아이디(로그인용) → 내부 이메일. 아이디는 가입 후 고정이라 이름을 바꿔도 로그인은 그대로.
 function syntheticEmail(name){
   const norm = name.normalize('NFC').trim();
   const leads = ['g','gg','n','d','dd','r','m','b','bb','s','ss','','j','jj','ch','k','t','p','h'];
@@ -69,8 +70,8 @@ function syntheticEmail(name){
   return `${res.replace(/[^a-z0-9]/g, '')}@dangdong.app`;
 }
 
-export async function sbAuth(name, password, isSignup){
-  const email = syntheticEmail(name);
+export async function sbAuth(loginId, password, isSignup){
+  const email = syntheticEmail(loginId);
   const path = isSignup ? '/auth/v1/signup' : '/auth/v1/token?grant_type=password';
   const r = await fetch(SB_URL + path, {
     method:'POST', headers:{ apikey: SB_KEY, 'Content-Type':'application/json' },
