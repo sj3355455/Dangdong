@@ -160,7 +160,7 @@ function processData(games, members) {
     let cushMade = 0;
     let cushInn = 0;
     let sumTime = 0;        // 시간 기록이 있는 경기의 누적 소모 시간(ms)
-    let sumTimeScore = 0;   // 그 경기들의 득점 합 (평균 인터벌 분모)
+    let sumShots = 0;       // 그 경기들의 샷(타석) 횟수 합 (평균 인터벌 분모)
 
     for (const h of p.history) {
       sumInnings += h.inning;
@@ -169,14 +169,17 @@ function processData(games, members) {
       if (h.highRun > maxHr) maxHr = h.highRun;
       cushMade += h.cushMade;
       cushInn += h.cushInn;
-      if (h.timeMs > 0) { sumTime += h.timeMs; sumTimeScore += h.score; }
+      if (h.timeMs > 0) {
+        sumTime += h.timeMs;
+        sumShots += Math.max(1, h.score + h.inning);
+      }
     }
 
     p.avgAvg = sumInnings > 0 ? (sumScore / sumInnings) : 0;
     p.bestHr = maxHr;
     p.hitRate = sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0;
-    // 평균 인터벌 = 득점 1개당 평균 소모 시간(초). 시간 기록이 없거나 득점이 없으면 null → '—'
-    p.avgInterval = sumTimeScore > 0 ? (sumTime / sumTimeScore) / 1000 : null;
+    // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함하여 계산
+    p.avgInterval = sumShots > 0 ? (sumTime / sumShots) / 1000 : null;
     // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
     p.cushRate = cushInn > 0 ? (cushMade / cushInn) * 100 : null;
   }
@@ -491,7 +494,8 @@ function showGame(id){
   const pRows = [...g.players].sort((a,b)=>a.rank-b.rank).map(p => {
     const avg = p.innings ? (p.score / p.innings).toFixed(3) : '0.000';
     const medal = p.rank===1 ? ' 🏆' : '';
-    const itv = (p.timeMs > 0 && p.score > 0) ? (p.timeMs / p.score / 1000).toFixed(1) + '초' : '—';
+    const shots = Math.max(1, p.score + (p.innings||0));
+    const itv = p.timeMs > 0 ? (p.timeMs / shots / 1000).toFixed(1) + '초' : '—';
     return `<tr>
       <td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>${medal}</td>
       <td>${rankLabel(p)}</td>
