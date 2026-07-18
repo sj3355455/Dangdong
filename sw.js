@@ -3,7 +3,7 @@
  *  - 페이지 이동(navigate): 네트워크 우선, 실패 시 캐시 (수정사항이 빨리 반영되도록)
  *  - 그 외 파일: 캐시 우선 + 백그라운드 갱신 (stale-while-revalidate)
  */
-const CACHE = 'dangdong-score-v105';
+const CACHE = 'dangdong-score-v106';
 const ASSETS = [
   '/Dangdong/', '/Dangdong/index.html',
   '/Dangdong/record/', '/Dangdong/record/index.html', '/Dangdong/record/app.js',

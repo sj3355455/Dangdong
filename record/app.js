@@ -342,6 +342,12 @@ const METRICS = [
 ];
 
 function showPlayer(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  const auth = getAuth();
+  if(auth && name === auth.name) {
+    const btn = document.getElementById('btnMyRec');
+    if(btn) btn.classList.add('on');
+  }
   const p = DATA.players.find(v=>v.name===name);
   const h = [...p.history];
   const el = $(`<div>
