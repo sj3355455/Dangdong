@@ -186,10 +186,34 @@ function fillSelect(i, isUserAction = false){
   const sel = $('#sel'+i);
   if(!sel) return;
   const cur = prefs.pids[i];
-  sel.innerHTML = '<option value="">선수 선택…</option>' +
-    members.map(m => `<option value="${esc(m.id)}">${esc(m.display_name)}</option>`).join('') +
+  
+  // 로그인한 사용자 본인은 목록에서 제외
+  const listMembers = members.filter(m => !auth || m.id !== auth.uid);
+  
+  sel.innerHTML = listMembers.map(m => `<option value="${esc(m.id)}">${esc(m.display_name)}</option>`).join('') +
     `<option value="${MANUAL}">✏️ 직접 입력</option>`;
-  sel.value = cur ? cur : (prefs.names[i] ? MANUAL : '');
+    
+  // 현재 값이 있으면 선택하고, 없으면 빈 값(아무것도 선택안됨) 유지
+  // option value="" 가 없더라도 강제로 첫번째나 빈 값을 지정
+  if (cur) {
+    sel.value = cur;
+  } else if (prefs.names[i]) {
+    sel.value = MANUAL;
+  } else {
+    // 아무것도 선택되지 않았을 때의 처리를 위해 빈 옵션을 숨겨서 추가해둘 수도 있지만
+    // select 요소의 value를 임의로 지정해둔다 (브라우저가 첫번째 옵션을 보여주긴 함)
+    // 그러나 "선수 선택.."이라는 글자는 보이지 않음
+  }
+  
+  // 첫 로드 시(isUserAction=false) sel.value가 강제로 첫번째 옵션으로 지정되었다면
+  // 현재 prefs에 그 값이 없으므로(cur가 빈값) applySel에서 덮어쓰게 될 수 있음.
+  // 따라서 빈 값일 땐 일단은 빈 문자열로 두는 보이지 않는 option 하나가 필요할 수 있음.
+  // 사용자가 '선수선택..' 글자를 싫어하는 것이므로 빈 라벨 옵션을 추가.
+  if (!cur && !prefs.names[i]) {
+    sel.insertAdjacentHTML('afterbegin', '<option value="" style="display:none;"></option>');
+    sel.value = '';
+  }
+  
   applySel(i, isUserAction);
 }
 
