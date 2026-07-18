@@ -53,6 +53,7 @@ function processData(games, members) {
       name: nameStr,
       players: g.players.map(p => ({
         name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
+        rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
         target: p.target, score: p.score, innings: p.innings,
         highRun: p.highRun ?? p.high_run ?? 0, misses: p.misses ?? 0, cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0
       }))
@@ -175,11 +176,11 @@ const COL_HDCP = {k:'handicap', t:'수지', fmt:v=>v ? v*10 : '—'};
 const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보정 승률(준비 중)
   COL_NAME, COL_HDCP,
   {k:'games',    t:'경기'},
-  {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
-  {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
-  {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
-  {k:'bestHr',   t:'하이런'},
   {k:'adjRate',  t:'보정 승률',  fmt:v=>v.toFixed(1)+'%'},
+  {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
+  {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
+  {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
+  {k:'bestHr',   t:'하이런'},
 ];
 const COLS_VS = [    // 2인 · 팀전: 두 진영 승부
   COL_NAME, COL_HDCP,
@@ -455,12 +456,17 @@ function renderGames(){
 function showGame(id){
   const g = DATA.games.find(v=>v.id===id);
   if(!g) return;
-  const pRows = g.players.map(p => {
+  // 동순위면 "공동 N등", 아니면 "N등". 등수 오름차순으로 정렬해 표시
+  const rankLabel = p => {
+    const same = g.players.filter(x => x.rank === p.rank).length;
+    return (same > 1 ? '공동 ' : '') + p.rank + '등';
+  };
+  const pRows = [...g.players].sort((a,b)=>a.rank-b.rank).map(p => {
     const avg = p.innings ? (p.score / p.innings).toFixed(3) : '0.000';
-    const cAvg = p.cushInn ? (p.cushMade / p.cushInn).toFixed(3) : '—';
-    const medal = p.ranking===1 ? ' 🏆' : '';
+    const medal = p.rank===1 ? ' 🏆' : '';
     return `<tr>
       <td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>${medal}</td>
+      <td>${rankLabel(p)}</td>
       <td><b>${p.score}</b> <span class="ar">/ ${p.target||''}</span></td>
       <td>${p.innings}</td>
       <td>${avg}</td>
@@ -476,7 +482,7 @@ function showGame(id){
       <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}</div>
       <div class="scroll">
         <table class="statgrid">
-          <thead><tr><th class="name">선수</th><th>점수</th><th>이닝</th><th>에버</th><th>쿠션</th><th>하이런</th><th>공타</th></tr></thead>
+          <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>이닝</th><th>에버</th><th>쿠션</th><th>하이런</th><th>공타</th></tr></thead>
           <tbody>${pRows}</tbody>
         </table>
       </div>
