@@ -439,14 +439,16 @@ window.togglePause = function(){
     S.paused = true;
     S.pauseStart = now;
     $('#gameZones').classList.add('paused');
-    $('#btnPause').textContent = '►';
+    if ($('#pauseOverlay')) $('#pauseOverlay').style.opacity = '1';
+    $('#btnPause').innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   } else {
     // 재개: 정지 구간을 누적 정지시간에 더하고, 턴 타이머를 다시 시작
     S.pausedMs = (S.pausedMs || 0) + (now - (S.pauseStart || now));
     S.paused = false;
     S.turnStart = now;
     $('#gameZones').classList.remove('paused');
-    $('#btnPause').textContent = '❚❚';
+    if ($('#pauseOverlay')) $('#pauseOverlay').style.opacity = '0';
+    $('#btnPause').innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
   }
   save();
 };
