@@ -79,6 +79,7 @@ function processData(games, members) {
           wins: 0,
           modes: {},   // 모드별 집계: {'2인':{games,wins,rankSum}, '3인':..., '4인':..., '팀전':...}
           history: [],
+          adjPtsSum: 0,
           id: p.id || null
         };
       }
@@ -87,10 +88,23 @@ function processData(games, members) {
       st.games++;
       if (p.win) st.wins++;
 
-      const M = st.modes[typeStr] || (st.modes[typeStr] = { games: 0, wins: 0, rankSum: 0 });
+      const pIdx = g.players.indexOf(p);
+      const pRank = fracRank(pIdx);
+      
+      let pt = 0;
+      if (isTeam) {
+        pt = (3.5 - pRank) / 2 * 100;
+      } else {
+        const N = g.players.length;
+        if (N > 1) pt = (N - pRank) / (N - 1) * 100;
+      }
+      st.adjPtsSum += pt;
+
+      const M = st.modes[typeStr] || (st.modes[typeStr] = { games: 0, wins: 0, rankSum: 0, adjPtsSum: 0 });
       M.games++;
       if (p.win) M.wins++;
-      M.rankSum += fracRank(g.players.indexOf(p));
+      M.rankSum += pRank;
+      M.adjPtsSum += pt;
 
       const opp = g.players.filter(x => (x.name || x.id) !== pName).map(x => x.name || x.id).join(', ');
       const innings = p.innings || p.turn_count || 0;
@@ -127,12 +141,13 @@ function processData(games, members) {
 
   for (const p of pArr) {
     p.winRate = p.games > 0 ? (p.wins / p.games) * 100 : 0;
-    p.adjRate = null;   // 보정 승률: 계산식 추후 확정 (지금은 표시 자리만)
+    p.adjRate = p.games > 0 ? (p.adjPtsSum / p.games) : 0;
 
     for (const mk in p.modes) {
       const M = p.modes[mk];
       M.winRate = M.games > 0 ? (M.wins / M.games) * 100 : 0;
       M.avgRank = M.games > 0 ? (M.rankSum / M.games) : null;
+      M.adjRate = M.games > 0 ? (M.adjPtsSum / M.games) : 0;
     }
 
     let sumInnings = 0;
@@ -220,6 +235,8 @@ function renderRank(){
     if(r===0) r = (b.avgAvg||0)-(a.avgAvg||0);
     return sortAsc ? r : -r;
   });
+  
+  // Re-sort correctly since adjRate is primary fallback for some sortKeys if needed, but above handles the requested keys.
   const subtabs = MODE_TABS.map(m=>
     `<button class="tab ${m===rankMode?'on':''}" data-m="${m}">${m}</button>`).join('');
   const head = COLS.map(c=>{
@@ -242,7 +259,7 @@ function renderRank(){
     inner = `<div class="scroll"><table><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
   const note = rankMode==='통합'
-    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>보정 승률</b>은 준비 중입니다.'
+    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>보정 승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균).'
     : (rankMode==='3인'||rankMode==='4인')
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
