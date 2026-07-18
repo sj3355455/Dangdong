@@ -722,7 +722,11 @@ function win(winnerIdx){
   const remaining = assignRanksAndCountRemaining();
   const isFinal = remaining <= 1;   // 남은 유닛이 1 이하면 더 겨룰 상대가 없음 → 경기 종료
   save();
-  $('#winOvl').classList.add('on');
+  const winOvl = $('#winOvl');
+  winOvl.classList.add('on');
+  // 마지막 점수 탭이 방금 뜬 결과 메뉴 버튼으로 관통되는 것 방지: 잠깐 입력을 무시
+  winOvl.style.pointerEvents = 'none';
+  setTimeout(() => { winOvl.style.pointerEvents = ''; }, 600);
 
   const isTie = isTeam && N === 4 ? new Set(S.winners.map(i => i%2)).size > 1 : S.winners.length > 1;
   const first = S.winners[0];
