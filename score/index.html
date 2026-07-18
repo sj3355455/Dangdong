@@ -114,7 +114,7 @@ select.field{appearance:none;background-image:
   padding:calc(8px + var(--sat)) 12px 6px;z-index:5;flex-shrink:0}
 @media (orientation:landscape){ #topbar{flex-direction:column;padding:calc(8px + var(--sat)) 8px 8px calc(8px + env(safe-area-inset-left))} }
 #mid{display:flex;align-items:center;justify-content:center;
-  padding:12px;padding-bottom:calc(12px + var(--sab));gap:20px;z-index:5;
+  padding:12px;padding-bottom:calc(12px + max(var(--sab), 40px));gap:20px;z-index:5;
   background:#0f1216;border-top:1px solid #1a1f26;flex-shrink:0}
 @media (orientation:landscape){ #mid{flex-direction:column;padding:16px;padding-right:calc(16px + var(--sab));border-top:none;border-left:1px solid #1a1f26} }
 #mid>*{pointer-events:auto}
@@ -179,7 +179,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v95</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v96</span>
   </div>
 </div>
 
@@ -220,7 +220,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v95</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v96</span>
   </div>
 </div>
 
