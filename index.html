@@ -76,6 +76,11 @@
     }
     ol li::marker { color: var(--accent); font-weight: bold; }
     strong { color: var(--accent); }
+    .card p.step-label {
+      font-weight: 700; font-size: 0.92rem; color: var(--text);
+      margin: 18px 0 8px;
+    }
+    .card p.step-label:first-of-type { margin-top: 4px; }
     
     /* Install prompt hidden by default */
     #androidSection { display: block; }
@@ -104,10 +109,18 @@
   <!-- iOS -->
   <div class="card">
     <h3>🍎 아이폰 (iOS)</h3>
-    <p>반드시 <strong>Safari 브라우저</strong>로 열어주세요.<br>(카톡/네이버 인앱 브라우저 불가)</p>
+    <p>아이폰은 반드시 <strong>Safari(사파리) 브라우저</strong>로 설치해야 합니다.<br>(카톡/네이버 인앱 브라우저로는 설치되지 않아요.)</p>
+
+    <p class="step-label">1️⃣ 카톡·네이버로 열었다면 → 먼저 사파리로 열기</p>
     <ol>
-      <li>화면 하단 가운데 <strong>공유(📤) 버튼</strong>을 누릅니다.</li>
-      <li>메뉴를 내려 <strong>'홈 화면에 추가 ➕'</strong>를 누릅니다.</li>
+      <li>화면 하단(또는 우측 하단 <strong>'···'</strong>)의 <strong>공유 버튼</strong>을 누릅니다.</li>
+      <li>메뉴에서 <strong>'Safari로 열기'</strong>를 누릅니다.<br>(이미 사파리라면 이 단계는 건너뛰세요.)</li>
+    </ol>
+
+    <p class="step-label">2️⃣ 사파리에서 앱 설치하기</p>
+    <ol>
+      <li>화면 하단의 <strong>공유(⬆️) 버튼</strong>을 누릅니다.</li>
+      <li>메뉴를 내리거나 <strong>'더 보기 ∨'</strong>를 눌러 <strong>'홈 화면에 추가 ➕'</strong>를 누릅니다.</li>
       <li>우측 상단의 <strong>'추가'</strong>를 누릅니다.</li>
       <li>바탕화면에 생긴 앱 아이콘을 터치해 실행하세요!</li>
     </ol>
