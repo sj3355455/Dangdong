@@ -278,12 +278,14 @@ function renderRank(){
   });
   
   const periods = ['오늘', '이번달', '누적'];
-  const periodTabs = periods.map(p => 
-    `<button class="tab p-period ${p===rankPeriod?'on':''}" data-p="${p}" style="flex:1;padding:6px 4px;font-size:0.85rem;text-align:center">${p}</button>`
-  ).join('');
+  const periodSel = `<select class="field p-period" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">` + 
+    periods.map(p => `<option value="${p}" ${p===rankPeriod?'selected':''}>${p}</option>`).join('') + 
+    `</select>`;
 
-  const subtabs = MODE_TABS.map(m=>
-    `<button class="tab ${m===rankMode?'on':''}" data-m="${m}" style="flex:1;padding:8px 4px;text-align:center">${m}</button>`).join('');
+  const modeSel = `<select class="field p-mode" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">` + 
+    MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') + 
+    `</select>`;
+
   const head = COLS.map(c=>{
     const on = c.k===sortKey;
     const ar = on ? (sortAsc?'▲':'▼') : '↕';
@@ -309,24 +311,27 @@ function renderRank(){
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
   const el = $(`<div class="card">
-      <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--surface); padding:4px; border-radius:8px;">
-        ${periodTabs}
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        ${periodSel}
+        ${modeSel}
       </div>
-      <div class="tabs" style="margin-bottom:14px; flex-wrap:nowrap">${subtabs}</div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
   
-  el.querySelectorAll('.p-period').forEach(t => t.onclick = () => {
-    rankPeriod = t.dataset.p;
+  el.querySelector('.p-period').onchange = (e) => {
+    rankPeriod = e.target.value;
     DATA = getFilteredData(rankPeriod);
     const sub = document.getElementById('sub');
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
     show('rank');
-  });
+  };
 
-  el.querySelectorAll('.tab[data-m]').forEach(t=>t.onclick=()=>{
-    rankMode = t.dataset.m; sortKey = defSort(rankMode); sortAsc=false; show('rank');
-  });
+  el.querySelector('.p-mode').onchange = (e) => {
+    rankMode = e.target.value;
+    sortKey = defSort(rankMode);
+    sortAsc = false;
+    show('rank');
+  };
   el.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
     const k = th.dataset.k;
     if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'||k==='avgRank'); }
@@ -443,11 +448,13 @@ function showPlayer(name){
     <div class="card">
       <h2 style="margin:0">${esc(p.name)}</h2>
       <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
-      <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--surface); padding:4px; border-radius:8px;">
-        ${['오늘', '이번달', '누적'].map(pd=>`<button class="tab pd-period ${pd===playerPeriod?'on':''}" data-pd="${pd}" style="flex:1;padding:6px 4px;font-size:0.85rem;text-align:center">${pd}</button>`).join('')}
-      </div>
-      <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--surface); padding:4px; border-radius:8px;">
-        ${MODE_TABS.map(m=>`<button class="tab ptab ${m===playerMode?'on':''}" data-m="${m}" style="flex:1;padding:8px 4px;text-align:center">${m}</button>`).join('')}
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <select class="field pd-period" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">
+          ${['오늘', '이번달', '누적'].map(pd=>`<option value="${pd}" ${pd===playerPeriod?'selected':''}>${pd}</option>`).join('')}
+        </select>
+        <select class="field ptab" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">
+          ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
+        </select>
       </div>
       <div class="stats" id="pStats"></div>
       <div id="chartArea">
@@ -596,19 +603,15 @@ function showPlayer(name){
     }
   };
 
-  el.querySelectorAll('.pd-period').forEach(b => b.onclick = () => {
-    el.querySelectorAll('.pd-period').forEach(t=>t.classList.remove('on'));
-    b.classList.add('on');
-    playerPeriod = b.dataset.pd;
+  el.querySelector('.pd-period').onchange = (e) => {
+    playerPeriod = e.target.value;
     renderMode();
-  });
+  };
 
-  el.querySelectorAll('.ptab').forEach(b => b.onclick = () => {
-    el.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
-    b.classList.add('on');
-    playerMode = b.dataset.m;
+  el.querySelector('.ptab').onchange = (e) => {
+    playerMode = e.target.value;
     renderMode();
-  });
+  };
 
   document.getElementById('view').replaceChildren(el);
   renderMode();
