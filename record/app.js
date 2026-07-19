@@ -2,6 +2,7 @@ let DATA = { updated: '', players: [], games: [] };
 let RAW_GAMES = [];
 let RAW_MEMBERS = [];
 let rankPeriod = '누적';
+let gamesMode = '통합';
 
 function getFilteredData(period) {
   let games = RAW_GAMES;
@@ -709,18 +710,55 @@ function renderMe() {
 }
 
 function renderGames(){
-  const rows = [...DATA.games].sort((a,b)=>b.datetime.localeCompare(a.datetime)).map(g=>{
+  const periods = ['오늘', '이번달', '누적'];
+  const periodSel = `<select class="field pg-period" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` + 
+    periods.map(p => `<option value="${p}" ${p===rankPeriod?'selected':''}>${p}</option>`).join('') + 
+    `</select>`;
+
+  const modeSel = `<select class="field pg-mode" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` + 
+    MODE_TABS.map(m => `<option value="${m}" ${m===gamesMode?'selected':''}>${m}</option>`).join('') + 
+    `</select>`;
+
+  const filteredGames = gamesMode === '통합' 
+    ? DATA.games 
+    : DATA.games.filter(g => g.type === gamesMode);
+
+  const rows = [...filteredGames].sort((a,b)=>b.datetime.localeCompare(a.datetime)).map(g=>{
     const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
     const all = g.players.map(p=>p.name).join(', ');
     return `<tr onclick="showGame('${g.id}')" style="cursor:pointer">
       <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}</td>
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
   }).join('');
-  return $(`<div class="card"><div class="scroll"><table>
-    <thead><tr><th class="name">날짜</th><th class="name">경기</th>
-      <th class="name">참가자</th><th class="name">우승</th></tr></thead>
-    <tbody>${rows}</tbody></table></div>
-    <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div></div>`);
+  
+  const inner = rows ? `<table style="width:100%;table-layout:fixed">
+    <thead><tr><th class="name" style="width:25%">날짜</th><th class="name" style="width:20%">경기</th>
+      <th class="name" style="width:35%">참가자</th><th class="name" style="width:20%">우승</th></tr></thead>
+    <tbody>${rows}</tbody></table>` : `<div class="empty">기록이 없습니다</div>`;
+
+  const el = $(`<div class="card">
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      ${periodSel}
+      ${modeSel}
+    </div>
+    <div class="scroll">${inner}</div>
+    <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div>
+  </div>`);
+
+  el.querySelector('.pg-period').onchange = (e) => {
+    rankPeriod = e.target.value;
+    DATA = getFilteredData(rankPeriod);
+    const sub = document.getElementById('sub');
+    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
+    show('games');
+  };
+
+  el.querySelector('.pg-mode').onchange = (e) => {
+    gamesMode = e.target.value;
+    show('games');
+  };
+
+  return el;
 }
 
 function showGame(id){
