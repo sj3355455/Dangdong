@@ -1,4 +1,30 @@
 let DATA = { updated: '', players: [], games: [] };
+let RAW_GAMES = [];
+let RAW_MEMBERS = [];
+let rankPeriod = '누적';
+
+function getFilteredData(period) {
+  let games = RAW_GAMES;
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const todayStr = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+  const monthStr = now.getFullYear() + '-' + pad(now.getMonth()+1);
+
+  if (period === '오늘') {
+    games = RAW_GAMES.filter(g => {
+      const dt = new Date(g.played_at);
+      const dateStr = dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate());
+      return dateStr === todayStr;
+    });
+  } else if (period === '이번달') {
+    games = RAW_GAMES.filter(g => {
+      const dt = new Date(g.played_at);
+      const dateStr = dt.getFullYear() + '-' + pad(dt.getMonth()+1);
+      return dateStr === monthStr;
+    });
+  }
+  return processData(games, RAW_MEMBERS);
+}
 
 const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU';
@@ -251,7 +277,11 @@ function renderRank(){
     return sortAsc ? r : -r;
   });
   
-  // Re-sort correctly since adjRate is primary fallback for some sortKeys if needed, but above handles the requested keys.
+  const periods = ['오늘', '이번달', '누적'];
+  const periodTabs = periods.map(p => 
+    `<button class="tab p-period ${p===rankPeriod?'on':''}" data-p="${p}" style="flex:1;padding:6px 4px;font-size:0.85rem;text-align:center">${p}</button>`
+  ).join('');
+
   const subtabs = MODE_TABS.map(m=>
     `<button class="tab ${m===rankMode?'on':''}" data-m="${m}" style="flex:1;padding:8px 4px;text-align:center">${m}</button>`).join('');
   const head = COLS.map(c=>{
@@ -279,9 +309,21 @@ function renderRank(){
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
   const el = $(`<div class="card">
+      <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--surface); padding:4px; border-radius:8px;">
+        ${periodTabs}
+      </div>
       <div class="tabs" style="margin-bottom:14px; flex-wrap:nowrap">${subtabs}</div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
+  
+  el.querySelectorAll('.p-period').forEach(t => t.onclick = () => {
+    rankPeriod = t.dataset.p;
+    DATA = getFilteredData(rankPeriod);
+    const sub = document.getElementById('sub');
+    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
+    show('rank');
+  });
+
   el.querySelectorAll('.tab[data-m]').forEach(t=>t.onclick=()=>{
     rankMode = t.dataset.m; sortKey = defSort(rankMode); sortAsc=false; show('rank');
   });
@@ -348,6 +390,41 @@ const METRICS = [
   {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1}
 ];
 
+function calcStatsForHistory(h) {
+  let games = h.length;
+  let wins = h.filter(r => r.win).length;
+  let sumInnings = 0, sumScore = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
+  
+  h.forEach(r => {
+    sumInnings += (r.inning || 0);
+    sumScore += (r.score || 0);
+    totalMisses += (r.miss || 0);
+    if ((r.highRun || 0) > maxHr) maxHr = r.highRun;
+    cushMade += (r.cushMade || 0);
+    cushInn += (r.cushInn || 0);
+    sumAdjPt += (r.adjPt || 0);
+    rankSum += (r.rank || 0);
+    if (r.timeMs > 0) {
+      sumTime += r.timeMs;
+      sumShots += Math.max(1, r.score + r.inning);
+    }
+  });
+
+  return {
+    games,
+    wins,
+    winRate: games > 0 ? (wins / games) * 100 : 0,
+    avgAvg: sumInnings > 0 ? (sumScore / sumInnings) : 0,
+    bestHr: maxHr,
+    hitRate: sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0,
+    cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
+    avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
+    avgRank: games > 0 ? (rankSum / games) : null,
+    adjRate: games > 0 ? (sumAdjPt / games) : 0,
+    wins: wins
+  };
+}
+
 function showPlayer(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   const auth = getAuth();
@@ -359,6 +436,7 @@ function showPlayer(name){
   let playerMode = '통합';
   let chartCur = 'avg';
   let chartGroup = 'day';
+  let playerPeriod = rankPeriod;
 
   const el = $(`<div>
     <button class="back">← 순위로</button>
@@ -366,21 +444,22 @@ function showPlayer(name){
       <h2 style="margin:0">${esc(p.name)}</h2>
       <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
       <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--surface); padding:4px; border-radius:8px;">
+        ${['오늘', '이번달', '누적'].map(pd=>`<button class="tab pd-period ${pd===playerPeriod?'on':''}" data-pd="${pd}" style="flex:1;padding:6px 4px;font-size:0.85rem;text-align:center">${pd}</button>`).join('')}
+      </div>
+      <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--surface); padding:4px; border-radius:8px;">
         ${MODE_TABS.map(m=>`<button class="tab ptab ${m===playerMode?'on':''}" data-m="${m}" style="flex:1;padding:8px 4px;text-align:center">${m}</button>`).join('')}
       </div>
       <div class="stats" id="pStats"></div>
-      <div class="chead" style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:4px;">
-        <div style="flex:1;">
-          <h3 style="font-size:1rem;margin:0 0 6px 0">📈 추이</h3>
-          <select id="pMetricSel" class="field" style="width:140px; padding:6px; font-size:0.9rem"></select>
+      <div id="chartArea">
+        <div class="chead" style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:4px;">
+          <div style="flex:1;">
+            <h3 style="font-size:1rem;margin:0 0 6px 0">📈 추이</h3>
+            <select id="pMetricSel" class="field" style="width:140px; padding:6px; font-size:0.9rem"></select>
+          </div>
         </div>
-        <div style="display:flex; gap:4px; background:var(--surface); padding:4px; border-radius:8px;">
-          <button class="tab gbtn on" data-g="day" style="padding:4px 8px; font-size:0.8rem">일별</button>
-          <button class="tab gbtn" data-g="month" style="padding:4px 8px; font-size:0.8rem">월별</button>
-        </div>
+        <div class="sub" id="cdesc" style="margin:0 0 6px"></div>
+        <div id="cbox"></div>
       </div>
-      <div class="sub" id="cdesc" style="margin:0 0 6px"></div>
-      <div id="cbox"></div>
     </div>
     <div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🗒️ 경기 이력</h3>
       <div class="scroll"><table>
@@ -393,8 +472,29 @@ function showPlayer(name){
   let lastW = 0;
 
   const renderMode = () => {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const todayStr = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+    const monthStr = now.getFullYear() + '-' + pad(now.getMonth()+1);
+
+    let hPeriod = [...p.history];
+    if (playerPeriod === '오늘') {
+      hPeriod = hPeriod.filter(r => r.date === todayStr);
+    } else if (playerPeriod === '이번달') {
+      hPeriod = hPeriod.filter(r => r.date.startsWith(monthStr));
+    }
+
+    const h = playerMode === '통합' ? hPeriod : hPeriod.filter(r => r.type === playerMode);
+
+    if (h.length === 0) {
+      el.querySelector('#pStats').innerHTML = '<div class="empty" style="width:100%; text-align:center; padding: 20px 0; color:var(--muted)">이 기간 동안 치러진 경기가 없습니다.</div>';
+      el.querySelector('#chartArea').style.display = 'none';
+      el.querySelector('#pHist').innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted)">기록 없음</td></tr>';
+      return;
+    }
+
     const COLS = colsFor(playerMode).filter(c => c.k !== 'name' && c.k !== 'handicap');
-    const stObj = playerMode === '통합' ? p : (p.modes[playerMode] || {games:0, wins:0, winRate:0, avgRank:0});
+    const stObj = calcStatsForHistory(h);
     
     let statsHtml = '';
     COLS.forEach(c => {
@@ -402,28 +502,37 @@ function showPlayer(name){
     });
     el.querySelector('#pStats').innerHTML = statsHtml;
 
-    const h = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
-    
     el.querySelector('#pHist').innerHTML = [...h].reverse().map(r=>`<tr onclick="showGame('${r.id}')" style="cursor:pointer">
       <td class="name">${esc(r.date)}</td><td class="name">${esc(r.opponents)}</td>
       <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
       <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
 
-    const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
-    el.querySelector('#pMetricSel').innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
-    
-    if (!availableMetrics.find(m => m.k === chartCur)) {
-      chartCur = availableMetrics[0].k;
+    if (playerPeriod === '오늘') {
+      el.querySelector('#chartArea').style.display = 'none';
+    } else {
+      el.querySelector('#chartArea').style.display = 'block';
+      if (playerPeriod === '이번달') {
+        chartGroup = 'day';
+      } else {
+        chartGroup = 'month';
+      }
+
+      const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
+      el.querySelector('#pMetricSel').innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
+      
+      if (!availableMetrics.find(m => m.k === chartCur)) {
+        chartCur = availableMetrics[0].k;
+      }
+      el.querySelector('#pMetricSel').value = chartCur;
+
+      el.querySelector('#pMetricSel').onchange = (e) => {
+        chartCur = e.target.value;
+        const currentH = playerMode === '통합' ? [...hPeriod] : hPeriod.filter(r => r.type === playerMode);
+        draw(chartCur, currentH);
+      };
+
+      draw(chartCur, h);
     }
-    el.querySelector('#pMetricSel').value = chartCur;
-
-    el.querySelector('#pMetricSel').onchange = (e) => {
-      chartCur = e.target.value;
-      const currentH = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
-      draw(chartCur, currentH);
-    };
-
-    draw(chartCur, h);
   };
 
   const draw = (key, h) => {
@@ -487,12 +596,11 @@ function showPlayer(name){
     }
   };
 
-  el.querySelectorAll('.gbtn').forEach(b => b.onclick = () => {
-    el.querySelectorAll('.gbtn').forEach(t=>t.classList.remove('on'));
+  el.querySelectorAll('.pd-period').forEach(b => b.onclick = () => {
+    el.querySelectorAll('.pd-period').forEach(t=>t.classList.remove('on'));
     b.classList.add('on');
-    chartGroup = b.dataset.g;
-    const currentH = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
-    draw(chartCur, currentH);
+    playerPeriod = b.dataset.pd;
+    renderMode();
   });
 
   el.querySelectorAll('.ptab').forEach(b => b.onclick = () => {
@@ -508,7 +616,16 @@ function showPlayer(name){
   chartRO = new ResizeObserver(es=>{ 
     const w = es[0].contentRect.width; 
     if(Math.abs(w - lastW) > 2) {
-      const h = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
+      if (playerPeriod === '오늘') return;
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const monthStr = now.getFullYear() + '-' + pad(now.getMonth()+1);
+
+      let hPeriod = [...p.history];
+      if (playerPeriod === '이번달') {
+        hPeriod = hPeriod.filter(r => r.date.startsWith(monthStr));
+      }
+      const h = playerMode === '통합' ? hPeriod : hPeriod.filter(r => r.type === playerMode);
       draw(chartCur, h); 
     }
   });
@@ -656,7 +773,9 @@ async function initDashboard() {
       fetchGames(),
       fetchMembers().catch(() => [])
     ]);
-    DATA = processData(games, members);
+    RAW_GAMES = games;
+    RAW_MEMBERS = members;
+    DATA = getFilteredData(rankPeriod);
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
     const t = new URLSearchParams(location.search).get('tab') || 'rank';
     show(t);
