@@ -410,6 +410,7 @@ $('#btnStart').onclick = () => {
   };
   save(); buildGameZones(); render(); show('game'); reqFS();
   toast(`${isTeam ? TZNAMES[S.first] : S.names[S.first]} 선공으로 시작!`);
+  speak('게임 시작');
 };
 
 // ══ Game Logic ══
@@ -582,7 +583,8 @@ function tapZone(i){
       if (!S.indSc) S.indSc = [...S.sc];
       S.sc[i]++; S.indSc[i]++; S.tp++;
       if (S.type === '팀전' && S.sc.length === 4) S.sc[(i+2)%4]++;
-      vib(12); popScore(i); speak(koNum(S.sc[i]));
+      vib(12); popScore(i);
+      const rem = S.targets[i] - S.sc[i];
       if (S.sc[i] >= S.targets[i]) {
         S.done[i] = true;
         S.cushInn[i]++;
@@ -592,15 +594,20 @@ function tapZone(i){
           markGoalReached(i);
           passTurnInner(false, true);
         } else {
+          speak('마무리');
           toast(`🎯 마무리 쿠션!`);
         }
+      } else if ([5,3,2,1].includes(rem)) {
+        speak(koNum(rem) + '점 남았습니다');
+      } else {
+        speak(koNum(S.sc[i]));
       }
     } else if (S.cush[i] < S.round) {
       pushHist();
       if (!S.indCush) S.indCush = [...S.cush];
       S.cush[i]++; S.indCush[i]++; S.tp++;
       if (S.type === '팀전' && S.sc.length === 4) S.cush[(i+2)%4]++;
-      vib(12); popScore(i); speak('쿠션 ' + koNum(S.cush[i]));
+      vib(12); popScore(i);
       if (S.tp > S.br[i]) S.br[i] = S.tp;
 
       if (S.cush[i] >= S.round) {
@@ -608,6 +615,7 @@ function tapZone(i){
         markGoalReached(i);
         passTurnInner(false, true);
       } else {
+        speak('쿠션 ' + koNum(S.cush[i]));
         toast(`🎯 쿠션 ${S.cush[i]}/${S.round}`);
       }
     } else {
@@ -619,7 +627,7 @@ function tapZone(i){
   save(); render();
 }
 
-function passTurnInner(isMiss, skipHist) {
+function passTurnInner(isMiss, skipHist, quiet) {
   if (!skipHist) pushHist();
   if (S.tp > S.br[S.turn]) S.br[S.turn] = S.tp;
   if (isMiss && S.tp === 0) S.miss[S.turn]++;
@@ -656,6 +664,8 @@ function passTurnInner(isMiss, skipHist) {
   if (inningEnded && S.lastInning) {
     endInning();
   }
+  // 턴 안내 (게임이 끝났거나 파울 안내 직후면 생략)
+  if (!quiet && !S.fin) speak('턴');
 }
 
 
@@ -709,10 +719,10 @@ window.foul = function(i){
     if (S.indSc) S.indSc[p] = S.indSc[i];
     if (S.indCush) S.indCush[p] = S.indCush[i];
   }
-  vib(30); popScore(i); speak('파울, ' + koNum(S.sc[i]));
+  vib(30); popScore(i); speak('파울');
   toast('⚠️ 파울 −1');
-  // 파울은 이닝 종료 → 턴 넘김 (스냅샷은 위에서 이미 저장했으므로 skipHist)
-  passTurnInner(true, true);
+  // 파울은 이닝 종료 → 턴 넘김 (스냅샷은 위에서 이미 저장했으므로 skipHist, 음성은 '파울'만)
+  passTurnInner(true, true, true);
   save(); render();
 };
 
@@ -846,6 +856,9 @@ function win(winnerIdx){
   $('#winTitle').textContent = isTie
     ? '공동 달성!'
     : `${isTeam ? TZNAMES[first%2] : S.names[first]} ${placeLabel}!`;
+  speak(isTie
+    ? '공동 달성'
+    : `${isTeam ? TZNAMES[first%2] : S.names[first]} ${(S.rank[first] || 1) === 1 ? '우승' : placeLabel}`);
 
   let html = '<tr><th>선수</th><th>점수</th><th>에버</th><th>하이런</th></tr>';
   for(let i=0; i<N; i++){
