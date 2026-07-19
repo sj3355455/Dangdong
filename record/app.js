@@ -866,7 +866,8 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 (function checkStandalone(){
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  // 설치된 앱 판정: manifest display가 fullscreen이라 standalone만 보면 안 됨
+  const isStandalone = window.matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches || window.navigator.standalone === true;
   if (!isStandalone && location.protocol !== 'file:' && !location.search.includes('dev=1')) {
     window.location.replace('../');
   }

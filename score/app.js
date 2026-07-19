@@ -597,8 +597,10 @@ function tapZone(i){
           speak('마무리');
           toast(`🎯 마무리 쿠션!`);
         }
-      } else if ([5,3,2,1].includes(rem)) {
-        speak(koNum(rem) + '점 남았습니다');
+      } else if (rem >= 1 && rem <= 5) {
+        // 오·사·이는 '점'을 붙여 쓰면 [쩜]으로 읽혀서 띄어 써서 [점] 발음을 유도
+        const remWord = {5:'오 점', 4:'사 점', 3:'삼점', 2:'이 점', 1:'일점'}[rem];
+        speak(remWord + ' 남았습니다');
       } else {
         speak(koNum(S.sc[i]));
       }
@@ -613,7 +615,9 @@ function tapZone(i){
       if (S.cush[i] >= S.round) {
         // 설정한 쿠션 개수를 모두 채웠을 때만 목표 달성
         markGoalReached(i);
-        passTurnInner(false, true);
+        passTurnInner(false, true, true);
+        // 바로 끝나지 않으면(후구의 라스트 이닝이 남으면) 마지막 쿠션 개수를 읽어줌
+        if (!S.fin) speak('쿠션 ' + koNum(S.cush[i]));
       } else {
         speak('쿠션 ' + koNum(S.cush[i]));
         toast(`🎯 쿠션 ${S.cush[i]}/${S.round}`);
