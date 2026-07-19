@@ -520,15 +520,14 @@ function showPlayer(name){
       <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
       <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
 
+    el.querySelector('#chartArea').style.display = 'block';
     if (playerPeriod === '오늘') {
-      el.querySelector('#chartArea').style.display = 'none';
+      chartGroup = 'game';
+    } else if (playerPeriod === '이번달') {
+      chartGroup = 'day';
     } else {
-      el.querySelector('#chartArea').style.display = 'block';
-      if (playerPeriod === '이번달') {
-        chartGroup = 'day';
-      } else {
-        chartGroup = 'month';
-      }
+      chartGroup = 'month';
+    }
 
       const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
       el.querySelector('#pMetricSel').innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
@@ -545,7 +544,6 @@ function showPlayer(name){
       };
 
       draw(chartCur, h);
-    }
   };
 
   const draw = (key, h) => {
@@ -557,8 +555,8 @@ function showPlayer(name){
     const hAsc = [...h].reverse();
     const groups = {}; 
     
-    hAsc.forEach(r => {
-      const gKey = chartGroup === 'day' ? r.date.substring(5, 10) : r.date.substring(0, 7);
+    hAsc.forEach((r, idx) => {
+      const gKey = chartGroup === 'game' ? (idx + 1) + '경기' : chartGroup === 'day' ? r.date.substring(5, 10) : r.date.substring(0, 7);
       if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, sumAdjPt: 0, maxHr: 0, cushMade: 0, cushInn: 0, wins: 0, rankSum: 0 };
       groups[gKey].games++;
       groups[gKey].sumInning += (r.inning || 0);
@@ -590,7 +588,7 @@ function showPlayer(name){
 
     box.innerHTML = chart(vals, labels, {...m, W: lastW});
     
-    const groupText = chartGroup === 'day' ? '일별' : '월별';
+    const groupText = chartGroup === 'game' ? '경기별' : chartGroup === 'day' ? '일별' : '월별';
     let desc = m.t;
     if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 총 이닝)`;
     else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (공타 제외 득점 비율)`;
