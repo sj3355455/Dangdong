@@ -368,8 +368,12 @@ $('#btnStart').onclick = () => {
     pPids.push(prefs.pids[i] || null);
   }
   
+  const uniqueKeys = new Set();
   for(let i=0; i<totalPlayers; i++){
     if(!pNames[i]) return err.textContent = '모든 선수를 선택하거나 이름을 입력하세요';
+    const key = pPids[i] ? 'id:' + pPids[i] : 'nm:' + pNames[i];
+    if(uniqueKeys.has(key)) return err.textContent = '중복된 선수가 있습니다. 각기 다른 선수를 선택해주세요.';
+    uniqueKeys.add(key);
   }
   
   if (isTeam) {
@@ -821,7 +825,7 @@ function win(winnerIdx){
     const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
     const scStr = (S.done[i] && S.round > 0) ? `쿠션 ${indC}/${S.round}` : `${indS}/${S.targets[i]}`;
     const ev = S.inn[i] ? (indS / S.inn[i]).toFixed(3) : '0.000';
-    const rankTag = S.rank[i] ? ` <span style="opacity:.6">${S.rank[i]}위</span>` : '';
+    const rankTag = S.rank[i] ? (S.rank[i] === 1 ? ' 🏆' : ` <span style="opacity:.6">${S.rank[i]}위</span>`) : '';
     html += `<tr><td>${esc(nm)}${rankTag}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
   }
   $('#winStats').innerHTML = html;
