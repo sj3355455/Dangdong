@@ -594,8 +594,11 @@ function tapZone(i){
         if (S.type === '팀전' && S.sc.length === 4) { const p = (i+2)%4; S.done[p] = true; }
         if (S.round <= 0) {
           // 마무리 쿠션 0개 설정: 목표 도달 즉시 달성
+          const firstWin = S.winners.length === 0;
           markGoalReached(i);
-          passTurnInner(false, true);
+          passTurnInner(false, true, true);
+          // 바로 끝나지 않으면(후구가 남으면) 쿠션 게임과 동일하게 후구 안내
+          if (!S.fin) speak(firstWin ? '후구' : '후구 성공');
         } else {
           speak('마무리');
           toast(`🎯 마무리 쿠션!`);
@@ -617,10 +620,11 @@ function tapZone(i){
 
       if (S.cush[i] >= S.round) {
         // 설정한 쿠션 개수를 모두 채웠을 때만 목표 달성
+        const firstWin = S.winners.length === 0;
         markGoalReached(i);
         passTurnInner(false, true, true);
-        // 바로 끝나지 않으면(후구의 라스트 이닝이 남으면) 마지막 쿠션 개수를 읽어줌
-        if (!S.fin) speak('쿠션 ' + koNum(S.cush[i]));
+        // 바로 끝나지 않으면: 첫 달성은 "후구"(후구 기회 시작), 후구 중 달성은 "후구 성공"
+        if (!S.fin) speak(firstWin ? '후구' : '후구 성공');
       } else {
         speak('쿠션 ' + koNum(S.cush[i]));
         toast(`🎯 쿠션 ${S.cush[i]}/${S.round}`);
