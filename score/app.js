@@ -775,8 +775,10 @@ function render(){
       $('#gsc'+i).style.fontSize = 'clamp(40px, 15vmin, 100px)';
     } else {
       $('#gsc'+i).innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.targets[i]}</span>`;
-      const ev = S.inn[i] ? (S.sc[i] / S.inn[i]).toFixed(3) : '0.000';
-      $('#gstat'+i).textContent = `에버 ${ev} · 하이런 ${S.br[i]}`;
+      const curInn = Math.max(1, S.inn[i] + (S.turn === i ? 1 : 0));
+      const ev = (S.sc[i] / curInn).toFixed(3);
+      const curHr = (S.turn === i && S.tp > S.br[i]) ? S.tp : S.br[i];
+      $('#gstat'+i).textContent = `에버 ${ev} · 하이런 ${curHr}`;
       $('#gsc'+i).style.fontSize = 'clamp(64px, 22vmin, 150px)';
     }
     
