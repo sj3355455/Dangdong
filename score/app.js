@@ -416,6 +416,26 @@ $('#btnStart').onclick = () => {
 let ts = null;
 const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(ts); ts = setTimeout(()=>t.classList.remove('on'), 2500); };
 const vib = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} };
+
+// 점수 음성 안내: 탭할 때마다 현재 점수를 한국어로 읽어준다 (메뉴에서 켜고 끔)
+const LS_VOICE = 'dangScoreVoice';
+let voiceOn = lsGet(LS_VOICE, true);
+const KD = ['','일','이','삼','사','오','육','칠','팔','구'];
+const koNum = n => {
+  if (n < 0) return '마이너스 ' + koNum(-n);
+  if (n === 0) return '영';
+  const h = Math.floor(n/100), t = Math.floor(n%100/10), u = n%10;
+  return (h ? (h>1?KD[h]:'')+'백' : '') + (t ? (t>1?KD[t]:'')+'십' : '') + KD[u];
+};
+const speak = txt => {
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  try {
+    speechSynthesis.cancel(); // 빠르게 연속 탭해도 마지막 점수만 읽도록
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang = 'ko-KR'; u.rate = 1.1;
+    speechSynthesis.speak(u);
+  } catch(e){}
+};
 function save(){ lsSet(LS_STATE, S); }
 
 let wl = null;
@@ -562,7 +582,7 @@ function tapZone(i){
       if (!S.indSc) S.indSc = [...S.sc];
       S.sc[i]++; S.indSc[i]++; S.tp++;
       if (S.type === '팀전' && S.sc.length === 4) S.sc[(i+2)%4]++;
-      vib(12); popScore(i);
+      vib(12); popScore(i); speak(koNum(S.sc[i]));
       if (S.sc[i] >= S.targets[i]) {
         S.done[i] = true;
         S.cushInn[i]++;
@@ -580,7 +600,7 @@ function tapZone(i){
       if (!S.indCush) S.indCush = [...S.cush];
       S.cush[i]++; S.indCush[i]++; S.tp++;
       if (S.type === '팀전' && S.sc.length === 4) S.cush[(i+2)%4]++;
-      vib(12); popScore(i);
+      vib(12); popScore(i); speak('쿠션 ' + koNum(S.cush[i]));
       if (S.tp > S.br[i]) S.br[i] = S.tp;
 
       if (S.cush[i] >= S.round) {
@@ -689,7 +709,7 @@ window.foul = function(i){
     if (S.indSc) S.indSc[p] = S.indSc[i];
     if (S.indCush) S.indCush[p] = S.indCush[i];
   }
-  vib(30); popScore(i);
+  vib(30); popScore(i); speak('파울, ' + koNum(S.sc[i]));
   toast('⚠️ 파울 −1');
   // 파울은 이닝 종료 → 턴 넘김 (스냅샷은 위에서 이미 저장했으므로 skipHist)
   passTurnInner(true, true);
@@ -875,6 +895,12 @@ $('#btnWinUndo').onclick = () => {
 
 $('#btnMenu').onclick = () => $('#menuOvl').classList.add('on');
 $('#btnMenuClose').onclick = () => $('#menuOvl').classList.remove('on');
+const updVoiceBtn = () => { const b = $('#btnVoice'); if (b) b.textContent = voiceOn ? '🔊 점수 음성: 켜짐' : '🔇 점수 음성: 꺼짐'; };
+updVoiceBtn();
+if ($('#btnVoice')) $('#btnVoice').onclick = () => {
+  voiceOn = !voiceOn; lsSet(LS_VOICE, voiceOn); updVoiceBtn();
+  if (voiceOn) speak('음성 안내를 켰습니다'); else { try { speechSynthesis.cancel(); } catch(e){} }
+};
 $('#btnMenuNew').onclick = () => {
   if(confirm('진행 중인 경기가 사라집니다. 새 경기를 설정할까요?')){
     $('#menuOvl').classList.remove('on'); S = null; save(); exitFS(); show('setup');
