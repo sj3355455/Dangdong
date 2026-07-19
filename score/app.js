@@ -24,7 +24,7 @@ const TZNAMES = ['우리 팀', '상대 팀'];
 const api = {
   members: () => sbFetch('/rest/v1/profiles?select=id,display_name,handicap&order=display_name'),
   myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
-  createProfile: (uid, name) => sbFetch('/rest/v1/profiles', { method: 'POST', body: JSON.stringify({ id: uid, display_name: name }) }),
+  createProfile: (uid, name, handicap) => sbFetch('/rest/v1/profiles', { method: 'POST', body: JSON.stringify({ id: uid, display_name: name, handicap: handicap || null }) }),
   submitGame: payload => sbFetch('/rest/v1/games', { method: 'POST', body: JSON.stringify(payload) })
 };
 
@@ -36,6 +36,7 @@ function setMode(m){
   $('#tabSignup').className = m==='signup'?'on':'';
   $('#btnAuth').textContent = m==='login'?'로그인':'회원가입';
   $('#aName').style.display = m==='signup' ? '' : 'none';   // 이름은 회원가입 때만 입력
+  if ($('#aHandicap')) $('#aHandicap').style.display = m==='signup' ? '' : 'none'; // 수지는 회원가입 때만 선택
   $('#aPass').autocomplete = m==='signup' ? 'new-password' : 'current-password';
   $('#aErr').textContent = '';
 }
@@ -46,6 +47,8 @@ $('#btnAuth').onclick = async () => {
   const btn = $('#btnAuth'), err = $('#aErr');
   const loginId = $('#aId').value.trim();
   const name = $('#aName').value.trim(), pass = $('#aPass').value;
+  const hdStr = $('#aHandicap') ? $('#aHandicap').value : '';
+  const handicap = hdStr ? parseInt(hdStr, 10) : null;
   const isSignup = authMode === 'signup';
   if (!loginId || pass.length < 6) return err.textContent = '아이디와 6자 이상 비밀번호를 입력하세요';
   if (isSignup && !name) return err.textContent = '기록에 표시할 이름을 입력하세요';
@@ -57,7 +60,7 @@ $('#btnAuth').onclick = async () => {
     lsSet(LS_AUTH, auth);
 
     if (isSignup) {
-      try { await api.createProfile(a.uid, name); }
+      try { await api.createProfile(a.uid, name, handicap); }
       catch(e){
         auth = null; localStorage.removeItem(LS_AUTH);
         throw new Error(e.message);
@@ -862,7 +865,7 @@ function win(winnerIdx){
     : `${isTeam ? TZNAMES[first%2] : S.names[first]} ${placeLabel}!`;
   speak(isTie
     ? '공동 달성'
-    : `${isTeam ? TZNAMES[first%2] : S.names[first]} ${(S.rank[first] || 1) === 1 ? '우승' : placeLabel}`);
+    : `${isTeam ? TZNAMES[first%2] : S.names[first]} ${(S.rank[first] || 1) === 1 ? '우승' : S.rank[first] + '위'}`);
 
   let html = '<tr><th>선수</th><th>점수</th><th>에버</th><th>하이런</th></tr>';
   for(let i=0; i<N; i++){

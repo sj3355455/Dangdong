@@ -172,6 +172,19 @@ select.field{appearance:none;background-image:
   <div class="pcard">
     <input class="field" id="aId" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="20" placeholder="아이디">
     <input class="field" id="aName" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="10" placeholder="이름 (기록에 표시)">
+    <select class="field" id="aHandicap" style="display:none; color:var(--text);">
+      <option value="">수지 (선택)</option>
+      <option value="5">50</option>
+      <option value="8">80</option>
+      <option value="10">100</option>
+      <option value="12">120</option>
+      <option value="15">150</option>
+      <option value="20">200</option>
+      <option value="25">250</option>
+      <option value="30">300</option>
+      <option value="40">400</option>
+      <option value="50">500</option>
+    </select>
     <input class="field" id="aPass" type="password" autocomplete="current-password" placeholder="비밀번호 (6자 이상)">
   </div>
 
@@ -179,7 +192,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v124</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v126</span>
   </div>
 </div>
 
@@ -220,7 +233,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v124</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v126</span>
   </div>
 </div>
 
