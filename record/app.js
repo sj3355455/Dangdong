@@ -113,6 +113,7 @@ function processData(games, members) {
       
       st.history.unshift({
         id: g.id,
+        type: g.type,
         date: dateStr,
         opponents: opp,
         score: p.score,
@@ -321,7 +322,7 @@ function chart(vals, labels, opt){
     const yy=P.t+ih*i/4, v=(max*(4-i)/4);
     g+=`<line x1="${P.l}" y1="${yy}" x2="${W-P.r}" y2="${yy}" stroke="var(--line)" stroke-width="1"/>`;
     g+=`<text x="${P.l-8}" y="${yy+4}" fill="var(--muted)" font-size="11" text-anchor="end">${fmt(v)}</text>`;
-  }
+}
   const pts = vals.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
   const dots = vals.map((v,i)=>{
     const c = `<circle cx="${x(i)}" cy="${y(v)}" r="${showVal?4:3}" fill="var(--accent)"/>`;
@@ -349,25 +350,21 @@ function showPlayer(name){
     if(btn) btn.classList.add('on');
   }
   const p = DATA.players.find(v=>v.name===name);
-  const h = [...p.history];
+  let playerMode = '통합';
+  let chartCur = 'avg';
+
   const el = $(`<div>
     <button class="back">← 순위로</button>
     <div class="card">
       <h2 style="margin:0">${esc(p.name)}</h2>
-      <div class="sub" style="margin:2px 0 0">수지 ${p.handicap * 10}</div>
-      <div class="stats">
-        <div class="st"><div class="k">경기</div><div class="v">${p.games}</div></div>
-        <div class="st"><div class="k">승 / 패</div><div class="v">${p.wins} / ${p.games-p.wins}</div></div>
-        <div class="st"><div class="k">보정 승률</div><div class="v">${p.adjRate==null?'—':p.adjRate.toFixed(1)+'%'}</div></div>
-        <div class="st"><div class="k">에버리지</div><div class="v">${p.avgAvg.toFixed(3)}</div></div>
-        <div class="st"><div class="k">쿠션 성공률</div><div class="v">${p.cushRate==null?'—':p.cushRate.toFixed(1)+'%'}</div></div>
-        <div class="st"><div class="k">득점률</div><div class="v">${p.hitRate.toFixed(1)}%</div></div>
-        <div class="st"><div class="k">하이런</div><div class="v">${p.bestHr}</div></div>
+      <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
+      <div style="display:flex; gap:4px; margin-bottom:12px; background:var(--surface); padding:4px; border-radius:8px;">
+        ${MODE_TABS.map(m=>`<button class="tab ptab ${m===playerMode?'on':''}" data-m="${m}" style="flex:1;padding:8px 4px;text-align:center">${m}</button>`).join('')}
       </div>
+      <div class="stats" id="pStats"></div>
       <div class="chead">
         <h3 style="font-size:1rem;margin:0">📈 추이</h3>
-        <div class="mbtns">${METRICS.map((m,i)=>
-          `<button class="mbtn${i===0?' on':''}" data-m="${m.k}">${m.t}</button>`).join('')}</div>
+        <div class="mbtns" id="pMbtns"></div>
       </div>
       <div class="sub" id="cdesc" style="margin:0 0 6px"></div>
       <div id="cbox"></div>
@@ -376,21 +373,43 @@ function showPlayer(name){
       <div class="scroll"><table>
         <thead><tr><th class="name">날짜</th><th class="name">상대</th><th>점수</th>
           <th>이닝</th><th>에버</th><th>하이런</th><th>결과</th></tr></thead>
-        <tbody>${[...h].reverse().map(r=>`<tr onclick="showGame('${r.id}')" style="cursor:pointer">
-          <td class="name">${esc(r.date)}</td><td class="name">${esc(r.opponents)}</td>
-          <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
-          <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('')}
-        </tbody></table></div></div>
+        <tbody id="pHist"></tbody></table></div></div>
   </div>`);
+
   el.querySelector('.back').onclick=()=>show('rank');
-  const labels = h.map(r=>r.date.slice(5));
-  let cur = 'avg', lastW = 0;
-  const draw = (key) => {
-    cur = key;
+  let lastW = 0;
+
+  const renderMode = () => {
+    const COLS = colsFor(playerMode).filter(c => c.k !== 'name' && c.k !== 'handicap');
+    const stObj = playerMode === '통합' ? p : (p.modes[playerMode] || {games:0, wins:0, winRate:0, avgRank:0});
+    
+    let statsHtml = '';
+    COLS.forEach(c => {
+      statsHtml += `<div class="st"><div class="k">${c.t}</div><div class="v">${cell(stObj, c)}</div></div>`;
+    });
+    el.querySelector('#pStats').innerHTML = statsHtml;
+
+    const h = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
+    
+    el.querySelector('#pHist').innerHTML = [...h].reverse().map(r=>`<tr onclick="showGame('${r.id}')" style="cursor:pointer">
+      <td class="name">${esc(r.date)}</td><td class="name">${esc(r.opponents)}</td>
+      <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
+      <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
+
+    el.querySelector('#pMbtns').innerHTML = METRICS.map(m=>
+      `<button class="mbtn ${m.k===chartCur?'on':''}" data-m="${m.k}">${m.t}</button>`).join('');
+    
+    el.querySelectorAll('.mbtn').forEach(b=>b.onclick=()=>draw(b.dataset.m, h));
+
+    draw(chartCur, h);
+  };
+
+  const draw = (key, h) => {
+    chartCur = key;
     const m = METRICS.find(v=>v.k===key);
     const box = el.querySelector('#cbox');
     lastW = box.clientWidth || innerWidth-64;
-    box.innerHTML = chart(m.vals(h), labels, {...m, W: lastW});
+    box.innerHTML = chart(m.vals(h), h.map(r=>r.date.slice(5)), {...m, W: lastW});
     el.querySelector('#cdesc').textContent = m.desc;
     el.querySelectorAll('.mbtn').forEach(b=>b.classList.toggle('on', b.dataset.m===key));
     const sc = box.querySelector('.cscroll');
@@ -399,10 +418,24 @@ function showPlayer(name){
       box.insertAdjacentHTML('beforeend', '<div class="chint">← 옆으로 밀면 지난 경기를 볼 수 있어요</div>');
     }
   };
-  el.querySelectorAll('.mbtn').forEach(b=>b.onclick=()=>draw(b.dataset.m));
+
+  el.querySelectorAll('.ptab').forEach(b => b.onclick = () => {
+    el.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
+    b.classList.add('on');
+    playerMode = b.dataset.m;
+    renderMode();
+  });
+
   document.getElementById('view').replaceChildren(el);
-  draw('avg');
-  chartRO = new ResizeObserver(es=>{ const w = es[0].contentRect.width; if(Math.abs(w - lastW) > 2) draw(cur); });
+  renderMode();
+
+  chartRO = new ResizeObserver(es=>{ 
+    const w = es[0].contentRect.width; 
+    if(Math.abs(w - lastW) > 2) {
+      const h = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
+      draw(chartCur, h); 
+    }
+  });
   chartRO.observe(el.querySelector('#cbox'));
   scrollTo(0,0);
 }
