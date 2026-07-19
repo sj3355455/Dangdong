@@ -174,15 +174,10 @@ function renderSetupCards(modeChanged = false) {
     if(!showSel && $('#name'+i)) $('#name'+i).style.display = '';
   }
 
-  for (let i = 0; i < (isTeam ? 2 : N); i++) {
-    const isMe = (prefs.myBall === i);
-    if (isTeam) {
-      if($('#sel'+(i*2))) $('#sel'+(i*2)).disabled = (i*2 === 0);   // 1번 시드(sel0) = 나 고정
-      if($('#sel'+(i*2+1))) $('#sel'+(i*2+1)).disabled = false;
-    } else {
-      if($('#sel'+i)) $('#sel'+i).disabled = isMe;
-      if($('#name'+i)) $('#name'+i).disabled = isMe;
-    }
+  for (let pIdx = 0; pIdx < totalPlayers; pIdx++) {
+    const isMe = (prefs.myBall === pIdx);
+    if($('#sel'+pIdx)) $('#sel'+pIdx).disabled = isMe;
+    if($('#name'+pIdx)) $('#name'+pIdx).disabled = isMe;
   }
 }
 
@@ -330,9 +325,11 @@ function syncCushSeg(){
 window.applyMyBall = function(i) {
   if (!auth) return toast('로그인이 필요합니다.');
   
-  if (prefs.gameType !== '팀전' && prefs.myBall !== i) {
+  if (prefs.myBall !== i) {
     const other = i;
     const current = prefs.myBall;
+    
+    // 1시드(혹은 개인전 선수) 스왑
     const tempName = prefs.names[current];
     const tempPid = prefs.pids[current];
     const tempTarget = prefs.targets[current];
@@ -342,6 +339,18 @@ window.applyMyBall = function(i) {
     prefs.names[other] = tempName;
     prefs.pids[other] = tempPid;
     prefs.targets[other] = tempTarget;
+    
+    // 팀전일 경우 2시드 선수도 함께 스왑하여 팀 전체가 공 색깔을 바꾸도록 함
+    if (prefs.gameType === '팀전') {
+      const p2Cur = current + 2;
+      const p2Oth = other + 2;
+      const tName = prefs.names[p2Cur];
+      const tPid = prefs.pids[p2Cur];
+      prefs.names[p2Cur] = prefs.names[p2Oth];
+      prefs.pids[p2Cur] = prefs.pids[p2Oth];
+      prefs.names[p2Oth] = tName;
+      prefs.pids[p2Oth] = tPid;
+    }
   }
   
   prefs.myBall = i;
