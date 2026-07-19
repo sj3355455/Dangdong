@@ -114,6 +114,7 @@ function processData(games, members) {
       st.history.unshift({
         id: g.id,
         type: g.type,
+        rank: pRank,
         date: dateStr,
         opponents: opp,
         score: p.score,
@@ -337,9 +338,14 @@ function chart(vals, labels, opt){
 }
 
 const METRICS = [
-  {k:'avg', t:'에버리지', desc:'최근 경기부터의 누적/개별 에버리지', vals:h=>h.map(r=>r.average), dec:2},
-  {k:'hit', t:'득점률',   desc:'최근 경기부터의 득점률', vals:h=>h.map(r=>r.inning ? (r.inning-r.miss)/r.inning*100 : 0), max:100, suffix:'%', dec:0},
-  {k:'adj', t:'보정 승률', desc:'그 경기까지의 누적 보정 승률', vals:h=>{let p=0; return h.map((r,i)=>{ p+=(r.adjPt||0); return p/(i+1); });}, max:100, suffix:'%', dec:1},
+  {k:'avg', t:'에버리지', modes:['통합'], dec:2},
+  {k:'hit', t:'득점률', modes:['통합'], max:100, suffix:'%', dec:0},
+  {k:'adj', t:'보정 승률', modes:['통합'], max:100, suffix:'%', dec:1},
+  {k:'games', t:'경기 수', modes:['통합'], dec:0},
+  {k:'cush', t:'쿠션 성공률', modes:['통합'], max:100, suffix:'%', dec:0},
+  {k:'hr', t:'하이런', modes:['통합'], dec:0},
+  {k:'winRate', t:'승률', modes:['2인','팀전'], max:100, suffix:'%', dec:0},
+  {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1}
 ];
 
 function showPlayer(name){
@@ -364,9 +370,9 @@ function showPlayer(name){
       </div>
       <div class="stats" id="pStats"></div>
       <div class="chead" style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:4px;">
-        <div>
+        <div style="flex:1;">
           <h3 style="font-size:1rem;margin:0 0 6px 0">📈 추이</h3>
-          <div class="mbtns" id="pMbtns"></div>
+          <select id="pMetricSel" class="field" style="width:140px; padding:6px; font-size:0.9rem"></select>
         </div>
         <div style="display:flex; gap:4px; background:var(--surface); padding:4px; border-radius:8px;">
           <button class="tab gbtn on" data-g="day" style="padding:4px 8px; font-size:0.8rem">일별</button>
@@ -403,10 +409,19 @@ function showPlayer(name){
       <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
       <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
 
-    el.querySelector('#pMbtns').innerHTML = METRICS.map(m=>
-      `<button class="mbtn ${m.k===chartCur?'on':''}" data-m="${m.k}">${m.t}</button>`).join('');
+    const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
+    el.querySelector('#pMetricSel').innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
     
-    el.querySelectorAll('.mbtn').forEach(b=>b.onclick=()=>draw(b.dataset.m, h));
+    if (!availableMetrics.find(m => m.k === chartCur)) {
+      chartCur = availableMetrics[0].k;
+    }
+    el.querySelector('#pMetricSel').value = chartCur;
+
+    el.querySelector('#pMetricSel').onchange = (e) => {
+      chartCur = e.target.value;
+      const currentH = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
+      draw(chartCur, currentH);
+    };
 
     draw(chartCur, h);
   };
@@ -422,12 +437,19 @@ function showPlayer(name){
     
     hAsc.forEach(r => {
       const gKey = chartGroup === 'day' ? r.date.substring(5, 10) : r.date.substring(0, 7);
-      if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, sumAdjPt: 0 };
+      if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, sumAdjPt: 0, maxHr: 0, cushMade: 0, cushInn: 0, wins: 0, rankSum: 0 };
       groups[gKey].games++;
       groups[gKey].sumInning += (r.inning || 0);
       groups[gKey].sumScore += (r.score || 0);
       groups[gKey].sumMiss += (r.miss || 0);
       groups[gKey].sumAdjPt += (r.adjPt || 0);
+      if ((r.highRun || 0) > groups[gKey].maxHr) groups[gKey].maxHr = r.highRun;
+      if (r.cushInn > 0) {
+         groups[gKey].cushMade += (r.cushMade || 0);
+         groups[gKey].cushInn += r.cushInn;
+      }
+      if (r.win) groups[gKey].wins++;
+      if (r.rank) groups[gKey].rankSum += r.rank;
     });
 
     const labels = Object.keys(groups);
@@ -436,19 +458,28 @@ function showPlayer(name){
       if (key === 'avg') return g.sumInning ? g.sumScore / g.sumInning : 0;
       if (key === 'hit') return g.sumInning ? (g.sumInning - g.sumMiss) / g.sumInning * 100 : 0;
       if (key === 'adj') return g.games ? g.sumAdjPt / g.games : 0;
+      if (key === 'games') return g.games;
+      if (key === 'hr') return g.maxHr;
+      if (key === 'cush') return g.cushInn ? (g.cushMade / g.cushInn) * 100 : 0;
+      if (key === 'winRate') return g.games ? (g.wins / g.games) * 100 : 0;
+      if (key === 'avgRank') return g.games ? (g.rankSum / g.games) : 0;
       return 0;
     });
 
     box.innerHTML = chart(vals, labels, {...m, W: lastW});
     
     const groupText = chartGroup === 'day' ? '일별' : '월별';
-    let desc = m.desc;
+    let desc = m.t;
     if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 총 이닝)`;
     else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (공타 제외 득점 비율)`;
     else if (key === 'adj') desc = `해당 ${groupText} 평균 보정 승률`;
+    else if (key === 'games') desc = `해당 ${groupText} 총 경기 수`;
+    else if (key === 'hr') desc = `해당 ${groupText} 최고 하이런`;
+    else if (key === 'cush') desc = `해당 ${groupText} 쿠션 성공률`;
+    else if (key === 'winRate') desc = `해당 ${groupText} 평균 승률`;
+    else if (key === 'avgRank') desc = `해당 ${groupText} 평균 순위`;
 
     el.querySelector('#cdesc').textContent = desc;
-    el.querySelectorAll('.mbtn').forEach(b=>b.classList.toggle('on', b.dataset.m===key));
     const sc = box.querySelector('.cscroll');
     if(sc && sc.scrollWidth > sc.clientWidth){
       sc.scrollLeft = sc.scrollWidth;
