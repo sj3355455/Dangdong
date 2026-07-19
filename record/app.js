@@ -729,9 +729,9 @@ function renderGames(){
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
   }).join('');
   
-  const inner = rows ? `<table style="width:100%;table-layout:fixed">
-    <thead><tr><th class="name" style="width:25%">날짜</th><th class="name" style="width:20%">경기</th>
-      <th class="name" style="width:35%">참가자</th><th class="name" style="width:20%">우승</th></tr></thead>
+  const inner = rows ? `<table>
+    <thead><tr><th class="name">날짜</th><th class="name">경기</th>
+      <th class="name">참가자</th><th class="name">우승</th></tr></thead>
     <tbody>${rows}</tbody></table>` : `<div class="empty">기록이 없습니다</div>`;
 
   const el = $(`<div class="card">
