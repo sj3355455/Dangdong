@@ -352,6 +352,7 @@ function showPlayer(name){
   const p = DATA.players.find(v=>v.name===name);
   let playerMode = '통합';
   let chartCur = 'avg';
+  let chartGroup = 'day';
 
   const el = $(`<div>
     <button class="back">← 순위로</button>
@@ -362,9 +363,15 @@ function showPlayer(name){
         ${MODE_TABS.map(m=>`<button class="tab ptab ${m===playerMode?'on':''}" data-m="${m}" style="flex:1;padding:8px 4px;text-align:center">${m}</button>`).join('')}
       </div>
       <div class="stats" id="pStats"></div>
-      <div class="chead">
-        <h3 style="font-size:1rem;margin:0">📈 추이</h3>
-        <div class="mbtns" id="pMbtns"></div>
+      <div class="chead" style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:4px;">
+        <div>
+          <h3 style="font-size:1rem;margin:0 0 6px 0">📈 추이</h3>
+          <div class="mbtns" id="pMbtns"></div>
+        </div>
+        <div style="display:flex; gap:4px; background:var(--surface); padding:4px; border-radius:8px;">
+          <button class="tab gbtn on" data-g="day" style="padding:4px 8px; font-size:0.8rem">일별</button>
+          <button class="tab gbtn" data-g="month" style="padding:4px 8px; font-size:0.8rem">월별</button>
+        </div>
       </div>
       <div class="sub" id="cdesc" style="margin:0 0 6px"></div>
       <div id="cbox"></div>
@@ -409,8 +416,38 @@ function showPlayer(name){
     const m = METRICS.find(v=>v.k===key);
     const box = el.querySelector('#cbox');
     lastW = box.clientWidth || innerWidth-64;
-    box.innerHTML = chart(m.vals(h), h.map(r=>r.date.slice(5)), {...m, W: lastW});
-    el.querySelector('#cdesc').textContent = m.desc;
+
+    const hAsc = [...h].reverse();
+    const groups = {}; 
+    
+    hAsc.forEach(r => {
+      const gKey = chartGroup === 'day' ? r.date.substring(5, 10) : r.date.substring(0, 7);
+      if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, sumAdjPt: 0 };
+      groups[gKey].games++;
+      groups[gKey].sumInning += (r.inning || 0);
+      groups[gKey].sumScore += (r.score || 0);
+      groups[gKey].sumMiss += (r.miss || 0);
+      groups[gKey].sumAdjPt += (r.adjPt || 0);
+    });
+
+    const labels = Object.keys(groups);
+    const vals = labels.map(lbl => {
+      const g = groups[lbl];
+      if (key === 'avg') return g.sumInning ? g.sumScore / g.sumInning : 0;
+      if (key === 'hit') return g.sumInning ? (g.sumInning - g.sumMiss) / g.sumInning * 100 : 0;
+      if (key === 'adj') return g.games ? g.sumAdjPt / g.games : 0;
+      return 0;
+    });
+
+    box.innerHTML = chart(vals, labels, {...m, W: lastW});
+    
+    const groupText = chartGroup === 'day' ? '일별' : '월별';
+    let desc = m.desc;
+    if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 총 이닝)`;
+    else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (공타 제외 득점 비율)`;
+    else if (key === 'adj') desc = `해당 ${groupText} 평균 보정 승률`;
+
+    el.querySelector('#cdesc').textContent = desc;
     el.querySelectorAll('.mbtn').forEach(b=>b.classList.toggle('on', b.dataset.m===key));
     const sc = box.querySelector('.cscroll');
     if(sc && sc.scrollWidth > sc.clientWidth){
@@ -418,6 +455,14 @@ function showPlayer(name){
       box.insertAdjacentHTML('beforeend', '<div class="chint">← 옆으로 밀면 지난 경기를 볼 수 있어요</div>');
     }
   };
+
+  el.querySelectorAll('.gbtn').forEach(b => b.onclick = () => {
+    el.querySelectorAll('.gbtn').forEach(t=>t.classList.remove('on'));
+    b.classList.add('on');
+    chartGroup = b.dataset.g;
+    const currentH = playerMode === '통합' ? [...p.history] : p.history.filter(r => r.type === playerMode);
+    draw(chartCur, currentH);
+  });
 
   el.querySelectorAll('.ptab').forEach(b => b.onclick = () => {
     el.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
