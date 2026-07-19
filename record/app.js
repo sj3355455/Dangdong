@@ -357,9 +357,13 @@ function chart(vals, labels, opt){
   const W = Math.max(availW, needW);
 
   const iw=W-P.l-P.r, ih=H-P.t-P.b;
-  const max = opt.max || (Math.max(...vals)*1.15 || 1);
+  const isInv = opt.invert || false;
+  const min = opt.min != null ? opt.min : (isInv ? Math.min(...vals)*0.9 : 0);
+  const max = opt.max != null ? opt.max : (Math.max(...vals)*1.15 || 1);
+  const range = max - min || 1;
+
   const x = i => P.l + (vals.length===1?iw/2:iw*i/(vals.length-1));
-  const y = v => P.t + ih - (v/max)*ih;
+  const y = v => isInv ? P.t + ((v - min)/range)*ih : P.t + ih - ((v - min)/range)*ih;
 
   const gap = iw/(vals.length-1);
   const showVal = gap >= 36;
@@ -367,10 +371,11 @@ function chart(vals, labels, opt){
 
   let g='';
   for(let i=0;i<=4;i++){
-    const yy=P.t+ih*i/4, v=(max*(4-i)/4);
+    const yy=P.t+ih*i/4;
+    const v = isInv ? min + (range*i/4) : min + (range*(4-i)/4);
     g+=`<line x1="${P.l}" y1="${yy}" x2="${W-P.r}" y2="${yy}" stroke="var(--line)" stroke-width="1"/>`;
     g+=`<text x="${P.l-8}" y="${yy+4}" fill="var(--muted)" font-size="11" text-anchor="end">${fmt(v)}</text>`;
-}
+  }
   const pts = vals.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
   const dots = vals.map((v,i)=>{
     const c = `<circle cx="${x(i)}" cy="${y(v)}" r="${showVal?4:3}" fill="var(--accent)"/>`;
@@ -392,7 +397,7 @@ const METRICS = [
   {k:'cush', t:'쿠션 성공률', modes:['통합'], max:100, suffix:'%', dec:0},
   {k:'hr', t:'하이런', modes:['통합'], dec:0},
   {k:'winRate', t:'승률', modes:['2인','팀전'], max:100, suffix:'%', dec:0},
-  {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1}
+  {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1, invert:true, min:1, max:4}
 ];
 
 function calcStatsForHistory(h) {
