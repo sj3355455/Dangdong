@@ -139,7 +139,7 @@ function processData(games, members) {
       
       st.history.unshift({
         id: g.id,
-        type: g.type,
+        type: typeStr,
         rank: pRank,
         date: dateStr,
         opponents: opp,
