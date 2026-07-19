@@ -278,11 +278,11 @@ function renderRank(){
   });
   
   const periods = ['오늘', '이번달', '누적'];
-  const periodSel = `<select class="field p-period" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">` + 
+  const periodSel = `<select class="field p-period" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` + 
     periods.map(p => `<option value="${p}" ${p===rankPeriod?'selected':''}>${p}</option>`).join('') + 
     `</select>`;
 
-  const modeSel = `<select class="field p-mode" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">` + 
+  const modeSel = `<select class="field p-mode" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` + 
     MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') + 
     `</select>`;
 
@@ -454,10 +454,10 @@ function showPlayer(name){
       <h2 style="margin:0">${esc(p.name)}</h2>
       <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
       <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <select class="field pd-period" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">
+        <select class="field pd-period" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">
           ${['오늘', '이번달', '누적'].map(pd=>`<option value="${pd}" ${pd===playerPeriod?'selected':''}>${pd}</option>`).join('')}
         </select>
-        <select class="field ptab" style="flex:1; padding:8px; font-size:0.95rem; border-radius:8px;">
+        <select class="field ptab" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">
           ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
         </select>
       </div>

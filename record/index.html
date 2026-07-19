@@ -35,9 +35,17 @@ h1{font-size:1.5rem;margin:0 0 4px}
 .tab{padding:7px 11px;border:1px solid var(--line);background:var(--card);white-space:nowrap;
   color:var(--text);border-radius:999px;cursor:pointer;font-size:.9rem}
 .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-.field{width:100%;background:#12161b;border:1px solid var(--line);color:#fff;
+.field{width:100%;background:var(--card);border:1px solid var(--line);color:var(--text);
   padding:12px;border-radius:8px;outline:none;transition:border-color .2s;font-size:1rem;margin-bottom:12px;}
 .field:focus{border-color:var(--accent)}
+select.field{
+  appearance:none;
+  background-image:url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  background-size:16px;
+  padding-right:36px;
+}
 .bigbtn{width:100%;max-width:420px;padding:15px 0;border-radius:14px;background:var(--accent);
   color:#fff;border:none;font-weight:bold;font-size:1.1rem;cursor:pointer;transition:transform .1s}
 .bigbtn:active{filter:brightness(.9)}
@@ -103,7 +111,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v116</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v117</span>
   </div>
 </div>
 <script src="./app.js"></script>
