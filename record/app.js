@@ -942,6 +942,8 @@ function show(v){
   
   const auth = getAuth();
   document.getElementById('topUserName').textContent = auth ? auth.name : '게스트';
+  const ico = document.getElementById('topUserIcon');
+  if (ico) ico.textContent = (auth && IS_ADMIN) ? '🛡️' : '👤';
   const myRecBtn = document.getElementById('btnMyRec');
   if(myRecBtn){
     if(auth && auth.name && DATA.players.find(p=>p.name===auth.name)) {
