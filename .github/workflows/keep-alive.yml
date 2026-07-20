@@ -1,0 +1,24 @@
+# Supabase 무료 플랜은 7일간 DB 활동이 없으면 프로젝트가 일시정지된다.
+# 3일에 한 번 가벼운 조회를 보내서 활동을 유지한다.
+# (anon key는 앱 클라이언트에 이미 공개된 키라 여기 적어도 안전함)
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '0 3 */3 * *'   # 3일마다 낮 12시(한국시간) 실행
+  workflow_dispatch:          # 수동 실행 버튼 (테스트용)
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase database
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://ezwassqurbmzcjfmtjop.supabase.co/rest/v1/profiles?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU")
+          echo "HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "Supabase ping failed — 프로젝트가 멈췄는지 확인하세요."
+            exit 1
+          fi
