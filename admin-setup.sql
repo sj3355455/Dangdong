@@ -35,6 +35,13 @@ drop policy if exists "insert own profile" on public.profiles;
 create policy "insert own profile" on public.profiles
   for insert to authenticated with check (auth.uid() = id);
 
+-- 3.5) 테이블 권한(GRANT): RLS 이전 단계의 기본 권한.
+--      수정·삭제 허용 범위는 아래 RLS 정책이 관리자로 제한한다.
+grant select on public.games to anon;
+grant select on public.profiles to anon;
+grant select, insert, update, delete on public.games to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+
 -- 4) 관리자 전용 정책: 경기 수정·삭제, 선수 정보 수정
 drop policy if exists "admin update games" on public.games;
 create policy "admin update games" on public.games
