@@ -3,7 +3,7 @@
  *  - 페이지 이동(navigate): 네트워크 우선, 실패 시 캐시 (수정사항이 빨리 반영되도록)
  *  - 그 외 파일: 캐시 우선 + 백그라운드 갱신 (stale-while-revalidate)
  */
-const CACHE = 'dangdong-score-v130';
+const CACHE = 'dangdong-score-v131';
 const ASSETS = [
   '/Dangdong/', '/Dangdong/index.html',
   '/Dangdong/record/', '/Dangdong/record/index.html', '/Dangdong/record/app.js',
@@ -27,6 +27,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
+  // Supabase 등 다른 출처(API) 요청은 캐시하지 않고 그대로 통과시킨다.
+  // 안 그러면 경기 저장/삭제, 관리자 플래그 변경 같은 최신 데이터가
+  // 이전 캐시로 가려져서 앱을 한 번 더 열어야 반영되는 문제가 생긴다.
+  if (new URL(req.url).origin !== self.location.origin) return;
 
   if (req.mode === 'navigate') {
     e.respondWith(
