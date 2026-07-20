@@ -1,3 +1,5 @@
+import { sbFetch } from './supabase.js';
+
 let DATA = { updated: '', players: [], games: [] };
 let RAW_GAMES = [];
 let RAW_MEMBERS = [];
@@ -57,6 +59,87 @@ async function fetchMembers() {
   });
   if (!res.ok) throw new Error('fetch error');
   return await res.json();
+}
+
+// ══ 관리자 기능 ══
+// 서버(RLS)가 실제 권한을 강제한다. 여기서는 UI 노출 여부만 판단.
+let IS_ADMIN = false;
+async function fetchAdmin(){
+  const auth = getAuth();
+  if (!auth || !auth.uid || !auth.token) return false;
+  try {
+    const d = await sbFetch('/rest/v1/profiles?select=is_admin&id=eq.' + auth.uid);
+    return !!(d && d[0] && d[0].is_admin);
+  } catch(e){ return false; }   // is_admin 컬럼이 아직 없으면 조용히 비활성화
+}
+// Prefer: return=representation — RLS에 막히면 빈 배열이 와서 실패를 감지할 수 있다
+const REP = { headers: { Prefer: 'return=representation' } };
+const adminApi = {
+  updateGame: (id, players) => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify({ players }) }, REP)),
+  deleteGame: id => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'DELETE' }, REP)),
+  updateProfile: (id, fields) => sbFetch('/rest/v1/profiles?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify(fields) }, REP))
+};
+async function reloadData(){
+  RAW_GAMES = await fetchGames();
+  RAW_MEMBERS = await fetchMembers().catch(() => RAW_MEMBERS);
+  DATA = getFilteredData(rankPeriod);
+}
+const NO_PERM = '권한이 없습니다. 관리자 계정으로 로그인했는지 확인하세요.';
+
+function attachGameAdmin(el, id){
+  const raw = RAW_GAMES.find(r => String(r.id) === String(id));
+  if (!raw) return;
+  const F = [['rank','순위'],['score','점수'],['target','목표'],['innings','이닝'],['highRun','하이런'],['misses','공타'],['cushMade','쿠션성공'],['cushInn','쿠션시도']];
+  const bar = $(`<div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🛠 관리자</h3>
+    <div style="display:flex; gap:8px;">
+      <button class="mbtn" id="gAdmEdit">✏️ 경기 수정</button>
+      <button class="mbtn" id="gAdmDel" style="color:#e5484d;border-color:#e5484d">🗑 경기 삭제</button>
+    </div>
+    <div id="gAdmForm" style="display:none; margin-top:12px">
+      <div class="scroll"><table>
+        <thead><tr><th class="name">선수</th>${F.map(f=>`<th>${f[1]}</th>`).join('')}</tr></thead>
+        <tbody>${raw.players.map((p,j)=>`<tr><td class="name">${esc(p.name||'')}</td>${
+          F.map(f=>`<td><input data-j="${j}" data-k="${f[0]}" type="number" value="${p[f[0]] ?? 0}" style="width:64px;padding:6px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px"></td>`).join('')
+        }</tr>`).join('')}</tbody>
+      </table></div>
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <button class="mbtn on" id="gAdmSave">저장</button>
+        <button class="mbtn" id="gAdmCancel">취소</button>
+      </div>
+      <div class="sub" style="margin-top:8px">순위를 바꾸면 우승(1위) 여부도 자동으로 맞춰집니다.</div>
+    </div>
+  </div>`);
+  bar.querySelector('#gAdmEdit').onclick = () => {
+    const f = bar.querySelector('#gAdmForm');
+    f.style.display = f.style.display === 'none' ? '' : 'none';
+  };
+  bar.querySelector('#gAdmCancel').onclick = () => { bar.querySelector('#gAdmForm').style.display = 'none'; };
+  bar.querySelector('#gAdmSave').onclick = async e => {
+    const btn = e.target; btn.disabled = true;
+    try {
+      const np = raw.players.map(p => Object.assign({}, p));
+      bar.querySelectorAll('#gAdmForm input').forEach(inp => {
+        np[+inp.dataset.j][inp.dataset.k] = parseInt(inp.value, 10) || 0;
+      });
+      np.forEach(p => { p.win = p.rank === 1; });
+      const d = await adminApi.updateGame(raw.id, np);
+      if (!d || !d.length) throw new Error(NO_PERM);
+      await reloadData();
+      alert('경기 기록이 수정되었습니다.');
+      showGame(id);
+    } catch(err){ alert('수정 실패: ' + err.message); btn.disabled = false; }
+  };
+  bar.querySelector('#gAdmDel').onclick = async () => {
+    if (!confirm('이 경기를 완전히 삭제할까요? 되돌릴 수 없습니다.')) return;
+    try {
+      const d = await adminApi.deleteGame(raw.id);
+      if (!d || !d.length) throw new Error(NO_PERM);
+      await reloadData();
+      alert('경기가 삭제되었습니다.');
+      show('games');
+    } catch(err){ alert('삭제 실패: ' + err.message); }
+  };
+  el.appendChild(bar);
 }
 
 function processData(games, members) {
@@ -617,6 +700,28 @@ function showPlayer(name){
     renderMode();
   };
 
+  if (IS_ADMIN && p.id) {
+    const adm = $(`<div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🛠 관리자: 선수 정보 수정</h3>
+      <div class="sub" style="margin:0 0 8px">이름을 바꾸면 순위·기록에 새 이름으로 표시됩니다. 수지는 저장값 기준입니다 (예: 15 = 수지 150).</div>
+      <input id="admName" class="field" maxlength="10" value="${esc(p.name)}" placeholder="이름">
+      <input id="admHd" class="field" type="number" value="${p.handicap ?? ''}" placeholder="수지 저장값 (예: 15)">
+      <button class="mbtn on" id="admSave">저장</button>
+    </div>`);
+    adm.querySelector('#admSave').onclick = async e => {
+      const name = adm.querySelector('#admName').value.trim();
+      const hd = parseInt(adm.querySelector('#admHd').value, 10);
+      if (!name) return alert('이름을 입력하세요');
+      e.target.disabled = true;
+      try {
+        const d = await adminApi.updateProfile(p.id, { display_name: name, handicap: isNaN(hd) ? null : hd });
+        if (!d || !d.length) throw new Error(NO_PERM);
+        await reloadData();
+        alert('선수 정보가 수정되었습니다.');
+        showPlayer(name);
+      } catch(err){ alert('수정 실패: ' + err.message); e.target.disabled = false; }
+    };
+    el.appendChild(adm);
+  }
   document.getElementById('view').replaceChildren(el);
   renderMode();
 
@@ -803,9 +908,11 @@ function showGame(id){
   </div>`);
   el.querySelector('.back').onclick=()=>show('games');
   el.querySelectorAll('a.pl').forEach(a=>a.onclick=()=>showPlayer(a.dataset.p));
+  if (IS_ADMIN) attachGameAdmin(el, id);
   document.getElementById('view').replaceChildren(el);
   scrollTo(0,0);
 }
+window.showGame = showGame;   // 모듈 전환 후에도 인라인 onclick에서 접근 가능하도록
 
 /* 오프라인 대기열 동기화는 점수판(score/)이 담당한다.
  * 앱 시작 화면이 점수판이라 기록실엔 반드시 점수판을 거쳐 오므로 여기선 불필요. */
@@ -813,12 +920,14 @@ async function initDashboard() {
   const sub = document.getElementById('sub');
   if (sub) sub.textContent = '서버에서 데이터를 불러오는 중입니다...';
   try {
-    const [games, members] = await Promise.all([
+    const [games, members, adm] = await Promise.all([
       fetchGames(),
-      fetchMembers().catch(() => [])
+      fetchMembers().catch(() => []),
+      fetchAdmin()
     ]);
     RAW_GAMES = games;
     RAW_MEMBERS = members;
+    IS_ADMIN = adm;
     DATA = getFilteredData(rankPeriod);
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
     const t = new URLSearchParams(location.search).get('tab') || 'rank';
