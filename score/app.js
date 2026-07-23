@@ -887,7 +887,75 @@ function win(winnerIdx){
 
   // 아직 겨룰 선수가 남았으면 '계속치기'로 꼴등전 진행, 최종이면 여기서 저장
   $('#btnWinCont').style.display = isFinal ? 'none' : '';
+  $('#btnWinUndo').style.display = '';   // 경기 끝내기에서 숨겼을 수 있어 복구
   if (isFinal) saveGame();
+}
+
+// ══ 경기 끝내기(중도 기록) ══
+// 목표를 다 못 채웠어도 지금까지의 '달성 비율'로 순위를 매겨 경기를 종료·저장한다.
+//   달성 비율 = (뺀 점수 + 낸 마무리쿠션 × 3) ÷ (목표점수 + 필요 마무리쿠션 × 3)
+const CUSH_PT = 3;
+function progRatio(i){
+  const denom = S.targets[i] + (S.round > 0 ? S.round * CUSH_PT : 0);
+  const prog = S.sc[i] + (S.cush[i] || 0) * CUSH_PT;   // sc/cush는 팀전에서 팀 공유값
+  return denom > 0 ? prog / denom : 0;
+}
+function endGameEarly(){
+  if (!S || S.fin) return;
+  const N = S.sc.length;
+  const isTeam = S.type === '팀전' && N === 4;
+
+  // 아직 순위가 확정되지 않은 유닛(개인전=선수, 팀전=팀 대표 0/1)을 비율로 순위 매김
+  const reps = isTeam ? [0, 1] : [...Array(N).keys()];
+  const pending = reps.filter(r => !S.rank[r] && !(isTeam && S.rank[r + 2]));
+  const nextRank = Math.max(0, ...S.rank) + 1;
+  const EPS = 1e-9;
+  pending.forEach(r => {
+    // 표준 경쟁 순위: 나보다 비율이 확실히 높은 유닛 수 + 다음 등수 (동률은 공동)
+    const better = pending.filter(o => progRatio(o) > progRatio(r) + EPS).length;
+    const rk = nextRank + better;
+    S.rank[r] = rk;
+    if (isTeam) S.rank[r + 2] = rk;
+  });
+
+  S.finished = S.finished.map(() => true);
+  S.lastInning = false;
+  S.winners = [];
+  for (let i = 0; i < N; i++) if (S.rank[i] === 1) S.winners.push(i);
+  S.fin = true;
+  save();
+
+  showEarlyResult();
+  saveGame();
+}
+function showEarlyResult(){
+  const N = S.sc.length;
+  const isTeam = S.type === '팀전' && N === 4;
+  const winOvl = $('#winOvl');
+  winOvl.classList.add('on');
+  winOvl.style.pointerEvents = 'none';
+  setTimeout(() => { winOvl.style.pointerEvents = ''; }, 600);
+
+  const champ = S.winners[0];
+  const isTie = new Set(S.winners.map(i => isTeam ? i % 2 : i)).size > 1;
+  const champName = isTeam ? TZNAMES[champ % 2] : S.names[champ];
+  $('#winTitle').textContent = isTie ? '공동 1위!' : `${champName} 승리!`;
+  speak(isTie ? '공동 승리' : `${champName} 승리`);
+
+  let html = '<tr><th>선수</th><th>순위</th><th>점수</th><th>달성률</th></tr>';
+  const order = [...Array(N).keys()].sort((a, b) => (S.rank[a] - S.rank[b]) || (a - b));
+  for (const i of order){
+    const nm = isTeam ? `${i % 2 === 0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
+    const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
+    const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
+    const scStr = (S.done[i] && S.round > 0) ? `${S.targets[i]} + 쿠션${indC}` : `${indS} / ${S.targets[i]}`;
+    const pct = (progRatio(i) * 100).toFixed(1);
+    const medal = S.rank[i] === 1 ? '🏆 ' : '';
+    html += `<tr><td>${esc(nm)}</td><td>${medal}${S.rank[i]}위</td><td>${scStr}</td><td>${pct}%</td></tr>`;
+  }
+  $('#winStats').innerHTML = html;
+  $('#btnWinCont').style.display = 'none';
+  $('#btnWinUndo').style.display = 'none';
 }
 
 // 경기 종료(저장) 후 새 경기 — 꼴등전을 안 하고 바로 끝낼 때도 여기서 저장된다
@@ -926,6 +994,12 @@ updVoiceBtn();
 if ($('#btnVoice')) $('#btnVoice').onclick = () => {
   voiceOn = !voiceOn; lsSet(LS_VOICE, voiceOn); updVoiceBtn();
   if (voiceOn) speak('음성 안내를 켰습니다'); else { try { speechSynthesis.cancel(); } catch(e){} }
+};
+$('#btnEndGame').onclick = () => {
+  if(confirm('지금까지의 점수 비율(뺀 점수 + 쿠션×3)로 순위를 정하고 경기를 기록할까요?')){
+    $('#menuOvl').classList.remove('on');
+    endGameEarly();
+  }
 };
 $('#btnMenuNew').onclick = () => {
   if(confirm('진행 중인 경기가 사라집니다. 새 경기를 설정할까요?')){
