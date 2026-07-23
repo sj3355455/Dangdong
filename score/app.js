@@ -873,6 +873,8 @@ function win(winnerIdx){
     ? '공동 달성'
     : `${isTeam ? TZNAMES[first%2] : S.names[first]} ${(S.rank[first] || 1) === 1 ? '우승' : S.rank[first] + '위'}`);
 
+  // 미확정 선수도 잠정 순위(달성 비율)를 매겨 결과 표에 2·3·4등을 표시한다.
+  const dr = displayRanks();
   let html = '<tr><th>선수</th><th>점수</th><th>에버</th><th>하이런</th></tr>';
   for(let i=0; i<N; i++){
     const nm = isTeam ? `${i%2===0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
@@ -880,7 +882,7 @@ function win(winnerIdx){
     const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
     const scStr = (S.done[i] && S.round > 0) ? `쿠션 ${indC}/${S.round}` : `${indS}/${S.targets[i]}`;
     const ev = S.inn[i] ? (indS / S.inn[i]).toFixed(3) : '0.000';
-    const rankTag = S.rank[i] ? (S.rank[i] === 1 ? ' 🏆' : ` <span style="opacity:.6">${S.rank[i]}위</span>`) : '';
+    const rankTag = dr[i] === 1 ? ' 🏆' : ` <span style="opacity:.6">${dr[i]}위</span>`;
     html += `<tr><td>${esc(nm)}${rankTag}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
   }
   $('#winStats').innerHTML = html;
@@ -900,6 +902,25 @@ function progRatio(i){
   const prog = S.sc[i] + (S.cush[i] || 0) * CUSH_PT;   // sc/cush는 팀전에서 팀 공유값
   return denom > 0 ? prog / denom : 0;
 }
+// 결과 화면 표시용 순위 배열. 확정된 순위는 그대로 두고, 미확정 선수만 달성 비율로
+// 잠정 순위를 매겨 돌려준다. (S.rank 원본은 건드리지 않아 꼴등전 진행에 영향 없음)
+function displayRanks(){
+  const N = S.sc.length;
+  const isTeam = S.type === '팀전' && N === 4;
+  const out = S.rank.slice();
+  const reps = isTeam ? [0, 1] : [...Array(N).keys()];
+  const pending = reps.filter(r => !out[r] && !(isTeam && out[r + 2]));
+  const nextRank = Math.max(0, ...out) + 1;
+  const EPS = 1e-9;
+  pending.forEach(r => {
+    const better = pending.filter(o => progRatio(o) > progRatio(r) + EPS).length;
+    const rk = nextRank + better;
+    out[r] = rk;
+    if (isTeam) out[r + 2] = rk;
+  });
+  return out;
+}
+
 // 아직 순위가 확정되지 않은 유닛(개인전=선수, 팀전=팀 대표 0/1)을 달성 비율로 순위 매김.
 // 이미 정식 완주해 순위가 있는 선수는 그대로 두고, 나머지를 그 뒤 등수로 채운다.
 function rankRemainingByRatio(){
