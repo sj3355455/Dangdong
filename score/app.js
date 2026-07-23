@@ -900,10 +900,27 @@ function progRatio(i){
   const prog = S.sc[i] + (S.cush[i] || 0) * CUSH_PT;   // sc/cush는 팀전에서 팀 공유값
   return denom > 0 ? prog / denom : 0;
 }
+// 아직 순위가 확정되지 않은 유닛(개인전=선수, 팀전=팀 대표 0/1)을 달성 비율로 순위 매김.
+// 이미 정식 완주해 순위가 있는 선수는 그대로 두고, 나머지를 그 뒤 등수로 채운다.
+function rankRemainingByRatio(){
+  const N = S.sc.length;
+  const isTeam = S.type === '팀전' && N === 4;
+  const reps = isTeam ? [0, 1] : [...Array(N).keys()];
+  const pending = reps.filter(r => !S.rank[r] && !(isTeam && S.rank[r + 2]));
+  if (!pending.length) return;
+  const nextRank = Math.max(0, ...S.rank) + 1;
+  const EPS = 1e-9;
+  pending.forEach(r => {
+    // 표준 경쟁 순위: 나보다 비율이 확실히 높은 유닛 수 + 다음 등수 (동률은 공동)
+    const better = pending.filter(o => progRatio(o) > progRatio(r) + EPS).length;
+    const rk = nextRank + better;
+    S.rank[r] = rk;
+    if (isTeam) S.rank[r + 2] = rk;
+  });
+}
 function endGameEarly(){
   if (!S || S.fin) return;
   const N = S.sc.length;
-  const isTeam = S.type === '팀전' && N === 4;
 
   // 진행 중이던 현재 턴을 이닝 하나로 마감한다.
   // (점수는 이미 sc/indSc에 반영돼 있고, 여기서 이닝수·하이런·쿠션이닝만 확정.
@@ -915,18 +932,7 @@ function endGameEarly(){
     S.tp = 0;
   }
 
-  // 아직 순위가 확정되지 않은 유닛(개인전=선수, 팀전=팀 대표 0/1)을 비율로 순위 매김
-  const reps = isTeam ? [0, 1] : [...Array(N).keys()];
-  const pending = reps.filter(r => !S.rank[r] && !(isTeam && S.rank[r + 2]));
-  const nextRank = Math.max(0, ...S.rank) + 1;
-  const EPS = 1e-9;
-  pending.forEach(r => {
-    // 표준 경쟁 순위: 나보다 비율이 확실히 높은 유닛 수 + 다음 등수 (동률은 공동)
-    const better = pending.filter(o => progRatio(o) > progRatio(r) + EPS).length;
-    const rk = nextRank + better;
-    S.rank[r] = rk;
-    if (isTeam) S.rank[r + 2] = rk;
-  });
+  rankRemainingByRatio();
 
   S.finished = S.finished.map(() => true);
   S.lastInning = false;
@@ -968,8 +974,10 @@ function showEarlyResult(){
   $('#btnWinUndo').style.display = 'none';
 }
 
-// 경기 종료(저장) 후 새 경기 — 꼴등전을 안 하고 바로 끝낼 때도 여기서 저장된다
+// 경기 종료(저장) 후 새 경기 — 꼴등전을 안 하고 바로 끝낼 때도 여기서 저장된다.
+// 남은 선수는 공동 꼴찌가 아니라 지금까지의 달성 비율로 순위를 매겨 저장한다.
 $('#btnWinNew').onclick = () => {
+  rankRemainingByRatio();
   saveGame();
   $('#winOvl').classList.remove('on'); S = null; save(); exitFS(); show('setup');
 };
