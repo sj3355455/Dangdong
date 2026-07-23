@@ -905,6 +905,16 @@ function endGameEarly(){
   const N = S.sc.length;
   const isTeam = S.type === '팀전' && N === 4;
 
+  // 진행 중이던 현재 턴을 이닝 하나로 마감한다.
+  // (점수는 이미 sc/indSc에 반영돼 있고, 여기서 이닝수·하이런·쿠션이닝만 확정.
+  //  turn을 넘기지 않으므로 공타/파울로는 치지 않는다 → miss 증가 없음)
+  if (!S.finished[S.turn]) {
+    if (S.tp > S.br[S.turn]) S.br[S.turn] = S.tp;
+    S.inn[S.turn]++;
+    if (S.done[S.turn]) S.cushInn[S.turn]++;
+    S.tp = 0;
+  }
+
   // 아직 순위가 확정되지 않은 유닛(개인전=선수, 팀전=팀 대표 0/1)을 비율로 순위 매김
   const reps = isTeam ? [0, 1] : [...Array(N).keys()];
   const pending = reps.filter(r => !S.rank[r] && !(isTeam && S.rank[r + 2]));
