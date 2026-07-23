@@ -590,7 +590,7 @@ function tapZone(i){
       const rem = S.targets[i] - S.sc[i];
       if (S.sc[i] >= S.targets[i]) {
         S.done[i] = true;
-        S.cushInn[i]++;
+        // 이 이닝의 쿠션 카운트는 턴이 끝날 때 passTurnInner(647)에서 세므로 여기서 세면 이중 카운트가 된다.
         if (S.type === '팀전' && S.sc.length === 4) { const p = (i+2)%4; S.done[p] = true; }
         if (S.round <= 0) {
           // 마무리 쿠션 0개 설정: 목표 도달 즉시 달성
@@ -726,9 +726,9 @@ window.foul = function(i){
   }
   if (S.type === '팀전' && S.sc.length === 4) {
     const p = (i+2)%4;
+    // 팀 공유값(점수·달성·쿠션)만 미러링한다.
+    // indSc·indCush는 '선수 개인' 기록이므로 짝꿍 것을 덮어쓰면 안 된다(파울한 본인만 위에서 차감).
     S.sc[p] = S.sc[i]; S.done[p] = S.done[i]; S.cush[p] = S.cush[i];
-    if (S.indSc) S.indSc[p] = S.indSc[i];
-    if (S.indCush) S.indCush[p] = S.indCush[i];
   }
   vib(30); popScore(i); speak('파울');
   toast('⚠️ 파울 −1');
