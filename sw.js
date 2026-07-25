@@ -3,7 +3,7 @@
  *  - 페이지 이동(navigate): 네트워크 우선, 실패 시 캐시 (수정사항이 빨리 반영되도록)
  *  - 그 외 파일: 캐시 우선 + 백그라운드 갱신 (stale-while-revalidate)
  */
-const CACHE = 'dangdong-score-v138';
+const CACHE = 'dangdong-score-v139';
 const ASSETS = [
   '/Dangdong/', '/Dangdong/index.html',
   '/Dangdong/record/', '/Dangdong/record/index.html', '/Dangdong/record/app.js',
@@ -32,7 +32,11 @@ self.addEventListener('fetch', e => {
   // 이전 캐시로 가려져서 앱을 한 번 더 열어야 반영되는 문제가 생긴다.
   if (new URL(req.url).origin !== self.location.origin) return;
 
-  if (req.mode === 'navigate') {
+  // 코드·마크업(navigate, .html, .js, 디렉터리)은 네트워크 우선 → 배포 즉시 반영.
+  //   오프라인일 때만 캐시로 폴백. app.js 가 옛 캐시로 고정되던 문제를 원천 차단.
+  const path = new URL(req.url).pathname;
+  const isCode = req.mode === 'navigate' || path.endsWith('/') || path.endsWith('.html') || path.endsWith('.js');
+  if (isCode) {
     e.respondWith(
       fetch(req)
         .then(res => {
@@ -40,11 +44,12 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(req, copy));
           return res;
         })
-        .catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
+        .catch(() => caches.match(req).then(r => r || caches.match('/Dangdong/index.html')))
     );
     return;
   }
 
+  // 그 외 정적 자산(아이콘·매니페스트 등)은 캐시 우선 + 백그라운드 갱신.
   e.respondWith(
     caches.match(req).then(cached => {
       const fresh = fetch(req)
