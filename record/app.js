@@ -6,6 +6,13 @@ let RAW_MEMBERS = [];
 let rankPeriod = '누적';
 let gamesMode = '통합';
 
+// ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
+const LS_TEAM = 'dangCurrentTeam';
+const tGet = () => { try { return JSON.parse(localStorage.getItem(LS_TEAM)); } catch(e){ return null; } };
+const tSet = v => { try { localStorage.setItem(LS_TEAM, JSON.stringify(v)); } catch(e){} };
+let myTeams = [];
+let currentTeam = tGet();   // 현재 팀 id (없으면 전역 폴백)
+
 function getFilteredData(period) {
   let games = RAW_GAMES;
   const now = new Date();
@@ -40,11 +47,48 @@ async function fetchGames() {
     if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
   } catch(e) {}
   
-  const res = await fetch(SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc', {
-    headers: headers
-  });
+  let url = SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc';
+  if (currentTeam) url += '&team_id=eq.' + currentTeam;   // 현재 팀 게임만 (없으면 전역)
+  const res = await fetch(url, { headers: headers });
   if (!res.ok) throw new Error('fetch error');
   return await res.json();
+}
+
+// 내 소속 팀 로드 + 현재 팀 확정 (실패 시 전역 폴백)
+async function loadTeams(){
+  const auth = getAuth();
+  if (!auth || !auth.uid) { myTeams = []; renderTeamBar(); return; }
+  try {
+    const rows = await sbFetch('/rest/v1/rpc/my_teams', { method: 'POST', body: JSON.stringify({}) });
+    myTeams = Array.isArray(rows) ? rows : [];
+    const remembered = tGet();
+    if (remembered && myTeams.some(t => t.id === remembered)) currentTeam = remembered;
+    else currentTeam = myTeams[0] ? myTeams[0].id : null;
+    tSet(currentTeam);
+  } catch(e){ /* my_teams 미배포 등 → 전역 폴백 */ }
+  renderTeamBar();
+}
+
+// 헤더 소속 팀 스위처
+function renderTeamBar(){
+  const bar = document.getElementById('teamBar');
+  const sel = document.getElementById('teamSel');
+  if (!bar || !sel) return;
+  const auth = getAuth();
+  if (!auth || !myTeams.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  sel.innerHTML = myTeams.map(t =>
+    `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+  sel.disabled = myTeams.length < 2;
+  sel.onchange = async () => {
+    currentTeam = sel.value; tSet(currentTeam);
+    const sub = document.getElementById('sub');
+    if (sub) sub.textContent = '팀 전환 중...';
+    await reloadData();
+    const cur = document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.v : 'rank';
+    show(cur);
+    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
+  };
 }
 
 async function fetchMembers() {
@@ -920,6 +964,7 @@ async function initDashboard() {
   const sub = document.getElementById('sub');
   if (sub) sub.textContent = '서버에서 데이터를 불러오는 중입니다...';
   try {
+    await loadTeams();   // 현재 팀 확정 후 그 팀 게임만 로드
     const [games, members, adm] = await Promise.all([
       fetchGames(),
       fetchMembers().catch(() => []),

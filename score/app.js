@@ -8,11 +8,13 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 const reqFS = () => { try { if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); } catch(e){} };
 const exitFS = () => { try { if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(()=>{}); } catch(e){} };
 
-const LS_AUTH = 'dangScoreAuth', LS_PREFS = 'dangScorePrefs_v4', LS_MEM = 'dangScoreMem', LS_STATE = 'dangScoreState', LS_QUEUE = 'dangScoreQueue';
+const LS_AUTH = 'dangScoreAuth', LS_PREFS = 'dangScorePrefs_v4', LS_MEM = 'dangScoreMem', LS_STATE = 'dangScoreState', LS_QUEUE = 'dangScoreQueue', LS_TEAM = 'dangCurrentTeam';
 const MANUAL = '__MANUAL__';
 
 let auth = lsGet(LS_AUTH, null);
 let members = lsGet(LS_MEM, []);
+let myTeams = [];                        // [{id,name,slug,is_admin}] — 내가 속한 팀들
+let currentTeam = lsGet(LS_TEAM, null);  // 현재 기록 대상 팀 id (없으면 전역 폴백)
 let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:0, cushGoal:1 });
 if (prefs.cushGoal == null) prefs.cushGoal = 1;
 let S = lsGet(LS_STATE, null);
@@ -23,6 +25,9 @@ const TZNAMES = ['우리 팀', '상대 팀'];
 
 const api = {
   members: () => sbFetch('/rest/v1/profiles?select=id,display_name,handicap&order=display_name'),
+  teamRoster: teamId => sbFetch('/rest/v1/team_members?select=profiles(id,display_name,handicap)&team_id=eq.' + teamId),
+  myTeamsRpc: () => sbFetch('/rest/v1/rpc/my_teams', { method: 'POST', body: JSON.stringify({}) }),
+  joinTeam: code => sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) }),
   myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
   createProfile: (uid, name, handicap) => sbFetch('/rest/v1/profiles', { method: 'POST', body: JSON.stringify({ id: uid, display_name: name, handicap: handicap || null }) }),
   submitGame: payload => sbFetch('/rest/v1/games', { method: 'POST', body: JSON.stringify(payload) })
@@ -36,6 +41,7 @@ function setMode(m){
   $('#tabSignup').className = m==='signup'?'on':'';
   $('#btnAuth').textContent = m==='login'?'로그인':'회원가입';
   $('#aName').style.display = m==='signup' ? '' : 'none';   // 이름은 회원가입 때만 입력
+  if ($('#aCode')) $('#aCode').style.display = m==='signup' ? '' : 'none'; // 초대 코드는 회원가입 때만
   if ($('#aHandicap')) $('#aHandicap').style.display = m==='signup' ? '' : 'none'; // 수지는 회원가입 때만 선택
   $('#aPass').autocomplete = m==='signup' ? 'new-password' : 'current-password';
   $('#aErr').textContent = '';
@@ -47,13 +53,16 @@ $('#btnAuth').onclick = async () => {
   const btn = $('#btnAuth'), err = $('#aErr');
   const loginId = $('#aId').value.trim();
   const name = $('#aName').value.trim(), pass = $('#aPass').value;
+  const code = $('#aCode') ? $('#aCode').value.trim().toUpperCase() : '';
   const hdStr = $('#aHandicap') ? $('#aHandicap').value : '';
   const handicap = hdStr ? parseInt(hdStr, 10) : null;
   const isSignup = authMode === 'signup';
   if (!loginId || pass.length < 6) return err.textContent = '아이디와 6자 이상 비밀번호를 입력하세요';
   if (isSignup && !name) return err.textContent = '기록에 표시할 이름을 입력하세요';
+  if (isSignup && !code) return err.textContent = '초대 코드를 입력하세요 (소속 운영자에게 문의)';
   err.textContent = ''; btn.disabled = true;
 
+  let joinFailed = false;
   try {
     const a = await sbAuth(loginId, pass, isSignup);   // 로그인 열쇠는 '아이디' — 이름을 바꿔도 안 바뀜
     auth = { uid: a.uid, name: isSignup ? name : '', loginId, token: a.token, refresh: a.refresh };
@@ -65,15 +74,22 @@ $('#btnAuth').onclick = async () => {
         auth = null; localStorage.removeItem(LS_AUTH);
         throw new Error(e.message);
       }
+      // 초대 코드로 팀 합류 (실패해도 계정은 살리고, 나중에 '팀 참여'로 재시도 가능)
+      try { const tid = await api.joinTeam(code); currentTeam = tid; lsSet(LS_TEAM, currentTeam); }
+      catch(e){ joinFailed = true; }
     } else {
       const p = await api.myProfile(a.uid);
       if (p && p[0]) { auth.name = p[0].display_name; lsSet(LS_AUTH, auth); }
     }
+    await loadTeams();
     await loadMembers();
     upsertMember(auth.uid, auth.name);
     queueFlush();
+    syncSetup();
     show('setup');
-    toast(`${auth.name}님, 환영합니다!`);
+    toast(joinFailed
+      ? '초대 코드가 올바르지 않아 팀 미가입 상태예요. 아래 "+ 팀 참여"로 다시 시도하세요.'
+      : `${auth.name}님, 환영합니다!`);
   } catch(e){
     err.textContent = translateAuthError(e.message);
   } finally {
@@ -90,7 +106,65 @@ function translateAuthError(m){
 }
 $('#btnGuest').onclick = () => { show('setup'); toast('게스트 모드 — 기록은 저장되지 않아요'); };
 
-async function loadMembers(){ try { members = await api.members(); lsSet(LS_MEM, members); }catch(e){} }
+// 내 소속 팀 목록을 불러오고 현재 팀을 확정한다. (실패 시 전역 폴백 유지)
+async function loadTeams(){
+  if (!auth || !auth.uid) { myTeams = []; renderTeamBar(); return; }
+  try {
+    const rows = await api.myTeamsRpc();
+    myTeams = Array.isArray(rows) ? rows : [];
+    const remembered = lsGet(LS_TEAM, null);
+    if (remembered && myTeams.some(t => t.id === remembered)) currentTeam = remembered;
+    else currentTeam = myTeams[0] ? myTeams[0].id : null;
+    lsSet(LS_TEAM, currentTeam);
+  } catch(e){ /* my_teams 함수 미배포 등 → 전역 폴백 */ }
+  renderTeamBar();
+}
+
+async function loadMembers(){
+  try {
+    let list = null;
+    if (currentTeam) {
+      try {
+        const rows = await api.teamRoster(currentTeam);       // [{profiles:{...}}]
+        list = (rows || []).map(r => r.profiles).filter(Boolean);
+      } catch(e){ list = null; }                              // 로스터 실패 → 전역 폴백
+    }
+    if (!list) list = await api.members();
+    list.sort((a, b) => (a.display_name || '').localeCompare(b.display_name || '', 'ko'));
+    members = list; lsSet(LS_MEM, members);
+  } catch(e){ /* 완전 실패 시 캐시 유지 */ }
+}
+
+// 설정 화면 상단의 소속 팀 스위처
+function renderTeamBar(){
+  const bar = $('#teamBar'), sel = $('#teamSel');
+  if (!bar || !sel) return;
+  if (!auth || !myTeams.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  sel.innerHTML = myTeams.map(t =>
+    `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+  sel.disabled = myTeams.length < 2;   // 팀이 하나면 표시만 (전환 불가)
+  sel.onchange = async () => {
+    currentTeam = sel.value; lsSet(LS_TEAM, currentTeam);
+    await loadMembers(); syncSetup();
+    toast('소속 팀 전환됨');
+  };
+}
+
+// '팀 참여' — 초대 코드로 다른 팀 합류
+if ($('#btnJoinTeam')) $('#btnJoinTeam').onclick = async () => {
+  if (!auth) return;
+  const code = (prompt('초대 코드를 입력하세요 (예: DANG-0001)') || '').trim().toUpperCase();
+  if (!code) return;
+  try {
+    const tid = await api.joinTeam(code);
+    currentTeam = tid; lsSet(LS_TEAM, currentTeam);
+    await loadTeams(); await loadMembers(); syncSetup();
+    toast('팀에 참여했어요!');
+  } catch(e){
+    alert(/invalid_code/.test(e.message) ? '초대 코드가 올바르지 않아요' : '참여에 실패했어요. 다시 시도해 주세요');
+  }
+};
 function upsertMember(id, name){
   if (!id || !name) return;
   const i = members.findIndex(m => m.id === id);
@@ -274,9 +348,13 @@ function syncSetup(modeChanged = false){
   const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
     if (!confirm('처음 화면으로 돌아갈까요?')) return;
-    auth = null; localStorage.removeItem(LS_AUTH); exitFS(); show('auth');
+    auth = null; localStorage.removeItem(LS_AUTH);
+    localStorage.removeItem(LS_TEAM); currentTeam = null; myTeams = [];
+    exitFS(); show('auth');
   };
-  
+
+  renderTeamBar();
+
   document.querySelectorAll('#gameTypeSeg button').forEach(b => {
     if ((b.dataset.v || b.innerText) === prefs.gameType) b.classList.add('on');
     else b.classList.remove('on');
@@ -840,7 +918,7 @@ function saveGame(){
       cushInn: S.cushInn[i], timeMs: (S.timeMs && S.timeMs[i]) || 0, isTeam
     });
   }
-  const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl };
+  const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl, team_id: currentTeam || null };
   $('#saveStat').className = 'savestat'; $('#saveStat').textContent = '서버에 기록 저장 중...';
   api.submitGame(payload).then(() => {
     $('#saveStat').className = 'savestat ok'; $('#saveStat').textContent = '기록 저장 완료 ✓';
@@ -1090,7 +1168,7 @@ async function queueFlush(){
 
 function init(){
   setMode('login');
-  if (auth) { if (auth.loginId) $('#aId').value = auth.loginId; loadMembers().then(()=>queueFlush()); }
+  if (auth) { if (auth.loginId) $('#aId').value = auth.loginId; loadTeams().then(loadMembers).then(()=>queueFlush()); }
   else { show('auth'); }
 
   // 구버전 상태 마이그레이션: finished 배열이 없으면 추가
