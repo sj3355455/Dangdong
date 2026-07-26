@@ -13,13 +13,25 @@ create or replace function public.create_team(team_name text)
 returns table(id uuid, name text, slug text, join_code text)
 language plpgsql security definer set search_path = public
 as $$
-declare new_id uuid; new_slug text; new_code text;
+declare
+  new_id uuid;
+  new_slug text;
+  new_code text;
 begin
-  if auth.uid() is null then raise exception 'not_authenticated'; end if;
-  if team_name is null or length(btrim(team_name)) = 0 then raise exception 'empty_name'; end if;
-  if exists (select 1 from public.teams where lower(name) = lower(btrim(team_name))) then raise exception 'name_taken'; end if;
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+  
+  if team_name is null or length(btrim(team_name)) = 0 then
+    raise exception 'empty_name';
+  end if;
+  
+  -- t.name 테이블 별칭 사용으로 returns table 반환 변수 name과의 명칭 충돌(ambiguous) 완벽 해결
+  if exists (select 1 from public.teams t where lower(t.name) = lower(btrim(team_name))) then
+    raise exception 'name_taken';
+  end if;
 
-  -- 1) profiles 에 내 계정이 없는 유령/신규 상태인 경우 자동 보장 (FK 에러 방지)
+  -- 1) profiles 에 내 계정이 없는 경우 자동 생성 보장 (FK 에러 방지)
   insert into public.profiles (id, display_name)
   values (auth.uid(), '회원')
   on conflict (id) do nothing;
