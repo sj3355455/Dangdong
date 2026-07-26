@@ -949,7 +949,7 @@ function renderMe() {
     ${IS_ADMIN ? '<button id="meAdminBtn" class="bigbtn" style="margin-top:12px; background:var(--card); color:var(--accent); border:1px solid var(--accent);">👑 관리자 메뉴</button>' : ''}
     <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--border); color:#f44336;">로그아웃</button>
   </div>`;
-  const myData = DATA.players.find(p => p.name === auth.name);
+  const myData = (DATA && DATA.players) ? DATA.players.find(p => p.name === auth.name) : null;
   const myHandicap = myData ? myData.handicap : '';
   d.querySelector('#meName').value = auth.name || '';
   d.querySelector('#meHandicap').value = myHandicap;
@@ -1292,7 +1292,7 @@ function show(v){
   if (ico) ico.textContent = (auth && IS_ADMIN) ? '🛡️' : '👤';
   const myRecBtn = document.getElementById('btnMyRec');
   if(myRecBtn){
-    if(auth && auth.name && DATA.players.find(p=>p.name===auth.name)) {
+    if(auth && auth.name && DATA && DATA.players && DATA.players.find(p=>p.name===auth.name)) {
       myRecBtn.style.display = 'block';
       myRecBtn.onclick = () => showPlayer(auth.name);
     } else {
@@ -1322,13 +1322,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   });
 }
 
-(function checkStandalone(){
-  // 설치된 앱 판정: manifest display가 fullscreen이라 standalone만 보면 안 됨
-  const isStandalone = window.matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches || window.navigator.standalone === true;
-  if (!isStandalone && location.protocol !== 'file:' && !location.search.includes('dev=1')) {
-    window.location.replace('../');
-  }
-})();
+/* Mobile standalone restriction removed so record room is accessible on all mobile browsers */
 
 
 // ══ 관리자 메뉴: 회원 정보 수정 전용 화면 ══
