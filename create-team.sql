@@ -13,6 +13,7 @@ create or replace function public.create_team(team_name text)
 returns table(id uuid, name text, slug text, join_code text)
 language plpgsql security definer set search_path = public
 as $$
+#variable_conflict use_column
 declare
   new_id uuid;
   new_slug text;
@@ -26,7 +27,6 @@ begin
     raise exception 'empty_name';
   end if;
   
-  -- t.name 테이블 별칭 사용으로 returns table 반환 변수 name과의 명칭 충돌(ambiguous) 완벽 해결
   if exists (select 1 from public.teams t where lower(t.name) = lower(btrim(team_name))) then
     raise exception 'name_taken';
   end if;
@@ -43,7 +43,7 @@ begin
   -- 3) teams 추가
   insert into public.teams(name, slug, join_code)
   values (btrim(team_name), new_slug, new_code)
-  returning teams.id into new_id;
+  returning public.teams.id into new_id;
 
   -- 4) team_members 추가 (팀장 권한 부여)
   insert into public.team_members(team_id, user_id, is_admin)
