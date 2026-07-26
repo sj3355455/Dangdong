@@ -1354,19 +1354,17 @@ const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b));
 
 initDashboard();
 
+// 서비스 워커 등록. 새 워커가 제어권을 잡으면 1회만 새로고침(무한 루프 방지 가드).
+// 옛 캐시를 확실히 털어내는 하드 새로고침은 index.html <head> 의 킬스위치(version.json 비교)가 담당한다.
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('../sw.js').catch(()=>{});
-  
+  navigator.serviceWorker.register('../sw.js').catch(() => {});
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!refreshing) {
-      refreshing = true;
-      window.location.reload();
-    }
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
   });
 }
-
-/* Mobile standalone restriction removed so record room is accessible on all mobile browsers */
 
 
 // ══ 관리자 메뉴: 회원 정보 수정 전용 화면 ══

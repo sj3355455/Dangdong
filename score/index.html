@@ -11,6 +11,31 @@
 <link rel="manifest" href="../manifest.json">
 <link rel="apple-touch-icon" href="../icon-192.png">
 <script>try{var t=localStorage.getItem('dangTheme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<!-- 새 배포 감지 → 옛 캐시 강제 초기화 후 1회 하드 새로고침 (SW가 망가져 있어도 동작하는 탈출구) -->
+<script>
+(function(){
+  try{
+    fetch('../version.json?ts=' + Date.now(), { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(v){
+        var cur = v && v.version; if(!cur) return;
+        // 푸터 버전 표시를 version.json 값으로 자동 동기화
+        var setFooter = function(){ try{ var ns = document.querySelectorAll('[data-app-version]'); for(var i=0;i<ns.length;i++) ns[i].textContent = cur; }catch(e){} };
+        if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setFooter); else setFooter();
+        var KEY = 'dangVersion', seen = null;
+        try{ seen = localStorage.getItem(KEY); }catch(e){}
+        if(seen === cur) return;                       // 최신 → 아무것도 안 함
+        try{ localStorage.setItem(KEY, cur); }catch(e){}
+        if(seen === null) return;                      // 최초 방문 → 리로드하지 않음
+        var reload = function(){ location.reload(); };
+        if(window.caches && caches.keys){
+          caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); }).then(reload, reload);
+        } else reload();
+      })
+      .catch(function(){});
+  }catch(e){}
+})();
+</script>
 <style>
 :root{--sat:env(safe-area-inset-top);--sab:env(safe-area-inset-bottom);
   color-scheme:light dark;
@@ -231,7 +256,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v166</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v167</span>
   </div>
 </div>
 
@@ -276,7 +301,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v166</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v167</span>
   </div>
 </div>
 
