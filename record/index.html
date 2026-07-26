@@ -114,7 +114,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v152</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v153</span>
   </div>
 </div>
 <!-- ══ 팀 설정 모달 ══ -->
@@ -140,8 +140,8 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
     <div id="tmLeader" style="display:none; margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
       <div id="tmCodeRow" style="display:none; align-items:center; gap:8px; margin-bottom:14px;">
         <span style="font-size:.9rem; white-space:nowrap;">초대 코드</span>
-        <b id="tmCurCode" style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;">—</b>
-        <button id="tmRegen" style="flex:0 0 auto; padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:.85rem; cursor:pointer;">코드 변경</button>
+        <input id="tmCurCode" maxlength="16" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1 1 auto; min-width:0; padding:7px 10px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:.9rem;">
+        <button id="tmRegen" style="flex:0 0 auto; padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:.85rem; cursor:pointer;">변경</button>
       </div>
       <div id="tmNameRow" style="display:none; align-items:center; gap:8px; margin-bottom:14px;">
         <span style="font-size:.9rem; white-space:nowrap;">팀 이름</span>

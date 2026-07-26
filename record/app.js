@@ -124,9 +124,9 @@ async function renderLeaderSection(){
   document.getElementById('tmRoster').innerHTML = '';
   try {
     if (isLeader) {
-      document.getElementById('tmCurCode').textContent = '…';
+      document.getElementById('tmCurCode').value = '';
       const code = await sbFetch('/rest/v1/rpc/team_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
-      document.getElementById('tmCurCode').textContent = code || '—';
+      document.getElementById('tmCurCode').value = code || '';
     }
     const rows = await sbFetch('/rest/v1/team_members?select=user_id,is_admin,profiles(display_name)&team_id=eq.' + currentTeam);
     const a = getAuth(); const myUid = a && a.uid;
@@ -185,12 +185,14 @@ async function renderLeaderSection(){
 
   document.getElementById('tmRegen').onclick = async () => {
     const msg = document.getElementById('tmMsg');
-    if (!confirm('초대 코드를 새로 바꿀까요? 기존 코드는 더 이상 쓸 수 없어요.')) return;
+    const code = (document.getElementById('tmCurCode').value || '').trim().toUpperCase();
+    if (!code) { msg.textContent = '초대 코드를 입력하세요'; return; }
+    msg.textContent = '변경 중...';
     try {
-      const code = await sbFetch('/rest/v1/rpc/regenerate_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
-      document.getElementById('tmCurCode').textContent = code;
+      const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_code: code }) });
+      document.getElementById('tmCurCode').value = saved;
       msg.textContent = '초대 코드가 변경되었습니다.';
-    } catch(e){ msg.textContent = '코드 변경에 실패했어요'; }
+    } catch(e){ msg.textContent = /code_taken/.test(e.message) ? '이미 사용 중인 코드예요. 다른 코드를 쓰세요' : '코드 변경에 실패했어요'; }
   };
 
   document.getElementById('tmRename').onclick = async () => {

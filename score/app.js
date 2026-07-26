@@ -181,9 +181,9 @@ async function renderLeaderSection(){
   $('#tmRoster').innerHTML = '';
   try {
     if (isLeader) {
-      $('#tmCurCode').textContent = '…';
+      $('#tmCurCode').value = '';
       const code = await sbFetch('/rest/v1/rpc/team_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
-      $('#tmCurCode').textContent = code || '—';
+      $('#tmCurCode').value = code || '';
     }
     const rows = await sbFetch('/rest/v1/team_members?select=user_id,is_admin,profiles(display_name)&team_id=eq.' + currentTeam);
     const myUid = auth && auth.uid;
@@ -240,12 +240,14 @@ if ($('#teamModal')) {
   };
 
   $('#tmRegen').onclick = async () => {
-    if (!confirm('초대 코드를 새로 바꿀까요? 기존 코드는 더 이상 쓸 수 없어요.')) return;
+    const code = ($('#tmCurCode').value || '').trim().toUpperCase();
+    if (!code) { $('#tmMsg').textContent = '초대 코드를 입력하세요'; return; }
+    $('#tmMsg').textContent = '변경 중...';
     try {
-      const code = await sbFetch('/rest/v1/rpc/regenerate_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
-      $('#tmCurCode').textContent = code;
+      const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_code: code }) });
+      $('#tmCurCode').value = saved;
       $('#tmMsg').textContent = '초대 코드가 변경되었습니다.';
-    } catch(e){ $('#tmMsg').textContent = '코드 변경에 실패했어요'; }
+    } catch(e){ $('#tmMsg').textContent = /code_taken/.test(e.message) ? '이미 사용 중인 코드예요. 다른 코드를 쓰세요' : '코드 변경에 실패했어요'; }
   };
 
   $('#tmRename').onclick = async () => {

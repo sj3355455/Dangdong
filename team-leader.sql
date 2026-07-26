@@ -67,8 +67,27 @@ begin
 end
 $$;
 
+-- 4) 초대 코드 직접 지정 (팀장만). 다른 팀이 쓰는 코드면 거부.
+create or replace function public.set_join_code(p_team_id uuid, new_code text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare code text;
+begin
+  if not public.is_team_leader(p_team_id) then raise exception 'not_authorized'; end if;
+  code := upper(btrim(new_code));
+  if code is null or length(code) = 0 then raise exception 'empty_code'; end if;
+  if exists (select 1 from public.teams where join_code = code and id <> p_team_id) then
+    raise exception 'code_taken';
+  end if;
+  update public.teams set join_code = code where id = p_team_id;
+  return code;
+end
+$$;
+
 grant execute on function public.is_team_leader(uuid) to authenticated;
 grant execute on function public.rename_team(uuid, text) to authenticated;
+grant execute on function public.set_join_code(uuid, text) to authenticated;
 grant execute on function public.regenerate_join_code(uuid) to authenticated;
 grant execute on function public.remove_member(uuid, uuid) to authenticated;
 grant execute on function public.team_join_code(uuid) to authenticated;
