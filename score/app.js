@@ -132,6 +132,13 @@ async function loadMembers(){
     if (!list) list = await api.members();
     list.sort((a, b) => (a.display_name || '').localeCompare(b.display_name || '', 'ko'));
     members = list; lsSet(LS_MEM, members);
+    // 로그인 사용자 본인 이름을 최신 프로필로 동기화 (개인정보에서 이름 변경 시 점수판에도 반영)
+    if (auth && auth.uid) {
+      const me = members.find(m => m.id === auth.uid);
+      if (me && me.display_name && me.display_name !== auth.name) {
+        auth.name = me.display_name; lsSet(LS_AUTH, auth);
+      }
+    }
   } catch(e){ /* 완전 실패 시 캐시 유지 */ }
 }
 

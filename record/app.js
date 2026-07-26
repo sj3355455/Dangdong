@@ -121,7 +121,9 @@ const REP = { headers: { Prefer: 'return=representation' } };
 const adminApi = {
   updateGame: (id, players) => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify({ players }) }, REP)),
   deleteGame: id => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'DELETE' }, REP)),
-  updateProfile: (id, fields) => sbFetch('/rest/v1/profiles?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify(fields) }, REP))
+  updateProfile: (id, fields) => sbFetch('/rest/v1/profiles?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify(fields) }, REP)),
+  // 이름 변경을 한 번에: 프로필 + 그 사람이 뛴 모든 경기의 저장된 이름을 서버에서 갱신 (본인/관리자만)
+  renamePlayer: (id, name, handicap) => sbFetch('/rest/v1/rpc/rename_player', { method: 'POST', body: JSON.stringify({ target: id, new_name: name, new_handicap: handicap }) })
 };
 async function reloadData(){
   RAW_GAMES = await fetchGames();
@@ -189,6 +191,8 @@ function attachGameAdmin(el, id){
 function processData(games, members) {
   const pmap = {};
   const dataGames = [];
+  // 이름은 경기에 저장된 값을 그대로 쓴다. (이름 변경 시 rename_player 함수가
+  //  프로필과 모든 경기의 저장 이름을 한 번에 갱신하므로 매번 매칭할 필요가 없다.)
 
   for (const g of games) {
     const dt = new Date(g.played_at);
@@ -293,7 +297,7 @@ function processData(games, members) {
       let m = p.id ? members.find(x => x.id === p.id) : null;
       if (!m) m = members.find(x => x.display_name === p.name);
       if (m) {
-        if (m.display_name) p.name = m.display_name;   // 이름 변경 시 최신 이름으로
+        // 이름은 경기에 저장된 값을 사용 (rename_player가 저장 시점에 갱신). 여기선 현재 수지만 반영.
         if (m.handicap != null) p.handicap = parseInt(m.handicap, 10);
       }
     }
@@ -757,12 +761,12 @@ function showPlayer(name){
       if (!name) return alert('이름을 입력하세요');
       e.target.disabled = true;
       try {
-        const d = await adminApi.updateProfile(p.id, { display_name: name, handicap: isNaN(hd) ? null : hd });
-        if (!d || !d.length) throw new Error(NO_PERM);
+        if (!p.id) throw new Error('계정이 없는 선수(직접 입력)는 이름을 바꿀 수 없어요');
+        await adminApi.renamePlayer(p.id, name, isNaN(hd) ? null : hd);   // 프로필 + 모든 경기 이름 갱신
         await reloadData();
         alert('선수 정보가 수정되었습니다.');
         showPlayer(name);
-      } catch(err){ alert('수정 실패: ' + err.message); e.target.disabled = false; }
+      } catch(err){ alert('수정 실패: ' + (/not_authorized|not_authenticated/.test(err.message) ? NO_PERM : err.message)); e.target.disabled = false; }
     };
     el.appendChild(adm);
   }
@@ -829,12 +833,9 @@ function renderMe() {
     const btn = d.querySelector('#meSave'), msg = d.querySelector('#meMsg'), name = d.querySelector('#meName').value.trim(), hd = d.querySelector('#meHandicap').value.trim(), pwd = d.querySelector('#mePwd').value;
     btn.disabled = true; msg.textContent = '저장 중...'; msg.style.color = 'var(--text)';
     try {
-      const pRes = await fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
-        method: 'PATCH',
-        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: name, handicap: hd ? parseInt(hd,10) : null })
-      });
-      if(!pRes.ok) throw 0;
+      if (!name) { msg.textContent = '이름을 입력하세요.'; msg.style.color = '#f44336'; btn.disabled = false; return; }
+      // 이름·수지 변경 + 내가 뛴 모든 경기의 저장 이름을 서버에서 한 번에 갱신
+      await adminApi.renamePlayer(auth.uid, name, hd ? parseInt(hd,10) : null);
       auth.name = name; localStorage.setItem(LS_AUTH, JSON.stringify(auth));
       if(pwd) {
         const authRes = await fetch(SB_URL + '/auth/v1/user', {
@@ -845,6 +846,7 @@ function renderMe() {
         if(!authRes.ok) throw 0;
       }
       msg.textContent = '✅ 성공적으로 저장되었습니다.'; msg.style.color = '#4CAF50'; d.querySelector('#mePwd').value = '';
+      try { await reloadData(); } catch(e){}   // 바뀐 이름을 순위·경기 화면에 즉시 반영
     } catch(e) { msg.textContent = '❌ 저장 실패. 다시 로그인해 보세요.'; msg.style.color = '#f44336'; }
     btn.disabled = false;
   };
