@@ -144,7 +144,7 @@
 
   // 서비스 워커 등록
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(()=>{});
   }
 
   // 안드로이드 설치 버튼 로직

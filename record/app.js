@@ -1375,16 +1375,29 @@ const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b));
 
 initDashboard();
 
-// 서비스 워커 등록. 새 워커가 제어권을 잡으면 1회만 새로고침(무한 루프 방지 가드).
-// 옛 캐시를 확실히 털어내는 하드 새로고침은 index.html <head> 의 킬스위치(version.json 비교)가 담당한다.
+// ══ 서비스 워커 등록 + 자동 업데이트 ══
+// 새 버전 배포(sw.js 의 VERSION 변경) → 브라우저가 새 워커 설치·활성화 → 제어권 교체(controllerchange)
+// → 앱이 자동으로 딱 1회 새로고침. 폴링/버전비교 없음.
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('../sw.js').catch(() => {});
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
     refreshing = true;
-    window.location.reload();
+    location.reload();
   });
+  // 푸터 버전 표시 = sw.js 의 VERSION (단일 소스). SW 가 메시지로 알려준다.
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'appVersion') {
+      document.querySelectorAll('[data-app-version]').forEach(el => el.textContent = e.data.version);
+    }
+  });
+  navigator.serviceWorker.register('../sw.js', { updateViaCache: 'none' }).then(reg => {
+    // 앱을 다시 열 때 새 배포가 있는지 딱 한 번 확인(모바일 백그라운드 복귀 대응). 폴링 아님.
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update(); });
+    const askVersion = () => { const sw = navigator.serviceWorker.controller; if (sw) sw.postMessage('getVersion'); };
+    if (navigator.serviceWorker.controller) askVersion();
+    else navigator.serviceWorker.ready.then(askVersion);
+  }).catch(() => {});
 }
 
 
