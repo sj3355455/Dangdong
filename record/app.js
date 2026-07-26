@@ -180,7 +180,7 @@ async function renderLeaderSection(){
       await teamModalReload();
       document.getElementById('tmName').value = '';
       msg.innerHTML = `✅ "${esc(t.name)}" 팀 생성 완료<br>참여 코드: <b style="font-size:1.05rem">${esc(t.join_code)}</b><br><span style="color:var(--muted)">이 코드를 부원에게 공유하세요.</span>`;
-    } catch(e){ msg.textContent = '팀 만들기에 실패했어요'; }
+    } catch(e){ msg.textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '팀 만들기에 실패했어요'; }
   };
 
   document.getElementById('tmRegen').onclick = async () => {
@@ -192,7 +192,7 @@ async function renderLeaderSection(){
       const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_code: code }) });
       document.getElementById('tmCurCode').value = saved;
       msg.textContent = '초대 코드가 변경되었습니다.';
-    } catch(e){ msg.textContent = /code_taken/.test(e.message) ? '이미 사용 중인 코드예요. 다른 코드를 쓰세요' : '코드 변경에 실패했어요'; }
+    } catch(e){ msg.textContent = /code_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 참여 코드입니다. 다른 코드를 입력해 주세요' : '코드 변경에 실패했어요'; }
   };
 
   document.getElementById('tmRename').onclick = async () => {
@@ -205,7 +205,7 @@ async function renderLeaderSection(){
       await loadTeams();   // 스위처 이름 갱신
       renderLeaderSection();
       msg.textContent = '팀 이름이 변경되었습니다.';
-    } catch(e){ msg.textContent = '이름 변경에 실패했어요'; }
+    } catch(e){ msg.textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '이름 변경에 실패했어요'; }
   };
 })();
 

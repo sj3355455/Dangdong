@@ -60,6 +60,7 @@ $('#btnAuth').onclick = async () => {
   const isSignup = authMode === 'signup';
   if (!loginId || pass.length < 6) return err.textContent = '아이디와 6자 이상 비밀번호를 입력하세요';
   if (isSignup && !name) return err.textContent = '기록에 표시할 이름을 입력하세요';
+  if (isSignup && members.some(m => m.display_name && m.display_name.trim().toLowerCase() === name.toLowerCase())) return err.textContent = '이미 사용 중인 선수 이름(닉네임)입니다. 다른 이름을 입력해 주세요.';
   if (isSignup && !code) return err.textContent = '초대 코드를 입력하세요 (소속 운영자에게 문의)';
   err.textContent = ''; btn.disabled = true;
 
@@ -99,7 +100,7 @@ $('#btnAuth').onclick = async () => {
 };
 function translateAuthError(m){
   if (/Invalid login/i.test(m)) return '아이디 또는 비밀번호가 틀렸어요';
-  if (/already registered/i.test(m)) return '이미 등록된 아이디예요. 로그인해 주세요';
+  if (/already registered|already exists|user_already_exists|unique|duplicate/i.test(m)) return '이미 사용 중인 아이디입니다. 다른 아이디를 입력하거나 로그인해 주세요';
   if (/Password should be/i.test(m)) return '비밀번호는 6자 이상이어야 해요';
   if (/rate limit/i.test(m)) return '요청이 너무 잦아요. 잠시 후 다시 시도해 주세요';
   if (/fetch|Network/i.test(m)) return '인터넷 연결을 확인해 주세요';
@@ -236,7 +237,7 @@ if ($('#teamModal')) {
       await loadTeams(); await loadMembers(); syncSetup();
       $('#tmName').value = '';
       $('#tmMsg').innerHTML = `✅ "${esc(t.name)}" 팀 생성 완료<br>참여 코드: <b style="font-size:1.05rem">${esc(t.join_code)}</b><br><span style="color:var(--muted)">이 코드를 부원에게 공유하세요.</span>`;
-    } catch(e){ $('#tmMsg').textContent = '팀 만들기에 실패했어요'; }
+    } catch(e){ $('#tmMsg').textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '팀 만들기에 실패했어요'; }
   };
 
   $('#tmRegen').onclick = async () => {
@@ -247,7 +248,7 @@ if ($('#teamModal')) {
       const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_code: code }) });
       $('#tmCurCode').value = saved;
       $('#tmMsg').textContent = '초대 코드가 변경되었습니다.';
-    } catch(e){ $('#tmMsg').textContent = /code_taken/.test(e.message) ? '이미 사용 중인 코드예요. 다른 코드를 쓰세요' : '코드 변경에 실패했어요'; }
+    } catch(e){ $('#tmMsg').textContent = /code_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 참여 코드입니다. 다른 코드를 입력해 주세요' : '코드 변경에 실패했어요'; }
   };
 
   $('#tmRename').onclick = async () => {
@@ -259,7 +260,7 @@ if ($('#teamModal')) {
       await loadTeams();   // 스위처 이름 갱신
       renderLeaderSection();
       $('#tmMsg').textContent = '팀 이름이 변경되었습니다.';
-    } catch(e){ $('#tmMsg').textContent = '이름 변경에 실패했어요'; }
+    } catch(e){ $('#tmMsg').textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '이름 변경에 실패했어요'; }
   };
 }
 function upsertMember(id, name){

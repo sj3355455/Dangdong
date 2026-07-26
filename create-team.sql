@@ -16,6 +16,7 @@ declare new_id uuid; new_slug text; new_code text;
 begin
   if auth.uid() is null then raise exception 'not_authenticated'; end if;
   if team_name is null or length(btrim(team_name)) = 0 then raise exception 'empty_name'; end if;
+  if exists (select 1 from public.teams where lower(name) = lower(btrim(team_name))) then raise exception 'name_taken'; end if;
 
   new_slug := 't' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
   new_code := upper(substr(md5(gen_random_uuid()::text), 1, 4) || '-' || substr(md5(gen_random_uuid()::text), 5, 4));

@@ -63,6 +63,9 @@ as $$
 begin
   if not public.is_team_leader(p_team_id) then raise exception 'not_authorized'; end if;
   if new_name is null or length(btrim(new_name)) = 0 then raise exception 'empty_name'; end if;
+  if exists (select 1 from public.teams where lower(name) = lower(btrim(new_name)) and id <> p_team_id) then
+    raise exception 'name_taken';
+  end if;
   update public.teams set name = btrim(new_name) where id = p_team_id;
 end
 $$;
