@@ -52,6 +52,12 @@ select.field{
 .bigbtn:disabled{opacity:.5;cursor:not-allowed;}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
   padding:16px;margin-bottom:16px}
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(5px);
+  -webkit-backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .2s;z-index:99}
+.ovl.on{opacity:1;pointer-events:auto}
+.ovlcard{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);
+  border-radius:18px;padding:24px;box-sizing:border-box}
 .scroll{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:.88rem;white-space:nowrap}
 th,td{padding:9px 10px;text-align:center;border-bottom:1px solid var(--line)}
@@ -114,7 +120,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v157</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v158</span>
   </div>
 </div>
 <!-- ══ 팀 설정 모달 ══ -->

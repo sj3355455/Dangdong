@@ -980,82 +980,9 @@ function renderMe() {
       }
       msg.textContent = '✅ 성공적으로 저장되었습니다.'; msg.style.color = '#4CAF50'; d.querySelector('#mePwd').value = '';
       try { await reloadData(); } catch(e){}   // 바뀐 이름을 순위·경기 화면에 즉시 반영
-    } catch(e) { msg.textContent = '❌ 저장 실패. 다시 로그인해 보세요.'; msg.style.color = '#f44336'; }
-    btn.disabled = false;
-  };
-  
-  d.querySelector('#meLogout').onclick = () => {
-    localStorage.removeItem(LS_AUTH);
-    location.href = '../score/';
-  };
-  return d;
-}
-
-// ══ 관리자 메뉴 (전체 회원 및 소속 팀 관리) ══
-async function renderAdminMenu(){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
-  const el = $(`<div>
-    <button class="back">← 내 정보로</button>
-    <div class="card">
-      <h2 style="margin:0 0 16px 0; font-size:1.3rem;">👑 관리자 메뉴 (회원 및 소속팀)</h2>
-      <div id="adminRosterMsg" style="color:var(--muted); font-size:0.9rem;">불러오는 중...</div>
-      <div id="adminRosterList" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;"></div>
-    </div>
-  </div>`);
-
-  el.querySelector('.back').onclick = () => show('me');
-
-  const container = el.querySelector('#adminRosterList');
-  const msg = el.querySelector('#adminRosterMsg');
-
-  try {
-    let membersWithTeams = [];
-    try {
-      membersWithTeams = await sbFetch('/rest/v1/rpc/admin_get_all_members', { method: 'POST', body: JSON.stringify({}) });
-    } catch(rpcErr) {
-      const profs = await sbFetch('/rest/v1/profiles?select=id,display_name,handicap,team_members(team_id,is_admin,teams(id,name,join_code))&order=display_name');
-      membersWithTeams = (profs || []).map(p => ({
-        user_id: p.id,
-        display_name: p.display_name,
-        handicap: p.handicap,
-        teams: (p.team_members || []).map(tm => ({
-          id: tm.teams ? tm.teams.id : tm.team_id,
-          name: tm.teams ? tm.teams.name : '알 수 없는 팀',
-          join_code: tm.teams ? tm.teams.join_code : '',
-          is_admin: tm.is_admin
-        }))
-      }));
-    }
-
-    msg.textContent = `총 ${membersWithTeams.length}명의 회원`;
-
-    container.innerHTML = membersWithTeams.map(m => {
-      const name = m.display_name || '이름 없음';
-      const teams = Array.isArray(m.teams) ? m.teams : [];
-      
-      const teamChips = teams.length === 0
-        ? `<span style="font-size:0.85rem; color:var(--muted);">(소속 팀 없음)</span>`
-        : teams.map(t => `<button class="adm-team-chip" data-tid="${esc(t.id)}" data-tname="${esc(t.name)}" data-tcode="${esc(t.join_code||'')}" style="padding:4px 10px; border-radius:6px; background:var(--card2); color:var(--accent); border:1px solid var(--line); font-size:0.85rem; font-weight:600; cursor:pointer; margin-right:6px; margin-top:4px;">${esc(t.name)}${t.is_admin ? ' 👑' : ''}</button>`).join('');
-
-      return `<div style="padding:12px; border-radius:10px; background:var(--bg); border:1px solid var(--line); display:flex; flex-direction:column; gap:6px;">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <a class="adm-pl-name" data-name="${esc(name)}" style="font-weight:700; font-size:1.05rem; color:var(--text); text-decoration:underline; cursor:pointer;">👤 ${esc(name)}</a>
-          <span style="font-size:0.8rem; color:var(--muted);">수지 ${m.handicap ? m.handicap*10 : '—'}</span>
-        </div>
-        <div style="font-size:0.85rem; display:flex; flex-wrap:wrap; align-items:center; gap:4px;">
-          <span style="color:var(--muted); font-size:0.8rem; margin-right:4px;">소속팀:</span>
-          ${teamChips}
-        </div>
-      </div>`;
-    }).join('');
-
-    container.querySelectorAll('.adm-pl-name').forEach(a => {
-      a.onclick = () => showPlayer(a.dataset.name);
-    });
-
-    container.querySelectorAll('.adm-team-chip').forEach(btn => {
+    } catch(e) { msg.textContent = '❌ 저장 실패. 다시 로그�    container.querySelectorAll('.adm-team-chip').forEach(btn => {
       btn.onclick = () => {
-        openAdminTeamEditModal({ id: btn.dataset.tid, name: btn.dataset.tname, join_code: btn.dataset.tcode });
+        renderAdminTeamEditPage({ id: btn.dataset.tid, name: btn.dataset.tname, join_code: btn.dataset.tcode });
       };
     });
 
@@ -1067,22 +994,94 @@ async function renderAdminMenu(){
   scrollTo(0,0);
 }
 
-function openAdminTeamEditModal(team){
-  const el = $(`<div class="ovl on" style="z-index:999;">
-    <div class="ovlcard" style="max-width:400px; text-align:left;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <h3 style="margin:0; font-size:1.15rem;">🏢 팀 정보 관리</h3>
-        <button class="close-btn" style="background:none; border:none; color:var(--muted); font-size:1.4rem; line-height:1; cursor:pointer; padding:0 4px;">&times;</button>
+function renderAdminTeamEditPage(team){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  const el = $(`<div>
+    <button class="back">← 관리자 메뉴로</button>
+    <div class="card">
+      <h2 style="margin:0 0 16px 0; font-size:1.3rem;">🏢 "${esc(team.name)}" 팀 정보 수정 및 삭제</h2>
+
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px;">팀 이름</label>
+        <div style="display:flex; gap:8px;">
+          <input id="admTName" value="${esc(team.name)}" maxlength="20" class="field" style="flex:1; margin:0;">
+          <button id="admTRenameBtn" class="bigbtn" style="flex:0 0 auto; width:auto; padding:8px 16px; font-size:0.9rem;">이름 변경</button>
+        </div>
       </div>
 
-      <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:4px;">팀 이름</label>
-      <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <input id="admTName" value="${esc(team.name)}" maxlength="20" style="flex:1; padding:8px 10px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:0.9rem;">
-        <button id="admTRenameBtn" style="padding:8px 12px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:0.85rem; cursor:pointer;">이름 변경</button>
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px;">초대 코드</label>
+        <div style="display:flex; gap:8px;">
+          <input id="admTCode" value="${esc(team.join_code||'')}" maxlength="16" class="field" style="flex:1; margin:0;">
+          <button id="admTCodeBtn" class="bigbtn" style="flex:0 0 auto; width:auto; padding:8px 16px; font-size:0.9rem;">코드 변경</button>
+        </div>
       </div>
 
-      <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:4px;">초대 코드</label>
-      <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <div id="admTMsg" style="font-size:0.85rem; min-height:1.2em; margin-bottom:16px; font-weight:600;"></div>
+
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <button id="admTDelBtn" class="obtn ghost" style="color:var(--danger,#e5484d); border:1px solid var(--line); width:auto; padding:10px 18px; font-weight:700; cursor:pointer;">🗑️ 팀 삭제</button>
+        <button id="admTBackBtn" class="obtn ghost" style="width:auto; padding:10px 18px; cursor:pointer;">← 목록으로</button>
+      </div>
+    </div>
+  </div>`);
+
+  el.querySelector('.back').onclick = () => renderAdminMenu();
+  el.querySelector('#admTBackBtn').onclick = () => renderAdminMenu();
+
+  el.querySelector('#admTRenameBtn').onclick = async () => {
+    const msg = el.querySelector('#admTMsg');
+    const newName = (el.querySelector('#admTName').value || '').trim();
+    if (!newName) { msg.textContent = '팀 이름을 입력하세요.'; msg.style.color = '#f44336'; return; }
+    msg.textContent = '변경 중...'; msg.style.color = 'var(--text)';
+    try {
+      await sbFetch('/rest/v1/rpc/rename_team', { method: 'POST', body: JSON.stringify({ p_team_id: team.id, new_name: newName }) });
+      msg.textContent = '✅ 팀 이름이 변경되었습니다.'; msg.style.color = '#4CAF50';
+      team.name = newName;
+      await loadTeams();
+    } catch(e) {
+      msg.textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다.' : '팀 이름 변경 실패.';
+      msg.style.color = '#f44336';
+    }
+  };
+
+  el.querySelector('#admTCodeBtn').onclick = async () => {
+    const msg = el.querySelector('#admTMsg');
+    const newCode = (el.querySelector('#admTCode').value || '').trim().toUpperCase();
+    if (!newCode) { msg.textContent = '초대 코드를 입력하세요.'; msg.style.color = '#f44336'; return; }
+    msg.textContent = '변경 중...'; msg.style.color = 'var(--text)';
+    try {
+      const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: team.id, new_code: newCode }) });
+      msg.textContent = '✅ 초대 코드가 변경되었습니다.'; msg.style.color = '#4CAF50';
+      team.join_code = saved;
+      el.querySelector('#admTCode').value = saved;
+    } catch(e) {
+      msg.textContent = /code_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 참여 코드입니다.' : '코드 변경 실패.';
+      msg.style.color = '#f44336';
+    }
+  };
+
+  el.querySelector('#admTDelBtn').onclick = async () => {
+    if (!confirm(`"${team.name}" 팀을 완전히 삭제하시겠습니까?\n\n- 팀 내 멤버 소속만 해제되며 회원 계정과 경기 기록은 삭제되지 않습니다.`)) return;
+    const msg = el.querySelector('#admTMsg');
+    msg.textContent = '팀 삭제 중...'; msg.style.color = 'var(--text)';
+    try {
+      try {
+        await sbFetch('/rest/v1/rpc/delete_team', { method: 'POST', body: JSON.stringify({ p_team_id: team.id }) });
+      } catch(rpcErr) {
+        await sbFetch('/rest/v1/teams?id=eq.' + team.id, { method: 'DELETE' });
+      }
+      alert(`"${team.name}" 팀이 삭제되었습니다.`);
+      await loadTeams();
+      renderAdminMenu();
+    } catch(e) {
+      msg.textContent = '팀 삭제에 실패했습니다.'; msg.style.color = '#f44336';
+    }
+  };
+
+  document.getElementById('view').replaceChildren(el);
+  scrollTo(0,0);
+}:flex; gap:8px; margin-bottom:16px;">
         <input id="admTCode" value="${esc(team.join_code||'')}" maxlength="16" style="flex:1; padding:8px 10px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:0.9rem;">
         <button id="admTCodeBtn" style="padding:8px 12px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:0.85rem; cursor:pointer;">코드 변경</button>
       </div>
