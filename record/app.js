@@ -89,25 +89,102 @@ function renderTeamBar(){
     show(cur);
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
   };
-  // 팀 설정: 초대 코드로 다른 팀 참여 (점수판과 동일 동작)
+  // 팀 설정: 모달 열기 (점수판과 동일)
   const jbtn = document.getElementById('btnJoinTeam');
-  if (jbtn) jbtn.onclick = async () => {
-    if (!getAuth()) { alert('로그인이 필요합니다'); return; }
-    const code = (prompt('다른 팀에 참여하려면 초대 코드를 입력하세요 (예: DANG-0001)') || '').trim().toUpperCase();
-    if (!code) return;
+  if (jbtn) jbtn.onclick = () => { if (getAuth()) openTeamModal(); };
+}
+
+// ══ 팀 설정 모달 — 팀 참가 / 팀 만들기 ══
+function openTeamModal(){
+  const m = document.getElementById('teamModal'); if (!m) return;
+  document.getElementById('tmCode').value = '';
+  document.getElementById('tmName').value = '';
+  document.getElementById('tmMsg').textContent = '';
+  m.style.display = 'flex';
+  renderLeaderSection();
+}
+function closeTeamModal(){ const m = document.getElementById('teamModal'); if (m) m.style.display = 'none'; }
+async function teamModalReload(){
+  await loadTeams();
+  await reloadData();
+  const cur = document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.v : 'rank';
+  show(cur);
+}
+
+// 팀장일 때만: 초대코드 표시/변경 + 팀원 내보내기
+async function renderLeaderSection(){
+  const box = document.getElementById('tmLeader'); if (!box) return;
+  const me = myTeams.find(t => t.id === currentTeam);
+  if (!currentTeam || !me || !me.is_admin) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  document.getElementById('tmCurCode').textContent = '…';
+  document.getElementById('tmRoster').innerHTML = '';
+  try {
+    const code = await sbFetch('/rest/v1/rpc/team_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
+    document.getElementById('tmCurCode').textContent = code || '—';
+    const rows = await sbFetch('/rest/v1/team_members?select=user_id,is_admin,profiles(display_name)&team_id=eq.' + currentTeam);
+    const a = getAuth(); const myUid = a && a.uid;
+    document.getElementById('tmRoster').innerHTML = (rows || []).map(r => {
+      const nm = (r.profiles && r.profiles.display_name) || r.user_id;
+      const self = r.user_id === myUid;
+      return `<div style="display:flex; align-items:center; gap:8px;">
+        <span style="flex:1 1 auto; min-width:0;">${esc(nm)}${r.is_admin ? ' 👑' : ''}</span>
+        ${self ? '<span style="color:var(--muted); font-size:.8rem;">나</span>'
+               : `<button class="tmKick" data-uid="${esc(r.user_id)}" data-nm="${esc(nm)}" style="flex:0 0 auto; padding:6px 10px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--line); font-size:.8rem; cursor:pointer;">내보내기</button>`}
+      </div>`;
+    }).join('');
+    document.getElementById('tmRoster').querySelectorAll('.tmKick').forEach(b => b.onclick = async () => {
+      if (!confirm(`${b.dataset.nm}님을 팀에서 내보낼까요?`)) return;
+      try {
+        await sbFetch('/rest/v1/rpc/remove_member', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, p_user_id: b.dataset.uid }) });
+        await teamModalReload(); renderLeaderSection();
+      } catch(e){ alert('내보내기에 실패했어요'); }
+    });
+  } catch(e){ box.style.display = 'none'; }
+}
+(function wireTeamModal(){
+  const m = document.getElementById('teamModal'); if (!m) return;
+  document.getElementById('tmClose').onclick = closeTeamModal;
+  m.onclick = e => { if (e.target === m) closeTeamModal(); };
+
+  document.getElementById('tmJoin').onclick = async () => {
+    const msg = document.getElementById('tmMsg');
+    const code = (document.getElementById('tmCode').value || '').trim().toUpperCase();
+    if (!code) { msg.textContent = '참여 코드를 입력하세요'; return; }
+    msg.textContent = '참가하는 중...';
     try {
       const tid = await sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) });
       currentTeam = tid; tSet(currentTeam);
-      await loadTeams();
-      await reloadData();
-      const cur = document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.v : 'rank';
-      show(cur);
-      alert('팀에 참여했어요!');
-    } catch(e){
-      alert(/invalid_code/.test(e.message) ? '초대 코드가 올바르지 않아요' : '참여에 실패했어요. 다시 시도해 주세요');
-    }
+      await teamModalReload();
+      closeTeamModal();
+    } catch(e){ msg.textContent = /invalid_code/.test(e.message) ? '참여 코드가 올바르지 않아요' : '참가에 실패했어요'; }
   };
-}
+
+  document.getElementById('tmCreate').onclick = async () => {
+    const msg = document.getElementById('tmMsg');
+    const name = (document.getElementById('tmName').value || '').trim();
+    if (!name) { msg.textContent = '팀 이름을 입력하세요'; return; }
+    msg.textContent = '만드는 중...';
+    try {
+      const r = await sbFetch('/rest/v1/rpc/create_team', { method: 'POST', body: JSON.stringify({ team_name: name }) });
+      const t = Array.isArray(r) ? r[0] : r;
+      currentTeam = t.id; tSet(currentTeam);
+      await teamModalReload();
+      document.getElementById('tmName').value = '';
+      msg.innerHTML = `✅ "${esc(t.name)}" 팀 생성 완료<br>참여 코드: <b style="font-size:1.05rem">${esc(t.join_code)}</b><br><span style="color:var(--muted)">이 코드를 부원에게 공유하세요.</span>`;
+    } catch(e){ msg.textContent = '팀 만들기에 실패했어요'; }
+  };
+
+  document.getElementById('tmRegen').onclick = async () => {
+    const msg = document.getElementById('tmMsg');
+    if (!confirm('초대 코드를 새로 바꿀까요? 기존 코드는 더 이상 쓸 수 없어요.')) return;
+    try {
+      const code = await sbFetch('/rest/v1/rpc/regenerate_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
+      document.getElementById('tmCurCode').textContent = code;
+      msg.textContent = '초대 코드가 변경되었습니다.';
+    } catch(e){ msg.textContent = '코드 변경에 실패했어요'; }
+  };
+})();
 
 async function fetchMembers() {
   const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };

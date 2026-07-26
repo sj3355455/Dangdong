@@ -28,6 +28,7 @@ const api = {
   teamRoster: teamId => sbFetch('/rest/v1/team_members?select=profiles(id,display_name,handicap)&team_id=eq.' + teamId),
   myTeamsRpc: () => sbFetch('/rest/v1/rpc/my_teams', { method: 'POST', body: JSON.stringify({}) }),
   joinTeam: code => sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) }),
+  createTeam: name => sbFetch('/rest/v1/rpc/create_team', { method: 'POST', body: JSON.stringify({ team_name: name }) }),
   myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
   createProfile: (uid, name, handicap) => sbFetch('/rest/v1/profiles', { method: 'POST', body: JSON.stringify({ id: uid, display_name: name, handicap: handicap || null }) }),
   submitGame: payload => sbFetch('/rest/v1/games', { method: 'POST', body: JSON.stringify(payload) })
@@ -158,20 +159,86 @@ function renderTeamBar(){
   };
 }
 
-// '팀 참여' — 초대 코드로 다른 팀 합류
-if ($('#btnJoinTeam')) $('#btnJoinTeam').onclick = async () => {
-  if (!auth) return;
-  const code = (prompt('다른 팀에 참여하려면 초대 코드를 입력하세요 (예: DANG-0001)') || '').trim().toUpperCase();
-  if (!code) return;
+// 팀 설정 모달 — 팀 참가 / 팀 만들기
+function openTeamModal(){
+  const m = $('#teamModal'); if (!m) return;
+  $('#tmCode').value = ''; $('#tmName').value = ''; $('#tmMsg').textContent = '';
+  m.style.display = 'flex';
+  renderLeaderSection();
+}
+function closeTeamModal(){ const m = $('#teamModal'); if (m) m.style.display = 'none'; }
+
+// 팀장일 때만: 초대코드 표시/변경 + 팀원 내보내기
+async function renderLeaderSection(){
+  const box = $('#tmLeader'); if (!box) return;
+  const me = myTeams.find(t => t.id === currentTeam);
+  if (!currentTeam || !me || !me.is_admin) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  $('#tmCurCode').textContent = '…'; $('#tmRoster').innerHTML = '';
   try {
-    const tid = await api.joinTeam(code);
-    currentTeam = tid; lsSet(LS_TEAM, currentTeam);
-    await loadTeams(); await loadMembers(); syncSetup();
-    toast('팀에 참여했어요!');
-  } catch(e){
-    alert(/invalid_code/.test(e.message) ? '초대 코드가 올바르지 않아요' : '참여에 실패했어요. 다시 시도해 주세요');
-  }
-};
+    const code = await sbFetch('/rest/v1/rpc/team_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
+    $('#tmCurCode').textContent = code || '—';
+    const rows = await sbFetch('/rest/v1/team_members?select=user_id,is_admin,profiles(display_name)&team_id=eq.' + currentTeam);
+    const myUid = auth && auth.uid;
+    $('#tmRoster').innerHTML = (rows || []).map(r => {
+      const nm = (r.profiles && r.profiles.display_name) || r.user_id;
+      const self = r.user_id === myUid;
+      return `<div style="display:flex; align-items:center; gap:8px;">
+        <span style="flex:1 1 auto; min-width:0;">${esc(nm)}${r.is_admin ? ' 👑' : ''}</span>
+        ${self ? '<span style="color:var(--muted); font-size:.8rem;">나</span>'
+               : `<button class="tmKick" data-uid="${esc(r.user_id)}" data-nm="${esc(nm)}" style="flex:0 0 auto; padding:6px 10px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--line); font-size:.8rem; cursor:pointer;">내보내기</button>`}
+      </div>`;
+    }).join('');
+    $('#tmRoster').querySelectorAll('.tmKick').forEach(b => b.onclick = async () => {
+      if (!confirm(`${b.dataset.nm}님을 팀에서 내보낼까요?`)) return;
+      try {
+        await sbFetch('/rest/v1/rpc/remove_member', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, p_user_id: b.dataset.uid }) });
+        await loadMembers(); syncSetup(); renderLeaderSection();
+      } catch(e){ alert('내보내기에 실패했어요'); }
+    });
+  } catch(e){ box.style.display = 'none'; }
+}
+
+if ($('#btnJoinTeam')) $('#btnJoinTeam').onclick = () => { if (auth) openTeamModal(); };
+if ($('#teamModal')) {
+  $('#tmClose').onclick = closeTeamModal;
+  $('#teamModal').onclick = e => { if (e.target === $('#teamModal')) closeTeamModal(); };
+
+  $('#tmJoin').onclick = async () => {
+    const code = ($('#tmCode').value || '').trim().toUpperCase();
+    if (!code) { $('#tmMsg').textContent = '참여 코드를 입력하세요'; return; }
+    $('#tmMsg').textContent = '참가하는 중...';
+    try {
+      const tid = await api.joinTeam(code);
+      currentTeam = tid; lsSet(LS_TEAM, currentTeam);
+      await loadTeams(); await loadMembers(); syncSetup();
+      closeTeamModal(); toast('팀에 참여했어요!');
+    } catch(e){ $('#tmMsg').textContent = /invalid_code/.test(e.message) ? '참여 코드가 올바르지 않아요' : '참가에 실패했어요'; }
+  };
+
+  $('#tmCreate').onclick = async () => {
+    const name = ($('#tmName').value || '').trim();
+    if (!name) { $('#tmMsg').textContent = '팀 이름을 입력하세요'; return; }
+    $('#tmMsg').textContent = '만드는 중...';
+    try {
+      const r = await api.createTeam(name);
+      const t = Array.isArray(r) ? r[0] : r;
+      currentTeam = t.id; lsSet(LS_TEAM, currentTeam);
+      await loadTeams(); await loadMembers(); syncSetup();
+      $('#tmName').value = '';
+      $('#tmMsg').innerHTML = `✅ "${esc(t.name)}" 팀 생성 완료<br>참여 코드: <b style="font-size:1.05rem">${esc(t.join_code)}</b><br><span style="color:var(--muted)">이 코드를 부원에게 공유하세요.</span>`;
+    } catch(e){ $('#tmMsg').textContent = '팀 만들기에 실패했어요'; }
+  };
+
+  $('#tmRegen').onclick = async () => {
+    if (!confirm('초대 코드를 새로 바꿀까요? 기존 코드는 더 이상 쓸 수 없어요.')) return;
+    try {
+      const code = await sbFetch('/rest/v1/rpc/regenerate_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
+      $('#tmCurCode').textContent = code;
+      $('#tmMsg').textContent = '초대 코드가 변경되었습니다.';
+    } catch(e){ $('#tmMsg').textContent = '코드 변경에 실패했어요'; }
+  };
+}
 function upsertMember(id, name){
   if (!id || !name) return;
   const i = members.findIndex(m => m.id === id);
