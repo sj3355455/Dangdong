@@ -115,25 +115,31 @@ async function teamModalReload(){
 async function renderLeaderSection(){
   const box = document.getElementById('tmLeader'); if (!box) return;
   const me = myTeams.find(t => t.id === currentTeam);
-  if (!currentTeam || !me || !me.is_admin) { box.style.display = 'none'; return; }
+  if (!currentTeam || !me) { box.style.display = 'none'; return; }   // 팀 없거나 비회원만 숨김
   box.style.display = 'block';
-  document.getElementById('tmCurCode').textContent = '…';
+  const isLeader = !!me.is_admin;
+  document.getElementById('tmCodeRow').style.display = isLeader ? 'flex' : 'none';   // 코드 변경은 팀장만
   document.getElementById('tmRoster').innerHTML = '';
   try {
-    const code = await sbFetch('/rest/v1/rpc/team_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
-    document.getElementById('tmCurCode').textContent = code || '—';
+    if (isLeader) {
+      document.getElementById('tmCurCode').textContent = '…';
+      const code = await sbFetch('/rest/v1/rpc/team_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
+      document.getElementById('tmCurCode').textContent = code || '—';
+    }
     const rows = await sbFetch('/rest/v1/team_members?select=user_id,is_admin,profiles(display_name)&team_id=eq.' + currentTeam);
     const a = getAuth(); const myUid = a && a.uid;
     document.getElementById('tmRoster').innerHTML = (rows || []).map(r => {
       const nm = (r.profiles && r.profiles.display_name) || r.user_id;
       const self = r.user_id === myUid;
+      const right = (isLeader && !self)   // 내보내기 버튼은 팀장에게만
+        ? `<button class="tmKick" data-uid="${esc(r.user_id)}" data-nm="${esc(nm)}" style="flex:0 0 auto; padding:6px 10px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--line); font-size:.8rem; cursor:pointer;">내보내기</button>`
+        : (self ? '<span style="color:var(--muted); font-size:.8rem;">나</span>' : '');
       return `<div style="display:flex; align-items:center; gap:8px;">
         <span style="flex:1 1 auto; min-width:0;">${esc(nm)}${r.is_admin ? ' 👑' : ''}</span>
-        ${self ? '<span style="color:var(--muted); font-size:.8rem;">나</span>'
-               : `<button class="tmKick" data-uid="${esc(r.user_id)}" data-nm="${esc(nm)}" style="flex:0 0 auto; padding:6px 10px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--line); font-size:.8rem; cursor:pointer;">내보내기</button>`}
+        ${right}
       </div>`;
     }).join('');
-    document.getElementById('tmRoster').querySelectorAll('.tmKick').forEach(b => b.onclick = async () => {
+    if (isLeader) document.getElementById('tmRoster').querySelectorAll('.tmKick').forEach(b => b.onclick = async () => {
       if (!confirm(`${b.dataset.nm}님을 팀에서 내보낼까요?`)) return;
       try {
         await sbFetch('/rest/v1/rpc/remove_member', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, p_user_id: b.dataset.uid }) });

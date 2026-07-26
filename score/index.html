@@ -200,7 +200,7 @@ select.field{appearance:none;background-image:
   <button class="bigbtn" id="btnAuth">로그인</button>
   <button class="linkbtn" id="btnGuest">로그인 없이 쓰기 (기록 저장 안 됨)</button>
   <div style="text-align:center; margin-top:20px;">
-    <span style="font-size:0.75rem; color:var(--muted);">v150</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v151</span>
   </div>
 </div>
 
@@ -244,7 +244,7 @@ select.field{appearance:none;background-image:
   <div class="savenote" id="saveNote"></div>
   <div style="text-align:center; margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);">v150</span>
+    <span style="font-size:0.75rem; color:var(--muted);">v151</span>
   </div>
 </div>
 
@@ -326,13 +326,12 @@ select.field{appearance:none;background-image:
     </div>
 
     <div id="tmLeader" style="display:none; margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
-      <div style="font-size:.8rem; color:var(--muted); margin-bottom:8px; font-weight:600;">팀장 메뉴</div>
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+      <div id="tmCodeRow" style="display:none; align-items:center; gap:8px; margin-bottom:14px;">
         <span style="font-size:.9rem; white-space:nowrap;">초대 코드</span>
         <b id="tmCurCode" style="flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;">—</b>
         <button id="tmRegen" style="flex:0 0 auto; padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:.85rem; cursor:pointer;">코드 변경</button>
       </div>
-      <div style="font-size:.85rem; color:var(--muted); margin-bottom:6px;">팀원 내보내기</div>
+      <div style="font-size:.85rem; color:var(--muted); margin-bottom:6px;">팀원</div>
       <div id="tmRoster" style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;"></div>
     </div>
 
