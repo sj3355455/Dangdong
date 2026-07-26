@@ -322,13 +322,15 @@ function processData(games, members) {
   // 이름은 경기에 저장된 값을 그대로 쓴다. (이름 변경 시 rename_player 함수가
   //  프로필과 모든 경기의 저장 이름을 한 번에 갱신하므로 매번 매칭할 필요가 없다.)
 
-  for (const g of games) {
+  for (const g of (games || [])) {
+    if (!g) continue;
     const dt = new Date(g.played_at);
     const pad = n => String(n).padStart(2, '0');
     const dateStr = dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate());
     const datetimeStr = dateStr + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()) + ':' + pad(dt.getSeconds());
-    const isTeam = g.players && g.players.length > 0 && g.players[0].isTeam;
-    const typeStr = isTeam ? '팀전' : (g.players.length + '인');
+    const pls = Array.isArray(g.players) ? g.players : [];
+    const isTeam = pls.length > 0 && pls[0].isTeam;
+    const typeStr = isTeam ? '팀전' : (pls.length + '인');
     const nameStr = typeStr;
 
     dataGames.unshift({
@@ -337,7 +339,7 @@ function processData(games, members) {
       datetime: datetimeStr,
       type: typeStr,
       name: nameStr,
-      players: g.players.map(p => ({
+      players: pls.map(p => ({
         name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
         rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
         timeMs: p.timeMs ?? p.time_ms ?? 0,
@@ -347,14 +349,14 @@ function processData(games, members) {
     });
 
     // 게임 내 각 선수의 평균순위(분수). 동순위는 공동 점유 구간의 평균: 공동 2등 = 2.5, 공동 3등 = 3.5
-    const ranks = g.players.map(pp => (pp.rank != null ? pp.rank : (pp.win ? 1 : 2)));
+    const ranks = pls.map(pp => (pp.rank != null ? pp.rank : (pp.win ? 1 : 2)));
     const fracRank = idx => {
       const r = ranks[idx]; let less = 0, eq = 0;
       for (const rr of ranks) { if (rr < r) less++; else if (rr === r) eq++; }
       return less + (eq + 1) / 2;
     };
 
-    for (const p of g.players) {
+    for (const p of pls) {
       const pName = p.name || p.id || "알 수 없음";
       // 회원은 계정 id로 묶어 이름이 바뀌어도 같은 사람으로 집계. 게스트는 이름으로 묶는다.
       const key = p.id ? ('id:' + p.id) : ('nm:' + pName);
