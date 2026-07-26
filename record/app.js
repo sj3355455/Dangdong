@@ -89,6 +89,24 @@ function renderTeamBar(){
     show(cur);
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
   };
+  // 팀 설정: 초대 코드로 다른 팀 참여 (점수판과 동일 동작)
+  const jbtn = document.getElementById('btnJoinTeam');
+  if (jbtn) jbtn.onclick = async () => {
+    if (!getAuth()) { alert('로그인이 필요합니다'); return; }
+    const code = (prompt('다른 팀에 참여하려면 초대 코드를 입력하세요 (예: DANG-0001)') || '').trim().toUpperCase();
+    if (!code) return;
+    try {
+      const tid = await sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) });
+      currentTeam = tid; tSet(currentTeam);
+      await loadTeams();
+      await reloadData();
+      const cur = document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.v : 'rank';
+      show(cur);
+      alert('팀에 참여했어요!');
+    } catch(e){
+      alert(/invalid_code/.test(e.message) ? '초대 코드가 올바르지 않아요' : '참여에 실패했어요. 다시 시도해 주세요');
+    }
+  };
 }
 
 async function fetchMembers() {

@@ -161,7 +161,7 @@ function renderTeamBar(){
 // '팀 참여' — 초대 코드로 다른 팀 합류
 if ($('#btnJoinTeam')) $('#btnJoinTeam').onclick = async () => {
   if (!auth) return;
-  const code = (prompt('초대 코드를 입력하세요 (예: DANG-0001)') || '').trim().toUpperCase();
+  const code = (prompt('다른 팀에 참여하려면 초대 코드를 입력하세요 (예: DANG-0001)') || '').trim().toUpperCase();
   if (!code) return;
   try {
     const tid = await api.joinTeam(code);
