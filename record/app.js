@@ -192,7 +192,11 @@ async function renderLeaderSection(){
       const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_code: code }) });
       document.getElementById('tmCurCode').value = saved;
       msg.textContent = '초대 코드가 변경되었습니다.';
-    } catch(e){ msg.textContent = /code_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 참여 코드입니다. 다른 코드를 입력해 주세요' : '코드 변경에 실패했어요'; }
+    } catch(e){
+      if (/not_authorized/.test(e.message)) msg.textContent = '팀장 권한이 없어 코드를 변경할 수 없어요';
+      else if (/code_taken|duplicate|unique/i.test(e.message)) msg.textContent = '이미 사용 중인 참여 코드입니다. 다른 코드를 입력해 주세요';
+      else msg.textContent = '코드 변경에 실패했어요';
+    }
   };
 
   document.getElementById('tmRename').onclick = async () => {
