@@ -945,6 +945,7 @@ function renderMe() {
     <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
     <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
     <button id="meSave" class="bigbtn">저장하기</button>
+    ${IS_ADMIN ? '<button id="meAdminBtn" class="bigbtn" style="margin-top:12px; background:var(--card); color:var(--accent); border:1px solid var(--accent);">👑 관리자 메뉴</button>' : ''}
     <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--border); color:#f44336;">로그아웃</button>
   </div>`;
   const myData = DATA.players.find(p => p.name === auth.name);
@@ -952,6 +953,10 @@ function renderMe() {
   d.querySelector('#meName').value = auth.name || '';
   d.querySelector('#meHandicap').value = myHandicap;
   
+  if (d.querySelector('#meAdminBtn')) {
+    d.querySelector('#meAdminBtn').onclick = () => renderAdminMenu();
+  }
+
   fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
     headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token }
   })
@@ -984,6 +989,168 @@ function renderMe() {
     location.href = '../score/';
   };
   return d;
+}
+
+// ══ 관리자 메뉴 (전체 회원 및 소속 팀 관리) ══
+async function renderAdminMenu(){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  const el = $(`<div>
+    <button class="back">← 내 정보로</button>
+    <div class="card">
+      <h2 style="margin:0 0 16px 0; font-size:1.3rem;">👑 관리자 메뉴 (회원 및 소속팀)</h2>
+      <div id="adminRosterMsg" style="color:var(--muted); font-size:0.9rem;">불러오는 중...</div>
+      <div id="adminRosterList" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;"></div>
+    </div>
+  </div>`);
+
+  el.querySelector('.back').onclick = () => show('me');
+
+  const container = el.querySelector('#adminRosterList');
+  const msg = el.querySelector('#adminRosterMsg');
+
+  try {
+    let membersWithTeams = [];
+    try {
+      membersWithTeams = await sbFetch('/rest/v1/rpc/admin_get_all_members', { method: 'POST', body: JSON.stringify({}) });
+    } catch(rpcErr) {
+      const profs = await sbFetch('/rest/v1/profiles?select=id,display_name,handicap,team_members(team_id,is_admin,teams(id,name,join_code))&order=display_name');
+      membersWithTeams = (profs || []).map(p => ({
+        user_id: p.id,
+        display_name: p.display_name,
+        handicap: p.handicap,
+        teams: (p.team_members || []).map(tm => ({
+          id: tm.teams ? tm.teams.id : tm.team_id,
+          name: tm.teams ? tm.teams.name : '알 수 없는 팀',
+          join_code: tm.teams ? tm.teams.join_code : '',
+          is_admin: tm.is_admin
+        }))
+      }));
+    }
+
+    msg.textContent = `총 ${membersWithTeams.length}명의 회원`;
+
+    container.innerHTML = membersWithTeams.map(m => {
+      const name = m.display_name || '이름 없음';
+      const teams = Array.isArray(m.teams) ? m.teams : [];
+      
+      const teamChips = teams.length === 0
+        ? `<span style="font-size:0.85rem; color:var(--muted);">(소속 팀 없음)</span>`
+        : teams.map(t => `<button class="adm-team-chip" data-tid="${esc(t.id)}" data-tname="${esc(t.name)}" data-tcode="${esc(t.join_code||'')}" style="padding:4px 10px; border-radius:6px; background:var(--card2); color:var(--accent); border:1px solid var(--line); font-size:0.85rem; font-weight:600; cursor:pointer; margin-right:6px; margin-top:4px;">${esc(t.name)}${t.is_admin ? ' 👑' : ''}</button>`).join('');
+
+      return `<div style="padding:12px; border-radius:10px; background:var(--bg); border:1px solid var(--line); display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <a class="adm-pl-name" data-name="${esc(name)}" style="font-weight:700; font-size:1.05rem; color:var(--text); text-decoration:underline; cursor:pointer;">👤 ${esc(name)}</a>
+          <span style="font-size:0.8rem; color:var(--muted);">수지 ${m.handicap ? m.handicap*10 : '—'}</span>
+        </div>
+        <div style="font-size:0.85rem; display:flex; flex-wrap:wrap; align-items:center; gap:4px;">
+          <span style="color:var(--muted); font-size:0.8rem; margin-right:4px;">소속팀:</span>
+          ${teamChips}
+        </div>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('.adm-pl-name').forEach(a => {
+      a.onclick = () => showPlayer(a.dataset.name);
+    });
+
+    container.querySelectorAll('.adm-team-chip').forEach(btn => {
+      btn.onclick = () => {
+        openAdminTeamEditModal({ id: btn.dataset.tid, name: btn.dataset.tname, join_code: btn.dataset.tcode });
+      };
+    });
+
+  } catch(e) {
+    msg.textContent = '회원 목록을 불러오는 데 실패했습니다.';
+  }
+
+  document.getElementById('view').replaceChildren(el);
+  scrollTo(0,0);
+}
+
+function openAdminTeamEditModal(team){
+  const el = $(`<div class="ovl on" style="z-index:999;">
+    <div class="ovlcard" style="max-width:400px; text-align:left;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="margin:0; font-size:1.15rem;">🏢 팀 정보 관리</h3>
+        <button class="close-btn" style="background:none; border:none; color:var(--muted); font-size:1.4rem; line-height:1; cursor:pointer; padding:0 4px;">&times;</button>
+      </div>
+
+      <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:4px;">팀 이름</label>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input id="admTName" value="${esc(team.name)}" maxlength="20" style="flex:1; padding:8px 10px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:0.9rem;">
+        <button id="admTRenameBtn" style="padding:8px 12px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:0.85rem; cursor:pointer;">이름 변경</button>
+      </div>
+
+      <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:4px;">초대 코드</label>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <input id="admTCode" value="${esc(team.join_code||'')}" maxlength="16" style="flex:1; padding:8px 10px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:0.9rem;">
+        <button id="admTCodeBtn" style="padding:8px 12px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:0.85rem; cursor:pointer;">코드 변경</button>
+      </div>
+
+      <div id="admTMsg" style="font-size:0.85rem; min-height:1.2em; margin-bottom:16px; font-weight:600;"></div>
+
+      <div style="padding-top:12px; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <button id="admTDelBtn" style="padding:9px 14px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--line); font-size:0.85rem; font-weight:700; cursor:pointer;">🗑️ 팀 삭제</button>
+        <button class="close-btn" style="padding:9px 16px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-size:0.85rem; cursor:pointer;">닫기</button>
+      </div>
+    </div>
+  </div>`);
+
+  document.body.appendChild(el);
+
+  const close = () => { el.remove(); };
+  el.querySelectorAll('.close-btn').forEach(b => b.onclick = close);
+
+  el.querySelector('#admTRenameBtn').onclick = async () => {
+    const msg = el.querySelector('#admTMsg');
+    const newName = (el.querySelector('#admTName').value || '').trim();
+    if (!newName) { msg.textContent = '팀 이름을 입력하세요.'; msg.style.color = '#f44336'; return; }
+    msg.textContent = '변경 중...'; msg.style.color = 'var(--text)';
+    try {
+      await sbFetch('/rest/v1/rpc/rename_team', { method: 'POST', body: JSON.stringify({ p_team_id: team.id, new_name: newName }) });
+      msg.textContent = '✅ 팀 이름이 변경되었습니다.'; msg.style.color = '#4CAF50';
+      team.name = newName;
+      await loadTeams();
+    } catch(e) {
+      msg.textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다.' : '팀 이름 변경 실패.';
+      msg.style.color = '#f44336';
+    }
+  };
+
+  el.querySelector('#admTCodeBtn').onclick = async () => {
+    const msg = el.querySelector('#admTMsg');
+    const newCode = (el.querySelector('#admTCode').value || '').trim().toUpperCase();
+    if (!newCode) { msg.textContent = '초대 코드를 입력하세요.'; msg.style.color = '#f44336'; return; }
+    msg.textContent = '변경 중...'; msg.style.color = 'var(--text)';
+    try {
+      const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: team.id, new_code: newCode }) });
+      msg.textContent = '✅ 초대 코드가 변경되었습니다.'; msg.style.color = '#4CAF50';
+      team.join_code = saved;
+      el.querySelector('#admTCode').value = saved;
+    } catch(e) {
+      msg.textContent = /code_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 참여 코드입니다.' : '코드 변경 실패.';
+      msg.style.color = '#f44336';
+    }
+  };
+
+  el.querySelector('#admTDelBtn').onclick = async () => {
+    if (!confirm(`"${team.name}" 팀을 삭제하시겠습니까?\n\n- 팀 내 멤버 소속만 해제되며 회원 계정과 경기 기록은 삭제되지 않습니다.`)) return;
+    const msg = el.querySelector('#admTMsg');
+    msg.textContent = '팀 삭제 중...'; msg.style.color = 'var(--text)';
+    try {
+      try {
+        await sbFetch('/rest/v1/rpc/delete_team', { method: 'POST', body: JSON.stringify({ p_team_id: team.id }) });
+      } catch(rpcErr) {
+        await sbFetch('/rest/v1/teams?id=eq.' + team.id, { method: 'DELETE' });
+      }
+      alert(`"${team.name}" 팀이 삭제되었습니다.`);
+      close();
+      await loadTeams();
+      renderAdminMenu();
+    } catch(e) {
+      msg.textContent = '팀 삭제에 실패했습니다.'; msg.style.color = '#f44336';
+    }
+  };
 }
 
 function renderGames(){
