@@ -154,7 +154,6 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   <div id="teamBar" style="display:none; width:100%; max-width:420px; margin:0 auto 16px; align-items:center; gap:8px; justify-content:center;">
     <span style="font-size:.85rem; color:var(--muted); white-space:nowrap;">소속</span>
     <select id="teamSel" style="flex:1; min-width:0; padding:8px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-size:.9rem;"></select>
-    <button id="btnJoinTeam" style="white-space:nowrap; margin:0; flex:0 0 auto; padding:8px 14px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:0.9rem; cursor:pointer;">팀 설정</button>
   </div>
 
   <div class="tabs" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:nowrap;">
@@ -167,7 +166,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v167</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v168</span>
   </div>
 </div>
 <!-- ══ 설정 모달 ══ -->
@@ -185,6 +184,17 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
         <button data-t="dark">다크</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ══ 내 정보 설정 모달 ══ -->
+<div id="meModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;">
+  <div style="width:100%; max-width:360px; max-height:88vh; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; color:var(--text);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+      <b style="font-size:1.15rem;">👤 내 정보 설정</b>
+      <button id="meClose" style="background:none; border:none; color:var(--muted); font-size:1.5rem; line-height:1; cursor:pointer; padding:0 4px;">&times;</button>
+    </div>
+    <div id="meModalBody"></div>
   </div>
 </div>
 

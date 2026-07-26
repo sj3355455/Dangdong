@@ -96,9 +96,6 @@ function renderTeamBar(){
     show(cur);
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
   };
-  // 팀 설정: 모달 열기 (점수판과 동일)
-  const jbtn = document.getElementById('btnJoinTeam');
-  if (jbtn) jbtn.onclick = () => { if (getAuth()) openTeamModal(); };
 }
 
 // ══ 팀 설정 모달 — 팀 참가 / 팀 만들기 ══
@@ -236,7 +233,15 @@ async function fetchMembers() {
     headers: headers
   });
   if (!res.ok) throw new Error('fetch error');
-  return await res.json();
+  const rows = await res.json();
+  // team_members 는 profiles 를 중첩해서 반환한다({user_id, profiles:{...}}).
+  // processData 의 수지 매칭은 평탄한 {id, display_name, handicap} 구조를 기대하므로 평탄화한다.
+  // (이걸 안 하면 매칭이 전부 실패해 프로필의 실제 수지가 반영되지 않고 0으로 남는다.)
+  return (rows || []).map(r => (r && r.profiles) ? {
+    id: r.profiles.id,
+    display_name: r.profiles.display_name,
+    handicap: r.profiles.handicap
+  } : r).filter(Boolean);
 }
 
 // ══ 관리자 기능 ══
@@ -934,15 +939,13 @@ function renderMe() {
   const auth = getAuth();
   const d = document.createElement('div');
   if (!auth) {
-    d.innerHTML = `<div class="card" style="padding:40px 20px; text-align:center;">
-      <h2 style="margin:0 0 16px 0;">👤 내 정보</h2>
+    d.innerHTML = `<div style="padding:16px 0 8px; text-align:center;">
       <p style="margin:0 0 24px 0; color:var(--text); opacity:0.8;">내 정보를 설정하려면 로그인이 필요합니다.</p>
       <a href="../score/" class="bigbtn" style="display:inline-block; text-decoration:none; box-sizing:border-box;">점수판으로 가서 로그인</a>
     </div>`;
     return d;
   }
-  d.innerHTML = `<div class="card" style="padding:24px 20px;">
-    <h2 style="margin:0 0 20px 0; font-size:1.3rem;">👤 내 정보 설정</h2>
+  d.innerHTML = `<div>
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">이름</label>
     <input type="text" id="meName" class="field" placeholder="당신의 이름">
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">수지 (목표 점수)</label>
@@ -963,7 +966,7 @@ function renderMe() {
   d.querySelector('#meHandicap').value = myHandicap;
   
   if (d.querySelector('#meAdminBtn')) {
-    d.querySelector('#meAdminBtn').onclick = () => renderAdminMenu();
+    d.querySelector('#meAdminBtn').onclick = () => { closeMeModal(); renderAdminMenu(); };
   }
 
   fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
@@ -1000,6 +1003,15 @@ function renderMe() {
   return d;
 }
 
+// ══ 내 정보 설정 모달 (팀 설정처럼 앞에 띄우는 팝업) ══
+function openMeModal(){
+  const m = document.getElementById('meModal'); if (!m) return;
+  const body = document.getElementById('meModalBody');
+  if (body) body.replaceChildren(renderMe());
+  m.style.display = 'flex';
+}
+function closeMeModal(){ const m = document.getElementById('meModal'); if (m) m.style.display = 'none'; }
+
 // ══ 관리자 메뉴 (전체 회원 및 소속 팀 관리) ══
 async function renderAdminMenu(){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
@@ -1012,7 +1024,7 @@ async function renderAdminMenu(){
     </div>
   </div>`);
 
-  el.querySelector('.back').onclick = () => show('me');
+  el.querySelector('.back').onclick = () => { show('rank'); openMeModal(); };
 
   const container = el.querySelector('#adminRosterList');
   const msg = el.querySelector('#adminRosterMsg');
@@ -1285,12 +1297,14 @@ async function initDashboard() {
     DATA = getFilteredData(rankPeriod);
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
     const t = new URLSearchParams(location.search).get('tab') || 'rank';
-    show(t);
+    if (t === 'me') { show('rank'); openMeModal(); }   // 점수판에서 넘어온 내 정보 딥링크 → 팝업
+    else show(t);
   } catch(e) { if (sub) sub.textContent = '데이터를 불러오는데 실패했습니다.'; }
 }
 
 let chartRO = null;
 function show(v){
+  if(v==='me'){ openMeModal(); return; }   // 내 정보는 팝업 모달로 (기본 화면 유지)
   if(chartRO){ chartRO.disconnect(); chartRO = null; }
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.v===v));
   
@@ -1312,7 +1326,6 @@ function show(v){
   let node;
   if(v==='rank') node = renderRank();
   else if(v==='games') node = renderGames();
-  else if(v==='me') node = renderMe();
   document.getElementById('view').replaceChildren(node);
 }
 document.querySelectorAll('.tab').forEach(t=>{ if(t.id!=='btnSettings') t.onclick=()=>show(t.dataset.v); });
@@ -1341,8 +1354,8 @@ const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b));
   document.getElementById('btnSettings').onclick = open;
   document.getElementById('setClose').onclick = close;
   modal.onclick = e => { if (e.target === modal) close(); };
-  document.getElementById('setTeam').onclick = () => { close(); if (getAuth()) openTeamModal(); else show('me'); };
-  document.getElementById('setMe').onclick = () => { close(); show('me'); };
+  document.getElementById('setTeam').onclick = () => { close(); if (getAuth()) openTeamModal(); else openMeModal(); };
+  document.getElementById('setMe').onclick = () => { close(); openMeModal(); };
   vbtn.onclick = () => { const nv = !getVoice(); setVoice(nv); vbtn.classList.toggle('on', nv); };
   themeBtns.forEach(b => b.onclick = () => {
     const t = b.dataset.t;
@@ -1350,6 +1363,14 @@ const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b));
     applyTheme(t); sync();
   });
   applyTheme(getTheme());
+})();
+
+// 내 정보 설정 모달 닫기 (× 버튼 / 배경 클릭)
+(function initMeModal(){
+  const m = document.getElementById('meModal'); if (!m) return;
+  const x = document.getElementById('meClose');
+  if (x) x.onclick = closeMeModal;
+  m.onclick = e => { if (e.target === m) closeMeModal(); };
 })();
 
 initDashboard();

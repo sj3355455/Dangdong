@@ -220,7 +220,6 @@ async function renderLeaderSection(){
   } catch(e){ box.style.display = 'none'; }
 }
 
-if ($('#btnJoinTeam')) $('#btnJoinTeam').onclick = () => { if (auth) openTeamModal(); };
 if ($('#teamModal')) {
   $('#tmClose').onclick = closeTeamModal;
   $('#teamModal').onclick = e => { if (e.target === $('#teamModal')) closeTeamModal(); };
