@@ -41,6 +41,7 @@ const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const LS_AUTH = 'dangScoreAuth';
 
 async function fetchGames() {
+  if (!currentTeam) return []; // 소속 팀이 없는 사용자는 다른 팀의 게임 정보를 조회하지 않음
   const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };
   try {
     const auth = getAuth();
@@ -220,13 +221,14 @@ async function renderLeaderSection(){
 })();
 
 async function fetchMembers() {
+  if (!currentTeam) return []; // 소속 팀이 없으면 다른 팀의 회원 정보가 조회되지 않도록 격리
   const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };
   try {
     const auth = getAuth();
     if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
   } catch(e) {}
   
-  const res = await fetch(SB_URL + '/rest/v1/profiles?select=id,display_name,handicap&order=display_name', {
+  const res = await fetch(SB_URL + '/rest/v1/team_members?select=user_id,profiles(id,display_name,handicap)&team_id=eq.' + currentTeam, {
     headers: headers
   });
   if (!res.ok) throw new Error('fetch error');

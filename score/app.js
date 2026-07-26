@@ -136,7 +136,7 @@ async function loadMembers(){
         list = (rows || []).map(r => r.profiles).filter(Boolean);
       } catch(e){ list = null; }                              // 로스터 실패 → 전역 폴백
     }
-    if (!list) list = await api.members();
+    if (!list) list = (auth && auth.uid) ? [{ id: auth.uid, display_name: auth.name, handicap: null }] : [];
     list.sort((a, b) => (a.display_name || '').localeCompare(b.display_name || '', 'ko'));
     members = list; lsSet(LS_MEM, members);
     // 로그인 사용자 본인 이름을 최신 프로필로 동기화 (개인정보에서 이름 변경 시 점수판에도 반영)
