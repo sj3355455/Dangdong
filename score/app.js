@@ -1320,6 +1320,42 @@ function init(){
     syncSetup(); show('setup');
   }
 }
+// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══
+const LS_THEME = 'dangTheme';
+const getTheme = () => { try { return localStorage.getItem(LS_THEME) || 'system'; } catch(e){ return 'system'; } };
+function applyTheme(t){
+  const r = document.documentElement;
+  if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t);
+  else r.removeAttribute('data-theme');
+}
+(function initSettings(){
+  const modal = $('#setModal'); if (!modal) return;
+  const vbtn = $('#setVoice');
+  const themeBtns = modal.querySelectorAll('#setTheme button');
+  const sync = () => {
+    vbtn.classList.toggle('on', voiceOn);
+    const cur = getTheme();
+    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === cur));
+  };
+  const open = () => { sync(); modal.classList.add('on'); };
+  const close = () => modal.classList.remove('on');
+  $('#btnSettings').onclick = open;
+  $('#setClose').onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
+  $('#setTeam').onclick = () => { close(); if (auth) openTeamModal(); else toast('로그인이 필요합니다'); };
+  $('#setMe').onclick = () => { location.href = '../record/?tab=me'; };
+  vbtn.onclick = () => {
+    voiceOn = !voiceOn; lsSet(LS_VOICE, voiceOn); updVoiceBtn(); vbtn.classList.toggle('on', voiceOn);
+    if (voiceOn) speak('음성 안내를 켰습니다'); else { try { speechSynthesis.cancel(); } catch(e){} }
+  };
+  themeBtns.forEach(b => b.onclick = () => {
+    const t = b.dataset.t;
+    try { if (t === 'system') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, t); } catch(e){}
+    applyTheme(t); sync();
+  });
+  applyTheme(getTheme());
+})();
+
 window.addEventListener('online', queueFlush);
 init();
 

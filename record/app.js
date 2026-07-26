@@ -1295,7 +1295,8 @@ function show(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.v===v));
   
   const auth = getAuth();
-  document.getElementById('topUserName').textContent = auth ? auth.name : '게스트';
+  const uName = document.getElementById('topUserName');
+  if (uName) uName.textContent = auth ? auth.name : '게스트';
   const ico = document.getElementById('topUserIcon');
   if (ico) ico.textContent = (auth && IS_ADMIN) ? '🛡️' : '👤';
   const myRecBtn = document.getElementById('btnMyRec');
@@ -1314,7 +1315,42 @@ function show(v){
   else if(v==='me') node = renderMe();
   document.getElementById('view').replaceChildren(node);
 }
-document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
+document.querySelectorAll('.tab').forEach(t=>{ if(t.id!=='btnSettings') t.onclick=()=>show(t.dataset.v); });
+
+// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══
+const LS_THEME = 'dangTheme', LS_VOICE = 'dangScoreVoice';
+const getTheme = () => { try { return localStorage.getItem(LS_THEME) || 'system'; } catch(e){ return 'system'; } };
+function applyTheme(t){
+  const r = document.documentElement;
+  if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t);
+  else r.removeAttribute('data-theme');
+}
+const getVoice = () => { try { const v = localStorage.getItem(LS_VOICE); return v == null ? true : JSON.parse(v); } catch(e){ return true; } };
+const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b)); } catch(e){} };
+(function initSettings(){
+  const modal = document.getElementById('setModal'); if (!modal) return;
+  const vbtn = document.getElementById('setVoice');
+  const themeBtns = modal.querySelectorAll('#setTheme button');
+  const sync = () => {
+    vbtn.classList.toggle('on', getVoice());
+    const cur = getTheme();
+    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === cur));
+  };
+  const open = () => { sync(); modal.classList.add('on'); };
+  const close = () => modal.classList.remove('on');
+  document.getElementById('btnSettings').onclick = open;
+  document.getElementById('setClose').onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
+  document.getElementById('setTeam').onclick = () => { close(); if (getAuth()) openTeamModal(); else show('me'); };
+  document.getElementById('setMe').onclick = () => { close(); show('me'); };
+  vbtn.onclick = () => { const nv = !getVoice(); setVoice(nv); vbtn.classList.toggle('on', nv); };
+  themeBtns.forEach(b => b.onclick = () => {
+    const t = b.dataset.t;
+    try { if (t === 'system') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, t); } catch(e){}
+    applyTheme(t); sync();
+  });
+  applyTheme(getTheme());
+})();
 
 initDashboard();
 
