@@ -55,7 +55,20 @@ as $$
   where t.id = p_team_id and public.is_team_leader(p_team_id)
 $$;
 
+-- 3) 팀 이름 변경 (팀장만)
+create or replace function public.rename_team(p_team_id uuid, new_name text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.is_team_leader(p_team_id) then raise exception 'not_authorized'; end if;
+  if new_name is null or length(btrim(new_name)) = 0 then raise exception 'empty_name'; end if;
+  update public.teams set name = btrim(new_name) where id = p_team_id;
+end
+$$;
+
 grant execute on function public.is_team_leader(uuid) to authenticated;
+grant execute on function public.rename_team(uuid, text) to authenticated;
 grant execute on function public.regenerate_join_code(uuid) to authenticated;
 grant execute on function public.remove_member(uuid, uuid) to authenticated;
 grant execute on function public.team_join_code(uuid) to authenticated;

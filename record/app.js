@@ -119,6 +119,8 @@ async function renderLeaderSection(){
   box.style.display = 'block';
   const isLeader = !!me.is_admin;
   document.getElementById('tmCodeRow').style.display = isLeader ? 'flex' : 'none';   // 코드 변경은 팀장만
+  document.getElementById('tmNameRow').style.display = isLeader ? 'flex' : 'none';   // 이름 변경도 팀장만
+  if (isLeader) document.getElementById('tmTeamName').value = me.name || '';
   document.getElementById('tmRoster').innerHTML = '';
   try {
     if (isLeader) {
@@ -189,6 +191,19 @@ async function renderLeaderSection(){
       document.getElementById('tmCurCode').textContent = code;
       msg.textContent = '초대 코드가 변경되었습니다.';
     } catch(e){ msg.textContent = '코드 변경에 실패했어요'; }
+  };
+
+  document.getElementById('tmRename').onclick = async () => {
+    const msg = document.getElementById('tmMsg');
+    const name = (document.getElementById('tmTeamName').value || '').trim();
+    if (!name) { msg.textContent = '팀 이름을 입력하세요'; return; }
+    msg.textContent = '변경 중...';
+    try {
+      await sbFetch('/rest/v1/rpc/rename_team', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_name: name }) });
+      await loadTeams();   // 스위처 이름 갱신
+      renderLeaderSection();
+      msg.textContent = '팀 이름이 변경되었습니다.';
+    } catch(e){ msg.textContent = '이름 변경에 실패했어요'; }
   };
 })();
 
