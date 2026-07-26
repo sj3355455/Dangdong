@@ -75,12 +75,18 @@ function renderTeamBar(){
   const sel = document.getElementById('teamSel');
   if (!bar || !sel) return;
   const auth = getAuth();
-  if (!auth || !myTeams.length) { bar.style.display = 'none'; return; }
+  if (!auth) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
-  sel.innerHTML = myTeams.map(t =>
-    `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
-  sel.disabled = myTeams.length < 2;
+  if (!myTeams.length) {
+    sel.innerHTML = '<option value="">소속 팀 없음</option>';
+    sel.disabled = true;
+  } else {
+    sel.innerHTML = myTeams.map(t =>
+      `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+    sel.disabled = myTeams.length < 2;
+  }
   sel.onchange = async () => {
+    if (!sel.value) return;
     currentTeam = sel.value; tSet(currentTeam);
     const sub = document.getElementById('sub');
     if (sub) sub.textContent = '팀 전환 중...';

@@ -61,7 +61,6 @@ $('#btnAuth').onclick = async () => {
   if (!loginId || pass.length < 6) return err.textContent = '아이디와 6자 이상 비밀번호를 입력하세요';
   if (isSignup && !name) return err.textContent = '기록에 표시할 이름을 입력하세요';
   if (isSignup && members.some(m => m.display_name && m.display_name.trim().toLowerCase() === name.toLowerCase())) return err.textContent = '이미 사용 중인 선수 이름(닉네임)입니다. 다른 이름을 입력해 주세요.';
-  if (isSignup && !code) return err.textContent = '초대 코드를 입력하세요 (소속 운영자에게 문의)';
   err.textContent = ''; btn.disabled = true;
 
   let joinFailed = false;
@@ -76,9 +75,11 @@ $('#btnAuth').onclick = async () => {
         auth = null; localStorage.removeItem(LS_AUTH);
         throw new Error(e.message);
       }
-      // 초대 코드로 팀 합류 (실패해도 계정은 살리고, 나중에 '팀 참여'로 재시도 가능)
-      try { const tid = await api.joinTeam(code); currentTeam = tid; lsSet(LS_TEAM, currentTeam); }
-      catch(e){ joinFailed = true; }
+      if (code) {
+        // 초대 코드가 입력되었을 때만 팀 합류 시도 (실패해도 계정은 살림)
+        try { const tid = await api.joinTeam(code); currentTeam = tid; lsSet(LS_TEAM, currentTeam); }
+        catch(e){ joinFailed = true; }
+      }
     } else {
       const p = await api.myProfile(a.uid);
       if (p && p[0]) { auth.name = p[0].display_name; lsSet(LS_AUTH, auth); }
@@ -89,9 +90,13 @@ $('#btnAuth').onclick = async () => {
     queueFlush();
     syncSetup();
     show('setup');
-    toast(joinFailed
-      ? '초대 코드가 올바르지 않아 팀 미가입 상태예요. 아래 "+ 팀 참여"로 다시 시도하세요.'
-      : `${auth.name}님, 환영합니다!`);
+    if (joinFailed) {
+      toast('초대 코드가 올바르지 않아 소속 팀 없이 가입되었어요. "팀 설정"에서 팀을 만들거나 합류할 수 있어요.');
+    } else if (isSignup && !code) {
+      toast(`${auth.name}님, 환영합니다! "팀 설정"에서 새 팀을 만들거나 기존 팀에 합류하세요.`);
+    } else {
+      toast(`${auth.name}님, 환영합니다!`);
+    }
   } catch(e){
     err.textContent = translateAuthError(e.message);
   } finally {
@@ -148,12 +153,18 @@ async function loadMembers(){
 function renderTeamBar(){
   const bar = $('#teamBar'), sel = $('#teamSel');
   if (!bar || !sel) return;
-  if (!auth || !myTeams.length) { bar.style.display = 'none'; return; }
+  if (!auth) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
-  sel.innerHTML = myTeams.map(t =>
-    `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
-  sel.disabled = myTeams.length < 2;   // 팀이 하나면 표시만 (전환 불가)
+  if (!myTeams.length) {
+    sel.innerHTML = '<option value="">소속 팀 없음</option>';
+    sel.disabled = true;
+  } else {
+    sel.innerHTML = myTeams.map(t =>
+      `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+    sel.disabled = myTeams.length < 2;   // 팀이 하나면 표시만 (전환 불가)
+  }
   sel.onchange = async () => {
+    if (!sel.value) return;
     currentTeam = sel.value; lsSet(LS_TEAM, currentTeam);
     await loadMembers(); syncSetup();
     toast('소속 팀 전환됨');
