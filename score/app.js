@@ -739,7 +739,7 @@ function passTurnInner(isMiss, skipHist, quiet) {
   if (isMiss && S.tp === 0) S.miss[S.turn]++;
   
   S.inn[S.turn]++; S.tp = 0;
-  if (S.done[S.turn]) S.cushInn[S.turn]++;
+  if (S.done[S.turn] && S.round > 0) S.cushInn[S.turn]++;   // 쿠션 0개 모드는 마무리 쿠션 단계가 없으므로 세지 않음
   
   const prevTurn = S.turn;
   // 직전 선수가 이번 턴에 소모한 시간을 누적
@@ -1044,7 +1044,7 @@ function endGameEarly(){
   if (!S.finished[S.turn]) {
     if (S.tp > S.br[S.turn]) S.br[S.turn] = S.tp;
     S.inn[S.turn]++;
-    if (S.done[S.turn]) S.cushInn[S.turn]++;
+    if (S.done[S.turn] && S.round > 0) S.cushInn[S.turn]++;   // 쿠션 0개 모드는 세지 않음
     S.tp = 0;
   }
 
