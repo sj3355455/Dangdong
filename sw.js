@@ -10,15 +10,17 @@
  *  - 그 외 정적 자산(아이콘·매니페스트): 캐시 우선 + 백그라운드 갱신
  *  - 외부 출처(Supabase API 등): 가로채지 않음
  */
-const VERSION = 'v170';
-const CACHE = 'dangdong-' + VERSION;
+const VERSION = 'v171';
+// 배포 경로를 자동 감지 → 같은 코드가 /Dangdong/(본 앱)·/Dangdong-beta/(테스트)에서 그대로 동작.
+const BASE = new URL('.', self.location).pathname;   // 예: '/Dangdong/' 또는 '/Dangdong-beta/'
+const CACHE = 'dangdong' + BASE + VERSION;           // 스코프별 캐시 이름 분리(같은 origin이라 겹치면 안 됨)
 const ASSETS = [
-  '/Dangdong/', '/Dangdong/index.html',
-  '/Dangdong/record/', '/Dangdong/record/index.html', '/Dangdong/record/app.js',
-  '/Dangdong/score/', '/Dangdong/score/index.html', '/Dangdong/score/app.js',
-  '/Dangdong/manifest.json',
-  '/Dangdong/icon-192.png', '/Dangdong/icon-512.png', '/Dangdong/apple-touch-icon.png'
-];
+  '', 'index.html',
+  'record/', 'record/index.html', 'record/app.js',
+  'score/', 'score/index.html', 'score/app.js',
+  'manifest.json',
+  'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'
+].map(p => BASE + p);
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
@@ -32,7 +34,8 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));   // 옛 버전 캐시 삭제
+    const mine = 'dangdong' + BASE;   // 이 앱(경로) 소유 캐시만 정리 — 본 앱/테스트 앱이 서로 캐시를 지우지 않도록
+    await Promise.all(keys.filter(k => k.startsWith(mine) && k !== CACHE).map(k => caches.delete(k)));
     await self.clients.claim();   // 열려 있는 모든 탭 제어 → controllerchange 발생 → 앱이 새로고침
   })());
 });
@@ -58,7 +61,7 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(req, { cache: 'reload' })
         .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {}); return res; })
-        .catch(() => caches.match(req).then(r => r || caches.match('/Dangdong/index.html')))
+        .catch(() => caches.match(req).then(r => r || caches.match(BASE + 'index.html')))
     );
     return;
   }

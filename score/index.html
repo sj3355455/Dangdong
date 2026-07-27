@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0e1114" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -393,6 +393,18 @@ select.field{appearance:none;background-image:
   </div>
 </div>
 
+<script>
+  // 테스트(beta) 배포에서만 눈에 띄는 배지 — 본 앱과 헷갈려 실제 팀에 테스트 경기를 저장하는 사고 방지
+  if (location.pathname.includes('-beta')) {
+    document.title = '[테스트] ' + document.title;
+    addEventListener('DOMContentLoaded', () => {
+      const b = document.createElement('div');
+      b.textContent = '🧪 테스트';
+      b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;background:#e8590c;color:#fff;font:700 12px/1 -apple-system,sans-serif;padding:6px 10px;border-radius:999px;opacity:.9;pointer-events:none';
+      document.body.appendChild(b);
+    });
+  }
+</script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

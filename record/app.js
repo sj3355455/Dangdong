@@ -49,7 +49,7 @@ async function fetchGames() {
   } catch(e) {}
   
   let url = SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc';
-  if (currentTeam) url += '&team_id=eq.' + currentTeam;   // 현재 팀 게임만 (없으면 전역)
+  url += '&team_id=eq.' + currentTeam;   // 현재 팀 게임만 (위에서 currentTeam 없으면 이미 반환)
   const res = await fetch(url, { headers: headers });
   if (!res.ok) throw new Error('fetch error');
   return await res.json();
@@ -703,8 +703,7 @@ function calcStatsForHistory(h) {
     cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
     avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
     avgRank: games > 0 ? (rankSum / games) : null,
-    adjRate: games > 0 ? (sumAdjPt / games) : 0,
-    wins: wins
+    adjRate: games > 0 ? (sumAdjPt / games) : 0
   };
 }
 
@@ -1079,7 +1078,7 @@ async function renderAdminMenu(){
 
     container.querySelectorAll('.adm-team-chip').forEach(btn => {
       btn.onclick = () => {
-        renderAdminTeamEditPage({ id: btn.dataset.tid, name: btn.dataset.tname, join_code: btn.dataset.tcode });
+        openAdminTeamEditModal({ id: btn.dataset.tid, name: btn.dataset.tname, join_code: btn.dataset.tcode });
       };
     });
 

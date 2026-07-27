@@ -212,6 +212,18 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
   </div>
 </div>
 
+<script>
+  // 테스트(beta) 배포에서만 눈에 띄는 배지 — 본 앱과 헷갈려 실제 팀에 테스트 경기를 저장하는 사고 방지
+  if (location.pathname.includes('-beta')) {
+    document.title = '[테스트] ' + document.title;
+    addEventListener('DOMContentLoaded', () => {
+      const b = document.createElement('div');
+      b.textContent = '🧪 테스트';
+      b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;background:#e8590c;color:#fff;font:700 12px/1 -apple-system,sans-serif;padding:6px 10px;border-radius:999px;opacity:.9;pointer-events:none';
+      document.body.appendChild(b);
+    });
+  }
+</script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
