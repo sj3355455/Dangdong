@@ -1,4 +1,5 @@
 import { sbFetch, sbAuth } from '../record/supabase.js';
+import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
 const show = id => document.querySelectorAll('.screen').forEach(el => el.style.display = el.id === id ? 'flex' : 'none');
@@ -171,116 +172,16 @@ function renderTeamBar(){
   };
 }
 
-// 팀 설정 모달 — 팀 참가 / 팀 만들기
-function openTeamModal(){
-  const m = $('#teamModal'); if (!m) return;
-  $('#tmCode').value = ''; $('#tmName').value = ''; $('#tmMsg').textContent = '';
-  m.style.display = 'flex';
-  renderLeaderSection();
-}
-function closeTeamModal(){ const m = $('#teamModal'); if (m) m.style.display = 'none'; }
-
-// 팀장일 때만: 초대코드 표시/변경 + 팀원 내보내기
-async function renderLeaderSection(){
-  const box = $('#tmLeader'); if (!box) return;
-  const me = myTeams.find(t => t.id === currentTeam);
-  if (!currentTeam || !me) { box.style.display = 'none'; return; }   // 팀 없거나 비회원만 숨김
-  box.style.display = 'block';
-  const isLeader = !!me.is_admin;
-  $('#tmCodeRow').style.display = isLeader ? 'flex' : 'none';   // 코드 변경은 팀장만
-  $('#tmNameRow').style.display = isLeader ? 'flex' : 'none';   // 이름 변경도 팀장만
-  if (isLeader) $('#tmTeamName').value = me.name || '';
-  $('#tmRoster').innerHTML = '';
-  try {
-    if (isLeader) {
-      $('#tmCurCode').value = '';
-      const code = await sbFetch('/rest/v1/rpc/team_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam }) });
-      $('#tmCurCode').value = code || '';
-    }
-    const rows = await sbFetch('/rest/v1/team_members?select=user_id,is_admin,profiles(display_name)&team_id=eq.' + currentTeam);
-    const myUid = auth && auth.uid;
-    $('#tmRoster').innerHTML = (rows || []).map(r => {
-      const nm = (r.profiles && r.profiles.display_name) || r.user_id;
-      const self = r.user_id === myUid;
-      const right = (isLeader && !self)   // 내보내기 버튼은 팀장에게만
-        ? `<button class="tmKick" data-uid="${esc(r.user_id)}" data-nm="${esc(nm)}" style="flex:0 0 auto; padding:6px 10px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--line); font-size:.8rem; cursor:pointer;">내보내기</button>`
-        : (self ? '<span style="color:var(--muted); font-size:.8rem;">나</span>' : '');
-      return `<div style="display:flex; align-items:center; gap:8px;">
-        <span style="flex:1 1 auto; min-width:0;">${esc(nm)}${r.is_admin ? ' 👑' : ''}</span>
-        ${right}
-      </div>`;
-    }).join('');
-    if (isLeader) $('#tmRoster').querySelectorAll('.tmKick').forEach(b => b.onclick = async () => {
-      if (!confirm(`${b.dataset.nm}님을 팀에서 내보낼까요?`)) return;
-      try {
-        await sbFetch('/rest/v1/rpc/remove_member', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, p_user_id: b.dataset.uid }) });
-        await loadMembers(); syncSetup(); renderLeaderSection();
-      } catch(e){ alert('내보내기에 실패했어요'); }
-    });
-  } catch(e){ box.style.display = 'none'; }
-}
-
-if ($('#teamModal')) {
-  $('#tmClose').onclick = closeTeamModal;
-  $('#teamModal').onclick = e => { if (e.target === $('#teamModal')) closeTeamModal(); };
-
-  $('#tmJoin').onclick = async () => {
-    const code = ($('#tmCode').value || '').trim().toUpperCase();
-    if (!code) { $('#tmMsg').textContent = '참여 코드를 입력하세요'; return; }
-    $('#tmMsg').textContent = '참가하는 중...';
-    try {
-      const tid = await api.joinTeam(code);
-      currentTeam = tid; lsSet(LS_TEAM, currentTeam);
-      await loadTeams(); await loadMembers(); syncSetup();
-      closeTeamModal(); toast('팀에 참여했어요!');
-    } catch(e){ $('#tmMsg').textContent = /invalid_code/.test(e.message) ? '참여 코드가 올바르지 않아요' : '참가에 실패했어요'; }
-  };
-
-  $('#tmCreate').onclick = async () => {
-    const name = ($('#tmName').value || '').trim();
-    if (!name) { $('#tmMsg').textContent = '팀 이름을 입력하세요'; return; }
-    $('#tmMsg').textContent = '만드는 중...';
-    try {
-      const r = await api.createTeam(name);
-      const t = Array.isArray(r) ? r[0] : r;
-      currentTeam = t.id; lsSet(LS_TEAM, currentTeam);
-      await loadTeams(); await loadMembers(); syncSetup();
-      $('#tmName').value = '';
-      $('#tmMsg').innerHTML = `✅ "${esc(t.name)}" 팀 생성 완료<br>참여 코드: <b style="font-size:1.05rem">${esc(t.join_code)}</b><br><span style="color:var(--muted)">이 코드를 부원에게 공유하세요.</span>`;
-    } catch(e){
-      if (/name_taken|duplicate|unique/i.test(e.message)) $('#tmMsg').textContent = '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요';
-      else if (/not_authenticated/i.test(e.message)) $('#tmMsg').textContent = '로그인이 만료되었습니다. 다시 로그인해 주세요';
-      else $('#tmMsg').textContent = '팀 만들기에 실패했어요 (' + (e.message || '오류') + ')';
-    }
-  };
-
-  $('#tmRegen').onclick = async () => {
-    const code = ($('#tmCurCode').value || '').trim().toUpperCase();
-    if (!code) { $('#tmMsg').textContent = '초대 코드를 입력하세요'; return; }
-    $('#tmMsg').textContent = '변경 중...';
-    try {
-      const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_code: code }) });
-      $('#tmCurCode').value = saved;
-      $('#tmMsg').textContent = '초대 코드가 변경되었습니다.';
-    } catch(e){
-      if (/not_authorized/.test(e.message)) $('#tmMsg').textContent = '팀장 권한이 없어 코드를 변경할 수 없어요';
-      else if (/code_taken|duplicate|unique/i.test(e.message)) $('#tmMsg').textContent = '이미 사용 중인 참여 코드입니다. 다른 코드를 입력해 주세요';
-      else $('#tmMsg').textContent = '코드 변경에 실패했어요';
-    }
-  };
-
-  $('#tmRename').onclick = async () => {
-    const name = ($('#tmTeamName').value || '').trim();
-    if (!name) { $('#tmMsg').textContent = '팀 이름을 입력하세요'; return; }
-    $('#tmMsg').textContent = '변경 중...';
-    try {
-      await sbFetch('/rest/v1/rpc/rename_team', { method: 'POST', body: JSON.stringify({ p_team_id: currentTeam, new_name: name }) });
-      await loadTeams();   // 스위처 이름 갱신
-      renderLeaderSection();
-      $('#tmMsg').textContent = '팀 이름이 변경되었습니다.';
-    } catch(e){ $('#tmMsg').textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '이름 변경에 실패했어요'; }
-  };
-}
+// 팀 설정 모달 — 공통 모듈(common.js)로 이동. 앱별 차이(콜백)만 주입.
+const { open: openTeamModal } = initTeamModal({
+  getAuth: () => auth,
+  getCurrentTeam: () => currentTeam,
+  setCurrentTeam: id => { currentTeam = id; lsSet(LS_TEAM, currentTeam); },
+  getMyTeams: () => myTeams,
+  reloadTeams: loadTeams,
+  afterChange: async () => { await loadMembers(); syncSetup(); },
+  notify: m => toast(m)
+});
 function upsertMember(id, name){
   if (!id || !name) return;
   const i = members.findIndex(m => m.id === id);
@@ -1319,14 +1220,7 @@ function init(){
     syncSetup(); show('setup');
   }
 }
-// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══
-const LS_THEME = 'dangTheme';
-const getTheme = () => { try { return localStorage.getItem(LS_THEME) || 'system'; } catch(e){ return 'system'; } };
-function applyTheme(t){
-  const r = document.documentElement;
-  if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t);
-  else r.removeAttribute('data-theme');
-}
+// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══ — 테마 헬퍼는 common.js 에서 import
 (function initSettings(){
   const modal = $('#setModal'); if (!modal) return;
   const vbtn = $('#setVoice');
@@ -1358,27 +1252,5 @@ function applyTheme(t){
 window.addEventListener('online', queueFlush);
 init();
 
-// ══ 서비스 워커 등록 + 자동 업데이트 ══
-// 새 버전 배포(sw.js 의 VERSION 변경) → 브라우저가 새 워커 설치·활성화 → 제어권 교체(controllerchange)
-// → 앱이 자동으로 딱 1회 새로고침. 폴링/버전비교 없음.
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    location.reload();
-  });
-  // 푸터 버전 표시 = sw.js 의 VERSION (단일 소스). SW 가 메시지로 알려준다.
-  navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data && e.data.type === 'appVersion') {
-      document.querySelectorAll('[data-app-version]').forEach(el => el.textContent = e.data.version);
-    }
-  });
-  navigator.serviceWorker.register('../sw.js', { updateViaCache: 'none' }).then(reg => {
-    // 앱을 다시 열 때 새 배포가 있는지 딱 한 번 확인(모바일 백그라운드 복귀 대응). 폴링 아님.
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update(); });
-    const askVersion = () => { const sw = navigator.serviceWorker.controller; if (sw) sw.postMessage('getVersion'); };
-    if (navigator.serviceWorker.controller) askVersion();
-    else navigator.serviceWorker.ready.then(askVersion);
-  }).catch(() => {});
-}
+// ══ 서비스 워커 등록 + 자동 업데이트 ══ (공통 모듈)
+registerSW();
