@@ -501,7 +501,7 @@ $('#btnStart').onclick = () => {
     done: Array(N).fill(false),
     cush: Array(N).fill(0), indCush: Array(N).fill(0), cushInn: Array(N).fill(0),
     finished: Array(N).fill(false), rank: Array(N).fill(0),
-    round: prefs.cushGoal || 1, lastInning: false, winners: [],
+    round: prefs.cushGoal ?? 1, lastInning: false, winners: [],
     tp: 0, turn: 0, first: 0, tc: 0,
     timeMs: Array(N).fill(0), turnStart: Date.now(),
     hist: [], fin: false, saved: false, t0: Date.now()
@@ -1146,7 +1146,7 @@ $('#btnMenuRestart').onclick = () => {
     const N = S.sc.length;
     Object.assign(S, { sc:Array(N).fill(0), inn:Array(N).fill(0), br:Array(N).fill(0), miss:Array(N).fill(0),
                        done:Array(N).fill(false), cush:Array(N).fill(0), cushInn:Array(N).fill(0),
-                       finished:Array(N).fill(false), round:prefs.cushGoal||1, lastInning:false, winners:[],
+                       finished:Array(N).fill(false), round:prefs.cushGoal ?? 1, lastInning:false, winners:[],
                        tp:0, turn:S.first, tc:0, timeMs:Array(N).fill(0), turnStart:Date.now(),
                        hist:[], fin:false, saved:false, t0:Date.now() });
     save(); buildGameZones(); render(); toast('점수가 초기화되었습니다.');
@@ -1195,7 +1195,7 @@ function init(){
       S.finished = Array(N).fill(false);
       S.winners = S.winners || [];
       S.lastInning = S.lastInning || false;
-      S.round = S.round || 1;
+      S.round = S.round ?? 1;
       if (!S.type) S.type = '2인';
     }
     if (!Array.isArray(S.rank)) {
