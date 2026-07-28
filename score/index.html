@@ -171,7 +171,7 @@ select.field{appearance:none;background-image:
 #toast.on{opacity:1}
 
 /* ══ 설정 모달 ══ */
-.setgear{position:absolute;top:calc(12px + var(--sat));right:16px;width:42px;height:42px;border-radius:50%;
+.setgear{flex:0 0 auto;cursor:pointer;width:42px;height:42px;border-radius:50%;
   background:var(--card);border:1px solid var(--line);color:var(--text);font-size:1.35rem;line-height:1;
   display:flex;align-items:center;justify-content:center;z-index:6;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .setgear:active{background:var(--card2)}
@@ -237,16 +237,18 @@ select.field{appearance:none;background-image:
 
 <!-- ══ 설정 화면 ══ -->
 <div id="setup" class="screen scroller">
-  <button id="btnSettings" class="setgear" aria-label="설정">⚙️</button>
   <h1 style="width:100%; max-width:420px; margin:0 0 16px 0; font-size:1.6rem; text-align:center;">🎱 당동 점수판</h1>
   <div class="nav-toggle">
     <a href="../score/" class="nav-btn on">🎱 점수판</a>
     <a href="../record/" class="nav-btn">📊 기록실</a>
   </div>
 
-  <div id="teamBar" style="display:none; width:100%; max-width:420px; margin:0 auto 14px; align-items:center; gap:8px; justify-content:center;">
-    <span style="font-size:0.85rem; color:var(--muted); white-space:nowrap;">소속</span>
-    <select id="teamSel" style="flex:1 1 auto; min-width:0; margin:0; padding:8px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-size:0.9rem;"></select>
+  <div style="display:flex; align-items:center; gap:8px; width:100%; max-width:420px; margin:0 auto 14px;">
+    <div id="teamBar" style="display:none; flex:1 1 auto; align-items:center; gap:8px; min-width:0;">
+      <span style="font-size:0.85rem; color:var(--muted); white-space:nowrap;">소속</span>
+      <select id="teamSel" style="flex:1 1 auto; min-width:0; margin:0; padding:8px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-size:0.9rem;"></select>
+    </div>
+    <button id="btnSettings" class="setgear" aria-label="설정" style="margin-left:auto;">⚙️</button>
   </div>
 
   <div class="seg" id="gameTypeSeg" style="margin-bottom:16px;">
@@ -387,6 +389,7 @@ select.field{appearance:none;background-image:
       </div>
       <div style="font-size:.85rem; color:var(--muted); margin-bottom:6px;">팀원</div>
       <div id="tmRoster" style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;"></div>
+      <button id="tmLeave" style="margin-top:16px; width:100%; padding:10px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--danger,#e5484d); font-weight:700; font-size:.9rem; cursor:pointer;">🚪 팀 나가기</button>
     </div>
 
     <div id="tmMsg" style="font-size:.85rem; margin-top:16px; min-height:1.2em; line-height:1.5;"></div>

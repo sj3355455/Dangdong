@@ -163,6 +163,25 @@ export function initTeamModal(ctx){
         msg.textContent = '팀 이름이 변경되었습니다.';
       } catch(e){ msg.textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '이름 변경에 실패했어요'; }
     };
+
+    // 팀 나가기 — 현재 팀에서 본인 소속 해제 (팀장은 최고참에게 자동 위임 후 나감)
+    const leaveBtn = $id('tmLeave');
+    if (leaveBtn) leaveBtn.onclick = async () => {
+      const cur = ctx.getCurrentTeam();
+      const me = ctx.getMyTeams().find(t => t.id === cur);
+      if (!cur || !me) return;
+      if (!confirm(`"${me.name}" 팀에서 나가시겠어요?`)) return;
+      const msg = $id('tmMsg');
+      msg.textContent = '나가는 중...';
+      try {
+        await sbFetch('/rest/v1/rpc/leave_team', { method: 'POST', body: JSON.stringify({ p_team_id: cur }) });
+        ctx.setCurrentTeam(null);            // reloadTeams 가 남은 팀 중 하나(또는 없음)로 재설정
+        await ctx.reloadTeams(); await ctx.afterChange();
+        renderLeaderSection();
+        msg.textContent = '팀에서 나갔습니다.';
+        if (ctx.notify) ctx.notify('팀에서 나갔어요');
+      } catch(e){ msg.textContent = '나가기에 실패했어요'; }
+    };
   }
 
   return { open };
