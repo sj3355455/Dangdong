@@ -43,6 +43,10 @@ h1{font-size:1.5rem;margin:0 0 4px}
 .tab{padding:7px 11px;border:1px solid var(--line);background:var(--card);white-space:nowrap;
   color:var(--text);border-radius:999px;cursor:pointer;font-size:.9rem}
 .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.setgear{flex:0 0 auto;cursor:pointer;width:42px;height:42px;border-radius:50%;
+  background:var(--card);border:1px solid var(--line);color:var(--text);font-size:1.35rem;line-height:1;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.setgear:active{background:var(--hover)}
 .field{width:100%;background:var(--card);border:1px solid var(--line);color:var(--text);
   padding:12px;border-radius:8px;outline:none;transition:border-color .2s;font-size:1rem;margin-bottom:12px;}
 .field:focus{border-color:var(--accent)}
@@ -126,18 +130,20 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
     <a href="../record/" class="nav-btn on">📊 기록실</a>
   </div>
 
-  <div id="teamBar" style="display:none; width:100%; max-width:420px; margin:0 auto 16px; align-items:center; gap:8px; justify-content:center;">
-    <span style="font-size:.85rem; color:var(--muted); white-space:nowrap;">소속</span>
-    <select id="teamSel" style="flex:1; min-width:0; padding:8px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-size:.9rem;"></select>
+  <div style="display:flex; align-items:center; gap:8px; width:100%; max-width:420px; margin:0 auto 16px;">
+    <div id="teamBar" style="display:none; flex:1 1 auto; align-items:center; gap:8px; min-width:0;">
+      <span style="font-size:.85rem; color:var(--muted); white-space:nowrap;">소속</span>
+      <select id="teamSel" style="flex:1 1 auto; min-width:0; padding:8px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-size:.9rem;"></select>
+    </div>
+    <button id="btnSettings" class="setgear" aria-label="설정" style="margin-left:auto;">⚙️</button>
   </div>
 
-  <div class="tabs" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:nowrap;">
+  <div class="tabs" style="flex-wrap:nowrap; margin-bottom:16px;">
     <div style="display:flex; gap:4px; align-items:center;">
       <button class="tab on" data-v="rank">🏆 순위</button>
       <button class="tab" data-v="games">🕒 경기</button>
       <button id="btnMyRec" class="tab" style="display:none;">📊 내 기록</button>
     </div>
-    <button id="btnSettings" class="tab" style="display:flex; align-items:center; gap:4px;" aria-label="설정">⚙️ 설정</button>
   </div>
   <div id="view"></div>
   <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
