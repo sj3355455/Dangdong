@@ -372,6 +372,8 @@ function processData(games, members) {
     p.avgAvg = sumInnings > 0 ? (sumScore / sumInnings) : 0;
     p.bestHr = maxHr;
     p.hitRate = sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0;
+    // 평균 연타수 = 득점한 이닝에서 평균 몇 점 몰아쳤나 (공타 이닝 제외). 득점 이닝 없으면 null
+    p.streakAvg = (sumInnings - totalMisses) > 0 ? (sumScore / (sumInnings - totalMisses)) : null;
     // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함하여 계산
     p.avgInterval = sumShots > 0 ? (sumTime / sumShots) / 1000 : null;
     // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
@@ -398,6 +400,7 @@ const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보�
   {k:'games',    t:'경기'},
   {k:'adjRate',  t:'보정 승률',  fmt:v=>v.toFixed(1)+'%'},
   {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
+  {k:'streakAvg',t:'평균 연타수', fmt:v=>v.toFixed(2)},
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
@@ -471,7 +474,7 @@ function renderRank(){
     inner = `<div class="scroll"><table><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
   const note = rankMode==='통합'
-    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>보정 승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균).'
+    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>보정 승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 연타수</b>는 득점한 이닝에서 평균 몇 점씩 몰아쳤는지(공타 이닝 제외)입니다.'
     : (rankMode==='3인'||rankMode==='4인')
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
@@ -556,6 +559,7 @@ function chart(vals, labels, opt){
 
 const METRICS = [
   {k:'avg', t:'에버리지', modes:['통합'], dec:2},
+  {k:'streak', t:'평균 연타수', modes:['통합'], dec:2},
   {k:'hit', t:'득점률', modes:['통합'], max:100, suffix:'%', dec:0},
   {k:'adj', t:'보정 승률', modes:['통합'], max:100, suffix:'%', dec:1},
   {k:'games', t:'경기 수', modes:['통합'], dec:0},
@@ -592,6 +596,7 @@ function calcStatsForHistory(h) {
     avgAvg: sumInnings > 0 ? (sumScore / sumInnings) : 0,
     bestHr: maxHr,
     hitRate: sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0,
+    streakAvg: (sumInnings - totalMisses) > 0 ? (sumScore / (sumInnings - totalMisses)) : null,
     cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
     avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
     avgRank: games > 0 ? (rankSum / games) : null,
@@ -740,6 +745,7 @@ function showPlayer(name){
     const vals = labels.map(lbl => {
       const g = groups[lbl];
       if (key === 'avg') return g.sumInning ? g.sumScore / g.sumInning : 0;
+      if (key === 'streak') return (g.sumInning - g.sumMiss) > 0 ? g.sumScore / (g.sumInning - g.sumMiss) : 0;
       if (key === 'hit') return g.sumInning ? (g.sumInning - g.sumMiss) / g.sumInning * 100 : 0;
       if (key === 'adj') return g.games ? g.sumAdjPt / g.games : 0;
       if (key === 'games') return g.games;
@@ -755,6 +761,7 @@ function showPlayer(name){
     const groupText = chartGroup === 'game' ? '경기별' : chartGroup === 'day' ? '일별' : '월별';
     let desc = m.t;
     if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 총 이닝)`;
+    else if (key === 'streak') desc = `해당 ${groupText} 평균 연타수 (총 득점 / 득점한 이닝)`;
     else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (공타 제외 득점 비율)`;
     else if (key === 'adj') desc = `해당 ${groupText} 평균 보정 승률`;
     else if (key === 'games') desc = `해당 ${groupText} 총 경기 수`;
