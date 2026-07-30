@@ -118,6 +118,15 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 .setseg{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
 .setseg button{flex:1;padding:8px 4px;border:none;background:none;color:var(--muted);font-size:.85rem;font-weight:600;border-radius:7px;cursor:pointer}
 .setseg button.on{background:var(--accent);color:#fff}
+/* ══ 플레이 성향 (MBTI식 수직선) ══ */
+.tend{display:flex;flex-direction:column;gap:18px}
+.tlab{display:flex;justify-content:space-between;font-size:.85rem;color:var(--muted);margin-bottom:7px;font-weight:600}
+.tlab .on{color:var(--accent)}
+.ttrack{position:relative;height:8px;background:var(--line);border-radius:999px}
+.tmid{position:absolute;left:50%;top:-3px;width:2px;height:14px;background:var(--muted);opacity:.4;transform:translateX(-1px)}
+.tdot{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--card);box-shadow:0 1px 4px rgba(0,0,0,.35);transform:translate(-50%,-50%);transition:left .35s ease}
+.tdot.off{background:var(--muted);opacity:.4}
+.tsub{font-size:.75rem;color:var(--muted);margin-top:5px}
 </style>
 </head>
 <body>

@@ -604,6 +604,130 @@ function calcStatsForHistory(h) {
   };
 }
 
+// ══ 플레이 성향(MBTI식 4축) — 소속 팀 전체와 비교한 상대 위치로 계산 ══
+// 축마다 원지표를 팀 모집단 기준 z-score 로 바꾼 뒤, ±2σ 를 막대 끝으로 매핑한다.
+function computeTendency(name){
+  const full = processData(RAW_GAMES, RAW_MEMBERS);           // 통산(기간 필터 없음) 기준
+  const pool = full.players.filter(p => p.games >= 3);        // 비교 모집단(게스트 포함, 최소 3경기)
+  const target = full.players.find(p => p.name === name);
+
+  const LABELS = [
+    { L:'단타', R:'장타' },   // ① 득점률 대비 연타
+    { L:'쿠션', R:'알' },     // ② 마무리 쿠션 성공 에버 ÷ 에버리지
+    { L:'안정', R:'기복' },   // ③ 경기별 에버리지 변동계수
+    { L:'오픈', R:'디펜스' }  // ④ 다음 차례(상대) 에버리지 변화(높일수록 오픈)
+  ];
+  const blank = () => ({ ready:false, axes: LABELS.map(a => ({ ...a, pos:0, ok:false })) });
+  if (!target || target.games < 4 || pool.length < 3) return blank();
+
+  // 선수별 원지표
+  const metricsOf = p => {
+    let sMade = 0, sCushInn = 0; const avgs = [];
+    for (const h of p.history){
+      sMade += (h.cushMade||0); sCushInn += (h.cushInn||0);
+      if (h.inning > 0) avgs.push(h.score / h.inning);   // 경기별 에버리지
+    }
+    // ② 쿠션↔알: 마무리 쿠션 성공 에버 ÷ 전체 에버리지 (쿠션 1·2개 게임 보정)
+    const cushRatio = (sCushInn > 0 && p.avgAvg > 0) ? (sMade / sCushInn) / p.avgAvg : null;
+    // ③ 안정↔기복: 경기별 에버리지의 변동계수(표준편차 ÷ 평균)
+    let volatility = null;
+    if (avgs.length >= 2){
+      const m = avgs.reduce((a,b)=>a+b,0) / avgs.length;
+      if (m > 0){
+        const sd = Math.sqrt(avgs.reduce((a,b)=>a+(b-m)**2,0) / avgs.length);
+        volatility = sd / m;
+      }
+    }
+    return {
+      streak: p.streakAvg,   // 평균 연타수
+      hit:    p.hitRate,     // 득점률
+      cushRatio,             // 쿠션 마무리 상대 효율
+      volatility             // 에버리지 변동계수
+    };
+  };
+
+  // ④ 오픈↔디펜스: '내 바로 다음 차례' 선수가 그 경기에서 평소보다 잘 쳤나(오픈) 못 쳤나(디펜스).
+  // 저장된 선수 배열 = 좌석/턴 순서라 다음 사람 = players[(i+1)%N]. 다음 사람의 모든 이닝은 내가 남긴
+  // 자리에서 시작하므로 게임 방식 무관(팀전 포함). 지표 = (다음 사람 그 경기 에버리지 − 그의 통산 에버리지) 평균.
+  const avgEver = {};                           // 이름 → 통산 에버리지
+  for (const p of full.players) avgEver[p.name] = p.avgAvg;
+  const defAcc = {};                            // 이름 → { sum, n }
+  for (const g of full.games){
+    const P = g.players || [];
+    const N = P.length;
+    if (N < 2) continue;
+    for (let i = 0; i < N; i++){
+      const me = P[i], nx = P[(i + 1) % N];
+      const nxEver = nx.innings > 0 ? nx.score / nx.innings : null;
+      const nxAvg = avgEver[nx.name];
+      if (nxEver == null || nxAvg == null) continue;
+      const a = defAcc[me.name] || (defAcc[me.name] = { sum: 0, n: 0 });
+      a.sum += (nxEver - nxAvg); a.n++;
+    }
+  }
+  const defenseOf = p => { const a = defAcc[p.name]; return (a && a.n > 0) ? a.sum / a.n : null; };
+
+  const poolM = pool.map(p => ({ ...metricsOf(p), defense: defenseOf(p) }));
+  const stat = key => {
+    const xs = poolM.map(m => m[key]).filter(v => v != null && !isNaN(v));
+    if (xs.length < 2) return null;
+    const mean = xs.reduce((a,b) => a+b, 0) / xs.length;
+    const sd = Math.sqrt(xs.reduce((a,b) => a + (b-mean)**2, 0) / xs.length);
+    return { mean, sd };
+  };
+  const S = { streak:stat('streak'), hit:stat('hit'), cushRatio:stat('cushRatio'),
+              volatility:stat('volatility'), defense:stat('defense') };
+  const z = (key, val) => (S[key] && S[key].sd > 0 && val != null) ? (val - S[key].mean) / S[key].sd : null;
+
+  const tM = { ...metricsOf(target), defense: defenseOf(target) };
+
+  // ① 단타-장타: 팀 기준 z(연타) − z(득점률) 를 다시 팀 기준으로 표준화
+  const comp = poolM.map(m => {
+    const zs = z('streak', m.streak), zh = z('hit', m.hit);
+    return (zs != null && zh != null) ? zs - zh : null;
+  }).filter(v => v != null);
+  const cMean = comp.length ? comp.reduce((a,b)=>a+b,0) / comp.length : 0;
+  const cSd = comp.length ? Math.sqrt(comp.reduce((a,b)=>a+(b-cMean)**2,0) / comp.length) : 0;
+  const zsT = z('streak', tM.streak), zhT = z('hit', tM.hit);
+  const compT = (zsT != null && zhT != null) ? zsT - zhT : null;
+  const zBalance = (compT != null && cSd > 0) ? (compT - cMean) / cSd : null;
+
+  const clamp = v => Math.max(-1, Math.min(1, v));
+  const pos = (zz, dir) => zz == null ? null : clamp(zz / 2) * dir;   // ±2σ → 막대 끝
+
+  const raw = [
+    pos(zBalance, 1),                        // 높을수록 장타(오른쪽)
+    pos(z('cushRatio', tM.cushRatio), -1),   // 마무리 쿠션 잘할수록 쿠션(왼쪽)
+    pos(z('volatility', tM.volatility), 1),  // 변동 클수록 기복(오른쪽)
+    pos(z('defense',  tM.defense),  -1)      // 상대 득점↑일수록 오픈(왼쪽)
+  ];
+  return {
+    ready: true,
+    axes: LABELS.map((a, i) => ({ ...a, ok: raw[i] != null, pos: raw[i] == null ? 0 : raw[i] }))
+  };
+}
+
+function renderTendency(name){
+  const t = computeTendency(name);
+  const rows = t.axes.map(a => {
+    const pct = ((a.pos + 1) / 2 * 100).toFixed(1);
+    const side = !a.ok ? '' : (a.pos < -0.15 ? 'L' : a.pos > 0.15 ? 'R' : '');
+    return `<div>
+      <div class="tlab"><span class="${side==='L'?'on':''}">${a.L}</span><span class="${side==='R'?'on':''}">${a.R}</span></div>
+      <div class="ttrack"><div class="tmid"></div><div class="tdot ${a.ok?'':'off'}" style="left:${a.ok?pct:'50'}%"></div></div>
+      ${a.ok ? '' : '<div class="tsub">기록이 더 쌓이면 표시돼요</div>'}
+    </div>`;
+  }).join('');
+  const note = t.ready
+    ? '소속 팀 전체와 비교한 상대적 성향이에요 · 통산 기록 기준'
+    : '통산 4경기 이상 쌓이면 성향이 표시돼요';
+  return `<div class="card">
+    <h3 style="font-size:1rem;margin:0 0 4px">🧭 플레이 성향</h3>
+    <div class="sub" style="margin:0 0 16px">${note}</div>
+    <div class="tend">${rows}</div>
+  </div>`;
+}
+
 function showPlayer(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   const auth = getAuth();
@@ -643,6 +767,7 @@ function showPlayer(name){
         <div id="cbox"></div>
       </div>
     </div>
+    <div id="tendArea"></div>
     <div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🗒️ 경기 이력</h3>
       <div class="scroll"><table>
         <thead><tr><th class="name">날짜</th><th class="name">상대</th><th>점수</th>
@@ -651,6 +776,7 @@ function showPlayer(name){
   </div>`);
 
   el.querySelector('.back').onclick=()=>show('rank');
+  el.querySelector('#tendArea').innerHTML = renderTendency(p.name);
   let lastW = 0;
 
   const renderMode = () => {
