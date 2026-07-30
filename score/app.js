@@ -875,7 +875,8 @@ function render(){
     } else {
       $('#gsc'+i).innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.targets[i]}</span>`;
       const curInn = Math.max(1, S.inn[i] + (S.turn === i ? 1 : 0));
-      const ev = (S.sc[i] / curInn).toFixed(3);
+      const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];   // 팀전은 sc가 팀 공유값 → 개인 에버는 indSc로
+      const ev = (indS / curInn).toFixed(3);
       const curHr = (S.turn === i && S.tp > S.br[i]) ? S.tp : S.br[i];
       $('#gstat'+i).textContent = `에버 ${ev} · 하이런 ${curHr}`;
       $('#gsc'+i).style.fontSize = 'clamp(64px, 22vmin, 150px)';
