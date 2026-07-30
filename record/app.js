@@ -4,7 +4,7 @@ import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal } from './com
 let DATA = { updated: '', players: [], games: [] };
 let RAW_GAMES = [];
 let RAW_MEMBERS = [];
-let rankPeriod = '누적';
+let rankPeriod = '이번달';
 let gamesMode = '통합';
 
 // ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
@@ -442,7 +442,7 @@ function renderRank(){
     return sortAsc ? r : -r;
   });
   
-  const periods = ['오늘', '이번달', '누적'];
+  const periods = ['오늘', '이번달', '통산'];
   const periodSel = `<select class="field p-period" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` + 
     periods.map(p => `<option value="${p}" ${p===rankPeriod?'selected':''}>${p}</option>`).join('') + 
     `</select>`;
@@ -620,7 +620,7 @@ function showPlayer(name){
       <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
       <div style="display:flex; gap:8px; margin-bottom:12px;">
         <select class="field pd-period" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">
-          ${['오늘', '이번달', '누적'].map(pd=>`<option value="${pd}" ${pd===playerPeriod?'selected':''}>${pd}</option>`).join('')}
+          ${['오늘', '이번달', '통산'].map(pd=>`<option value="${pd}" ${pd===playerPeriod?'selected':''}>${pd}</option>`).join('')}
         </select>
         <select class="field ptab" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">
           ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
@@ -1069,7 +1069,7 @@ function openAdminTeamEditModal(team){
 }
 
 function renderGames(){
-  const periods = ['오늘', '이번달', '누적'];
+  const periods = ['오늘', '이번달', '통산'];
   const periodSel = `<select class="field pg-period" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` + 
     periods.map(p => `<option value="${p}" ${p===rankPeriod?'selected':''}>${p}</option>`).join('') + 
     `</select>`;
