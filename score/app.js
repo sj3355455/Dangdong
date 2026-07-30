@@ -1035,6 +1035,7 @@ function win(winnerIdx){
   // 아직 겨룰 선수가 남았으면 '계속치기'로 꼴등전 진행, 최종이면 여기서 저장
   $('#btnWinCont').style.display = isFinal ? 'none' : '';
   $('#btnWinUndo').style.display = '';   // 경기 끝내기에서 숨겼을 수 있어 복구
+  if ($('#btnWinResume')) $('#btnWinResume').style.display = 'none';   // 시간초과 전용 버튼
   if (isFinal) saveGame();
 }
 
@@ -1096,7 +1097,12 @@ function endGameByTime(){
   S.fin = true;
   save();
   showEarlyResult();
-  saveGame();
+  // 시간초과 종료: 실수/연장 대비로 되돌리기·계속하기 제공.
+  // 저장은 '경기 종료'를 누를 때만(되돌리기/계속하기 후 재종료 시 중복 저장 방지).
+  $('#btnWinUndo').style.display = '';
+  $('#btnWinResume').style.display = '';
+  $('#saveStat').className = 'savestat';
+  $('#saveStat').textContent = "⏱ 시간 종료 — '경기 종료'를 누르면 기록이 저장됩니다";
 }
 function endGameEarly(){
   if (!S || S.fin) return;
@@ -1152,6 +1158,7 @@ function showEarlyResult(){
   $('#winStats').innerHTML = html;
   $('#btnWinCont').style.display = 'none';
   $('#btnWinUndo').style.display = 'none';
+  if ($('#btnWinResume')) $('#btnWinResume').style.display = 'none';
 }
 
 // 경기 종료(저장) 후 새 경기 — 꼴등전을 안 하고 바로 끝낼 때도 여기서 저장된다.
@@ -1183,6 +1190,16 @@ $('#btnWinUndo').onclick = () => {
   $('#winOvl').classList.remove('on');
   S.fin = false; S.saved = false;
   undoTurn();
+};
+
+// 시간초과 종료 화면의 '계속하기' — 시간제한을 해제하고 직전 상태로 돌아가 연장 진행
+if ($('#btnWinResume')) $('#btnWinResume').onclick = () => {
+  if (!S) return;
+  $('#winOvl').classList.remove('on');
+  S.fin = false; S.saved = false;
+  S.timeUp = false; S.timeLimitMs = 0;   // 연장 — 무제한
+  undoTurn();                            // 종료를 부른 마지막 동작을 되돌려 직전 상태로
+  toast('연장 — 시간제한 해제됨');
 };
 
 $('#btnMenu').onclick = () => $('#menuOvl').classList.add('on');
