@@ -593,7 +593,9 @@ setInterval(() => {
   const pausedMs = S.pausedMs || 0;
   const elapsed = Date.now() - S.t0 - pausedMs;
   const secs = Math.floor(elapsed / 1000);
-  el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  const mmss = t => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  const limitStr = S.timeLimitMs > 0 ? mmss(Math.floor(S.timeLimitMs / 1000)) : '∞';
+  el.textContent = `${mmss(secs)} / ${limitStr}`;
   el.style.color = S.timeUp ? '#e5484d' : '';
   // 시간제한: 다 되면 플래그만 세우고, 실제 종료는 이번 이닝이 끝날 때(passTurnInner)
   if (S.timeLimitMs > 0 && !S.timeUp && elapsed >= S.timeLimitMs) {
