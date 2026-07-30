@@ -249,7 +249,7 @@ function renderSetupCards(modeChanged = false) {
   }
   $('#myBallSeg').innerHTML = mbHtml;
   syncCushSeg();
-  syncTimeSeg();
+  syncTimeLimit();
 
   for (let i = 0; i < totalPlayers; i++) {
     fillSelect(i, modeChanged);
@@ -422,14 +422,38 @@ function syncCushSeg(){
   [0,1,2].forEach(n => { const b = $('#cushSeg'+n); if(b) b.classList.toggle('on', (prefs.cushGoal ?? 1) === n); });
 }
 
-window.setTimeLimit = function(n){
-  prefs.timeLimit = n;
-  lsSet(LS_PREFS, prefs); vib(8);
-  syncTimeSeg();
-};
-function syncTimeSeg(){
-  [0,30,60,90].forEach(n => { const b = $('#timeSeg'+n); if(b) b.classList.toggle('on', (prefs.timeLimit ?? 0) === n); });
+// 시간제한 휠 피커 (5분 단위, 0=없음 ~ 180분). 위아래로 돌려서 선택.
+const TIME_OPTS = (() => { const a = []; for (let m = 0; m <= 180; m += 5) a.push(m); return a; })();
+const TIME_ITEM_H = 40;   // .twheel .ti 높이(px)와 일치해야 함
+const timeLabel = m => m === 0 ? '없음' : m + '분';
+function syncTimeLimit(){
+  const b = $('#timeLimitBtn'); if (b) b.textContent = timeLabel(prefs.timeLimit ?? 0);
 }
+let timeWheelReady = false;
+function buildTimeWheel(){
+  const w = $('#timeWheel'); if (!w) return;
+  w.innerHTML = '<div class="ti-pad"></div>' +
+    TIME_OPTS.map(m => `<div class="ti">${timeLabel(m)}</div>`).join('') +
+    '<div class="ti-pad"></div>';
+  let raf;
+  w.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(updateTimeWheel); });
+  timeWheelReady = true;
+}
+function updateTimeWheel(){
+  const w = $('#timeWheel'); if (!w) return;
+  const idx = Math.max(0, Math.min(TIME_OPTS.length - 1, Math.round(w.scrollTop / TIME_ITEM_H)));
+  w.querySelectorAll('.ti').forEach((el, i) => el.classList.toggle('sel', i === idx));
+  const v = TIME_OPTS[idx];
+  if (prefs.timeLimit !== v) { prefs.timeLimit = v; lsSet(LS_PREFS, prefs); vib(6); }   // 한 칸 넘어갈 때마다 '틱'
+  syncTimeLimit();
+}
+window.openTimePopup = function(){
+  if (!timeWheelReady) buildTimeWheel();
+  $('#timeOvl').classList.add('on');
+  const idx = Math.max(0, TIME_OPTS.indexOf(prefs.timeLimit ?? 0));
+  const w = $('#timeWheel');
+  requestAnimationFrame(() => { w.scrollTop = idx * TIME_ITEM_H; updateTimeWheel(); });
+};
 
 window.applyMyBall = function(i) {
   if (!auth) return toast('로그인이 필요합니다.');
@@ -1193,6 +1217,7 @@ $('#btnMenuRestart').onclick = () => {
 document.querySelectorAll('.ovl').forEach(o => o.addEventListener('pointerdown', e => { if (e.target === o) o.classList.remove('on'); }));
 $('#targetOvl').addEventListener('pointerdown', e => { if (e.target === $('#targetOvl')) $('#targetOvl').classList.remove('on'); });
 $('#btnTargetClose').onclick = () => $('#targetOvl').classList.remove('on');
+if ($('#btnTimeClose')) $('#btnTimeClose').onclick = () => $('#timeOvl').classList.remove('on');
 
 // ══ Queue & Init ══
 function queueAdd(p){ const q = lsGet(LS_QUEUE, []); q.push(p); lsSet(LS_QUEUE, q); }
