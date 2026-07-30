@@ -16,8 +16,9 @@ let auth = lsGet(LS_AUTH, null);
 let members = lsGet(LS_MEM, []);
 let myTeams = [];                        // [{id,name,slug,is_admin}] — 내가 속한 팀들
 let currentTeam = lsGet(LS_TEAM, null);  // 현재 기록 대상 팀 id (없으면 전역 폴백)
-let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:0, cushGoal:1 });
+let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:0, cushGoal:1, timeLimit:0 });
 if (prefs.cushGoal == null) prefs.cushGoal = 1;
+if (prefs.timeLimit == null) prefs.timeLimit = 0;
 let S = lsGet(LS_STATE, null);
 
 const ZCOLORS = ['w','y','w','y'];
@@ -248,6 +249,7 @@ function renderSetupCards(modeChanged = false) {
   }
   $('#myBallSeg').innerHTML = mbHtml;
   syncCushSeg();
+  syncTimeSeg();
 
   for (let i = 0; i < totalPlayers; i++) {
     fillSelect(i, modeChanged);
@@ -420,6 +422,15 @@ function syncCushSeg(){
   [0,1,2].forEach(n => { const b = $('#cushSeg'+n); if(b) b.classList.toggle('on', (prefs.cushGoal ?? 1) === n); });
 }
 
+window.setTimeLimit = function(n){
+  prefs.timeLimit = n;
+  lsSet(LS_PREFS, prefs); vib(8);
+  syncTimeSeg();
+};
+function syncTimeSeg(){
+  [0,30,60,90].forEach(n => { const b = $('#timeSeg'+n); if(b) b.classList.toggle('on', (prefs.timeLimit ?? 0) === n); });
+}
+
 window.applyMyBall = function(i) {
   if (!auth) return toast('로그인이 필요합니다.');
   
@@ -504,6 +515,7 @@ $('#btnStart').onclick = () => {
     round: prefs.cushGoal ?? 1, lastInning: false, winners: [],
     tp: 0, turn: 0, first: 0, tc: 0,
     timeMs: Array(N).fill(0), turnStart: Date.now(),
+    timeLimitMs: (prefs.timeLimit ?? 0) * 60000, timeUp: false,
     hist: [], fin: false, saved: false, t0: Date.now()
   };
   save(); buildGameZones(); render(); show('game'); reqFS();
@@ -555,8 +567,16 @@ setInterval(() => {
   if (!el) return;
   if (S.paused) return;   // 일시정지 중엔 갱신 안 함(고정 표시)
   const pausedMs = S.pausedMs || 0;
-  const secs = Math.floor((Date.now() - S.t0 - pausedMs) / 1000);
+  const elapsed = Date.now() - S.t0 - pausedMs;
+  const secs = Math.floor(elapsed / 1000);
   el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  el.style.color = S.timeUp ? '#e5484d' : '';
+  // 시간제한: 다 되면 플래그만 세우고, 실제 종료는 이번 이닝이 끝날 때(passTurnInner)
+  if (S.timeLimitMs > 0 && !S.timeUp && elapsed >= S.timeLimitMs) {
+    S.timeUp = true; save();
+    toast('⏱ 시간 종료 — 이번 이닝까지!');
+    speak('시간 종료. 이번 이닝까지입니다');
+  }
 }, 1000);
 
 window.togglePause = function(){
@@ -769,6 +789,9 @@ function passTurnInner(isMiss, skipHist, quiet) {
 
   if (inningEnded && S.lastInning) {
     endInning();
+  }
+  if (inningEnded && S.timeUp && !S.fin) {
+    endGameByTime();   // 시간 종료 후 이번 이닝이 끝나면 현재 점수로 순위 확정
   }
   // 턴 안내 (게임이 끝났거나 파울 안내 직후면 생략)
   if (!quiet && !S.fin) speak('턴');
@@ -1035,6 +1058,20 @@ function rankRemainingByRatio(){
     if (isTeam) S.rank[r + 2] = rk;
   });
 }
+// 시간제한 종료: 이닝 경계에서 호출되므로 추가 이닝 마감 없이 현재 점수로 순위 확정
+function endGameByTime(){
+  if (!S || S.fin) return;
+  const N = S.sc.length;
+  rankRemainingByRatio();
+  S.finished = S.finished.map(() => true);
+  S.lastInning = false;
+  S.winners = [];
+  for (let i = 0; i < N; i++) if (S.rank[i] === 1) S.winners.push(i);
+  S.fin = true;
+  save();
+  showEarlyResult();
+  saveGame();
+}
 function endGameEarly(){
   if (!S || S.fin) return;
   const N = S.sc.length;
@@ -1149,7 +1186,7 @@ $('#btnMenuRestart').onclick = () => {
                        done:Array(N).fill(false), cush:Array(N).fill(0), cushInn:Array(N).fill(0),
                        finished:Array(N).fill(false), round:prefs.cushGoal ?? 1, lastInning:false, winners:[],
                        tp:0, turn:S.first, tc:0, timeMs:Array(N).fill(0), turnStart:Date.now(),
-                       hist:[], fin:false, saved:false, t0:Date.now() });
+                       hist:[], fin:false, saved:false, t0:Date.now(), timeUp:false });
     save(); buildGameZones(); render(); toast('점수가 초기화되었습니다.');
   }
 };
@@ -1206,6 +1243,7 @@ function init(){
       S.tc = S.inn.reduce((a, b) => a + b, 0);
     }
     if (!Array.isArray(S.timeMs)) { S.timeMs = Array(S.sc.length).fill(0); S.turnStart = Date.now(); }
+    if (typeof S.timeLimitMs !== 'number') { S.timeLimitMs = 0; S.timeUp = false; }
     save();
   }
 

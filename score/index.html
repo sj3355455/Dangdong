@@ -272,6 +272,14 @@ select.field{appearance:none;background-image:
     <button id="cushSeg2" onclick="setCushGoal(2)">2개</button>
   </div>
 
+  <div class="firstseg" style="margin-top:8px;">
+    <span class="cap">시간제한</span>
+    <button id="timeSeg0" onclick="setTimeLimit(0)">없음</button>
+    <button id="timeSeg30" onclick="setTimeLimit(30)">30분</button>
+    <button id="timeSeg60" onclick="setTimeLimit(60)">60분</button>
+    <button id="timeSeg90" onclick="setTimeLimit(90)">90분</button>
+  </div>
+
   <div class="err" id="sErr"></div>
   <button class="bigbtn" id="btnStart">경기 시작</button>
   <div class="savenote" id="saveNote"></div>
