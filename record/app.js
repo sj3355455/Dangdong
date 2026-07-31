@@ -617,9 +617,8 @@ function computeTendency(name){
     { L:'안정', R:'기복' },   // ③ 경기별 에버리지 변동계수
     { L:'오픈', R:'디펜스' }  // ④ 다음 차례(상대) 에버리지 변화(높일수록 오픈)
   ];
-  const blank = reason => ({ ready:false, reason, axes: LABELS.map(a => ({ ...a, pos:0, ok:false })) });
-  if (!target || target.games < 4) return blank('few_games');   // 본인 경기 부족
-  if (pool.length < 3) return blank('small_pool');              // 팀 비교 표본 부족
+  const blank = () => ({ ready:false, axes: LABELS.map(a => ({ ...a, pos:0, ok:false })) });
+  if (!target || target.games < 4 || pool.length < 3) return blank();
 
   // 선수별 원지표
   const metricsOf = p => {
@@ -716,14 +715,11 @@ function renderTendency(name){
     return `<div>
       <div class="tlab"><span class="${side==='L'?'on':''}">${a.L}</span><span class="${side==='R'?'on':''}">${a.R}</span></div>
       <div class="ttrack"><div class="tmid"></div><div class="tdot ${a.ok?'':'off'}" style="left:${a.ok?pct:'50'}%"></div></div>
-      ${a.ok ? '' : '<div class="tsub">기록이 더 쌓이면 표시돼요</div>'}
     </div>`;
   }).join('');
   const note = t.ready
     ? '소속 팀 전체와 비교한 상대적 성향이에요 · 통산 기록 기준'
-    : t.reason === 'small_pool'
-      ? '성향은 팀원들과 비교해 표시돼요 · 통산 3경기 이상인 팀원이 3명 이상 모이면 나타납니다'
-      : '통산 4경기 이상 쌓이면 성향이 표시돼요';
+    : '기록이 더 쌓이면 표시됩니다.';
   return `<div class="card">
     <h3 style="font-size:1rem;margin:0 0 4px">🧭 플레이 성향</h3>
     <div class="sub" style="margin:0 0 16px">${note}</div>
