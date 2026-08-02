@@ -1345,6 +1345,20 @@ function show(v){
       myRecBtn.style.display = 'none';
     }
   }
+  // 하단 로그아웃 버튼 — 점수판과 통일성. 로그인 상태에서만 노출
+  const logoutBtn = document.getElementById('btnLogout');
+  if(logoutBtn){
+    if(auth){
+      logoutBtn.style.display = '';
+      logoutBtn.onclick = () => {
+        if(!confirm('로그아웃할까요? 처음 화면으로 돌아갑니다.')) return;
+        try { localStorage.removeItem(LS_AUTH); localStorage.removeItem(LS_TEAM); } catch(e){}
+        location.href = '../score/';
+      };
+    } else {
+      logoutBtn.style.display = 'none';
+    }
+  }
   
   let node;
   if(v==='rank') node = renderRank();

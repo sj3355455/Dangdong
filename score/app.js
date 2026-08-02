@@ -383,7 +383,7 @@ function syncSetup(modeChanged = false){
 
   const q = lsGet(LS_QUEUE, []).length;
   $('#saveNote').innerHTML = auth
-    ? `<span class="pip"></span> 경기 종료 시 서버에 자동 저장${q ? ` · 대기 ${q}건` : ''}`
+    ? (q ? `<span class="pip"></span> 저장 대기 ${q}건` : '')
     : `<span class="pip off"></span> 게스트 모드 — 기록이 저장되지 않아요`;
 }
 

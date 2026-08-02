@@ -118,6 +118,8 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 .setseg{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
 .setseg button{flex:1;padding:8px 4px;border:none;background:none;color:var(--muted);font-size:.85rem;font-weight:600;border-radius:7px;cursor:pointer}
 .setseg button.on{background:var(--accent);color:#fff}
+.linkbtn{background:none;border:none;color:var(--muted);font-size:.95rem;text-decoration:underline;
+  padding:10px;cursor:pointer}
 /* ══ 플레이 성향 (MBTI식 수직선) ══ */
 .tend{display:flex;flex-direction:column;gap:18px}
 .tlab{display:flex;justify-content:space-between;font-size:.85rem;color:var(--muted);margin-bottom:7px;font-weight:600}
@@ -154,7 +156,8 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
     </div>
   </div>
   <div id="view"></div>
-  <div style="text-align:center; margin-top:30px; margin-bottom:16px;">
+  <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
+    <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
     <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v170</span>
   </div>
 </div>
