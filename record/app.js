@@ -417,7 +417,7 @@ function processData(games, members) {
       dst.avgAvg = a.inn > 0 ? (a.score / a.inn) : 0;
       dst.bestHr = a.hr;
       dst.hitRate = a.inn > 0 ? ((a.inn - a.miss) / a.inn) * 100 : 0;
-      // 평균 연타수 = 득점한 이닝에서 평균 몇 점 몰아쳤나 (공타 이닝 제외). 득점 이닝 없으면 null
+      // 평균 타수 = 득점한 이닝에서 평균 몇 점 몰아쳤나 (공타 이닝 제외). 득점 이닝 없으면 null
       dst.streakAvg = (a.inn - a.miss) > 0 ? (a.score / (a.inn - a.miss)) : null;
       // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
       dst.avgInterval = a.shots > 0 ? (a.time / a.shots) / 1000 : null;
@@ -449,35 +449,35 @@ const COL_NAME = {k:'name', t:'이름', txt:1};
 const COL_HDCP = {k:'handicap', t:'수지', fmt:v=>v ? v*10 : '—'};
 const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보정 승률(준비 중)
   COL_NAME, COL_HDCP,
-  {k:'games',    t:'경기'},
-  {k:'adjRate',  t:'보정 승률',  fmt:v=>v.toFixed(1)+'%'},
+  {k:'games',    t:'경기수'},
+  {k:'adjRate',  t:'승률',      fmt:v=>v.toFixed(1)+'%'},
   {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
-  {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
-  {k:'streakAvg',t:'평균 연타수', fmt:v=>v.toFixed(2)},
+  {k:'streakAvg',t:'평균 타수', fmt:v=>v.toFixed(2)},
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
   {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
+  {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
 ];
 const COLS_SKILL = [  // 모드 공통 실력 지표
   {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
-  {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
-  {k:'streakAvg',t:'평균 연타수', fmt:v=>v.toFixed(2)},
+  {k:'streakAvg',t:'평균 타수', fmt:v=>v.toFixed(2)},
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
   {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
+  {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
 ];
 const COLS_VS = [    // 2인 · 팀전: 두 진영 승부
   COL_NAME, COL_HDCP,
-  {k:'games',   t:'경기'},
+  {k:'games',   t:'경기수'},
   {k:'wins',    t:'승'},
   {k:'winRate', t:'승률', fmt:v=>v.toFixed(0)+'%'},
   ...COLS_SKILL,
 ];
 const COLS_MULTI = [ // 3인 · 4인: 다자전
   COL_NAME, COL_HDCP,
-  {k:'games',   t:'경기'},
+  {k:'games',   t:'경기수'},
   {k:'avgRank', t:'평균순위', fmt:v=>v.toFixed(2)+'등'},
   {k:'winRate', t:'승률(1등)', fmt:v=>v.toFixed(0)+'%'},
   ...COLS_SKILL,
@@ -533,7 +533,7 @@ function renderRank(){
     inner = `<div class="scroll"><table><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
   const note = rankMode==='통합'
-    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>보정 승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 연타수</b>는 득점한 이닝에서 평균 몇 점씩 몰아쳤는지(공타 이닝 제외)입니다.'
+    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 이닝에서 평균 몇 점씩 몰아쳤는지(공타 이닝 제외)입니다.'
     : (rankMode==='3인'||rankMode==='4인')
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
@@ -624,10 +624,10 @@ function chart(vals, labels, opt){
 
 const METRICS = [
   {k:'avg', t:'에버리지', modes:MODE_TABS, dec:2},
-  {k:'streak', t:'평균 연타수', modes:MODE_TABS, dec:2},
+  {k:'streak', t:'평균 타수', modes:MODE_TABS, dec:2},
   {k:'hit', t:'득점률', modes:MODE_TABS, max:100, suffix:'%', dec:0},
   {k:'adj', t:'보정 승률', modes:MODE_TABS, max:100, suffix:'%', dec:1},
-  {k:'games', t:'경기 수', modes:MODE_TABS, dec:0},
+  {k:'games', t:'경기수', modes:MODE_TABS, dec:0},
   {k:'cush', t:'쿠션 성공률', modes:MODE_TABS, max:100, suffix:'%', dec:0},
   {k:'hr', t:'하이런', modes:MODE_TABS, dec:0},
   {k:'winRate', t:'승률', modes:['2인','팀전'], max:100, suffix:'%', dec:0},
@@ -707,7 +707,7 @@ function computeTendency(name){
       }
     }
     return {
-      streak: p.streakAvg,   // 평균 연타수
+      streak: p.streakAvg,   // 평균 타수
       hit:    p.hitRate,     // 득점률
       cushRatio,             // 쿠션 마무리 상대 효율
       volatility             // 에버리지 변동계수
@@ -938,10 +938,10 @@ function showPlayer(name){
     const groupText = '일별';
     let desc = m.t;
     if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 총 이닝)`;
-    else if (key === 'streak') desc = `해당 ${groupText} 평균 연타수 (총 득점 / 득점한 이닝)`;
+    else if (key === 'streak') desc = `해당 ${groupText} 평균 타수 (총 득점 / 득점한 이닝)`;
     else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (공타 제외 득점 비율)`;
     else if (key === 'adj') desc = `해당 ${groupText} 평균 보정 승률`;
-    else if (key === 'games') desc = `해당 ${groupText} 총 경기 수`;
+    else if (key === 'games') desc = `해당 ${groupText} 총 경기수`;
     else if (key === 'hr') desc = `해당 ${groupText} 최고 하이런`;
     else if (key === 'cush') desc = `해당 ${groupText} 쿠션 성공률`;
     else if (key === 'winRate') desc = `해당 ${groupText} 평균 승률`;
