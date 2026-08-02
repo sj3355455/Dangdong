@@ -27,6 +27,14 @@ function inRange(dateStr, from, to){
   if (hi && dateStr > hi) return false;
   return true;
 }
+// 기복 = 경기별 에버리지의 변동계수(표준편차 ÷ 평균) × 100. 2경기 미만이면 null.
+function volatilityPct(avgs){
+  if (!avgs || avgs.length < 2) return null;
+  const m = avgs.reduce((x, y) => x + y, 0) / avgs.length;
+  if (!(m > 0)) return null;
+  const sd = Math.sqrt(avgs.reduce((x, y) => x + (y - m) ** 2, 0) / avgs.length);
+  return (sd / m) * 100;
+}
 // 2026-07-01 → 26/07/01 (표시용 축약)
 function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
 // 네이티브 date 입력을 투명하게 덮고 그 위에 26/07/01 형식 칸을 표시 (달력은 그대로 열림)
@@ -382,7 +390,7 @@ function processData(games, members) {
     }
 
     // 실력 지표: 전체(통합) 누적과 모드별 누적을 함께 계산한다.
-    const blankAcc = () => ({ inn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0 });
+    const blankAcc = () => ({ inn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0, avgs:[] });
     const tot = blankAcc();
     const byMode = {};   // 모드별 실력 지표 누적
 
@@ -394,6 +402,7 @@ function processData(games, members) {
         if (h.highRun > a.hr) a.hr = h.highRun;
         a.cm += h.cushMade;
         a.ci += h.cushInn;
+        if (h.inning > 0) a.avgs.push(h.score / h.inning);   // 경기별 에버리지 (기복 계산용)
         if (h.timeMs > 0) {
           a.time += h.timeMs;
           a.shots += Math.max(1, h.score + h.inning);
@@ -414,6 +423,8 @@ function processData(games, members) {
       dst.avgInterval = a.shots > 0 ? (a.time / a.shots) / 1000 : null;
       // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
       dst.cushRate = a.ci > 0 ? (a.cm / a.ci) * 100 : null;
+      // 기복 = 경기별 에버리지의 변동계수(%). 2경기 미만이면 null
+      dst.volatility = volatilityPct(a.avgs);
     };
     finalize(p, tot);
     for (const mk in p.modes) {
@@ -441,6 +452,7 @@ const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보�
   {k:'games',    t:'경기'},
   {k:'adjRate',  t:'보정 승률',  fmt:v=>v.toFixed(1)+'%'},
   {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
+  {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
   {k:'streakAvg',t:'평균 연타수', fmt:v=>v.toFixed(2)},
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
@@ -449,6 +461,7 @@ const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보�
 ];
 const COLS_SKILL = [  // 모드 공통 실력 지표
   {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
+  {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
   {k:'streakAvg',t:'평균 연타수', fmt:v=>v.toFixed(2)},
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
@@ -625,7 +638,8 @@ function calcStatsForHistory(h) {
   let games = h.length;
   let wins = h.filter(r => r.win).length;
   let sumInnings = 0, sumScore = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
-  
+  const avgs = [];   // 경기별 에버리지 (기복 계산용)
+
   h.forEach(r => {
     sumInnings += (r.inning || 0);
     sumScore += (r.score || 0);
@@ -635,6 +649,7 @@ function calcStatsForHistory(h) {
     cushInn += (r.cushInn || 0);
     sumAdjPt += (r.adjPt || 0);
     rankSum += (r.rank || 0);
+    if (r.inning > 0) avgs.push(r.score / r.inning);
     if (r.timeMs > 0) {
       sumTime += r.timeMs;
       sumShots += Math.max(1, r.score + r.inning);
@@ -651,6 +666,7 @@ function calcStatsForHistory(h) {
     streakAvg: (sumInnings - totalMisses) > 0 ? (sumScore / (sumInnings - totalMisses)) : null,
     cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
     avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
+    volatility: volatilityPct(avgs),
     avgRank: games > 0 ? (rankSum / games) : null,
     adjRate: games > 0 ? (sumAdjPt / games) : 0
   };
