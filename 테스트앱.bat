@@ -1,15 +1,14 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ================================
-echo   ë‹¹ë™ í…ŒìŠ¤íŠ¸(beta) ë°°í¬
+echo   ´çµ¿ Å×½ºÆ®(beta) ¹èÆ÷
 echo ================================
 echo.
 
 git remote get-url beta >nul 2>&1
 if errorlevel 1 (
-  echo [!] 'beta' ì›ê²©ì´ ì•„ì§ ì—†ìŠµë‹ˆë‹¤. ì €ì¥ì†Œë¥¼ ë§Œë“  ë’¤ í•œ ë²ˆë§Œ ì‹¤í–‰í•˜ì„¸ìš”:
+  echo [!] 'beta' ¿ø°İÀÌ ¾ÆÁ÷ ¾ø½À´Ï´Ù. ÀúÀå¼Ò¸¦ ¸¸µç µÚ ÇÑ ¹ø¸¸ ½ÇÇàÇÏ¼¼¿ä:
   echo     git remote add beta https://github.com/sj3355455/Dangdong-beta.git
   echo.
   pause
@@ -19,21 +18,21 @@ if errorlevel 1 (
 git status --short
 echo.
 
-set /p MSG=ì»¤ë°‹ ë©”ì‹œì§€ (ì—”í„°=ìë™):
+set /p MSG=Ä¿¹Ô ¸Ş½ÃÁö (¿£ÅÍ=ÀÚµ¿):
 if "%MSG%"=="" set MSG=beta test %date% %time:~0,5%
 
 git add -A
 git commit -m "%MSG%"
 
 echo.
-echo í…ŒìŠ¤íŠ¸ ì €ì¥ì†Œ(main)ë¡œ ê°•ì œ í‘¸ì‹œí•©ë‹ˆë‹¤...
+echo Å×½ºÆ® ÀúÀå¼Ò(main)·Î °­Á¦ Çª½ÃÇÕ´Ï´Ù...
 git push -f beta HEAD:main
 
 echo.
 echo ================================
-echo   ì™„ë£Œ! ì ì‹œ í›„ í…ŒìŠ¤íŠ¸ ì•±ì— ë°˜ì˜ë©ë‹ˆë‹¤:
+echo   ¿Ï·á! Àá½Ã ÈÄ Å×½ºÆ® ¾Û¿¡ ¹İ¿µµË´Ï´Ù:
 echo   https://sj3355455.github.io/Dangdong-beta/
 echo.
-echo   ë³¸ ì•±ìœ¼ë¡œ ìŠ¹ê²©í•˜ë ¤ë©´: push.bat ì‹¤í–‰ (origin/main)
+echo   º» ¾ÛÀ¸·Î ½Â°İÇÏ·Á¸é: º»¾Û.bat ½ÇÇà (origin/main)
 echo ================================
 pause
