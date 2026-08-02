@@ -36,7 +36,7 @@ function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
 // 네이티브 date 입력을 투명하게 덮고 그 위에 26/07/01 형식 칸을 표시 (달력은 그대로 열림)
 function dateFieldHtml(cls, role, val, ph){
   return `<div style="position:relative; flex:1 1 0; min-width:0;">
-      <div class="${cls}-${role}-disp" style="padding:6px 2px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:${val?'var(--text)':'var(--muted)'}; font-size:0.9rem; text-align:center; white-space:nowrap; overflow:hidden;">${val ? ddmy(val) : ph}</div>
+      <div class="${cls}-${role}-disp" style="height:34px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:${val?'var(--text)':'var(--muted)'}; font-size:0.9rem; white-space:nowrap; overflow:hidden;">${val ? ddmy(val) : ph}</div>
       <input type="date" class="${cls}-${role}" value="${val||''}" max="${todayYmd()}" aria-label="${ph}" style="position:absolute; inset:0; width:100%; height:100%; opacity:0; margin:0; padding:0; border:0;">
     </div>`;
 }
@@ -385,37 +385,44 @@ function processData(games, members) {
       M.adjRate = M.games > 0 ? (M.adjPtsSum / M.games) : 0;
     }
 
-    let sumInnings = 0;
-    let sumScore = 0;
-    let maxHr = 0;
-    let totalMisses = 0;
-    let cushMade = 0;
-    let cushInn = 0;
-    let sumTime = 0;        // 시간 기록이 있는 경기의 누적 소모 시간(ms)
-    let sumShots = 0;       // 그 경기들의 샷(타석) 횟수 합 (평균 인터벌 분모)
+    // 실력 지표: 전체(통합) 누적과 모드별 누적을 함께 계산한다.
+    const blankAcc = () => ({ inn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0 });
+    const tot = blankAcc();
+    const byMode = {};   // 모드별 실력 지표 누적
 
     for (const h of p.history) {
-      sumInnings += h.inning;
-      sumScore += h.score;
-      totalMisses += h.miss;
-      if (h.highRun > maxHr) maxHr = h.highRun;
-      cushMade += h.cushMade;
-      cushInn += h.cushInn;
-      if (h.timeMs > 0) {
-        sumTime += h.timeMs;
-        sumShots += Math.max(1, h.score + h.inning);
-      }
+      const add = a => {
+        a.inn += h.inning;
+        a.score += h.score;
+        a.miss += h.miss;
+        if (h.highRun > a.hr) a.hr = h.highRun;
+        a.cm += h.cushMade;
+        a.ci += h.cushInn;
+        if (h.timeMs > 0) {
+          a.time += h.timeMs;
+          a.shots += Math.max(1, h.score + h.inning);
+        }
+      };
+      add(tot);
+      add(byMode[h.type] || (byMode[h.type] = blankAcc()));
     }
 
-    p.avgAvg = sumInnings > 0 ? (sumScore / sumInnings) : 0;
-    p.bestHr = maxHr;
-    p.hitRate = sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0;
-    // 평균 연타수 = 득점한 이닝에서 평균 몇 점 몰아쳤나 (공타 이닝 제외). 득점 이닝 없으면 null
-    p.streakAvg = (sumInnings - totalMisses) > 0 ? (sumScore / (sumInnings - totalMisses)) : null;
-    // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함하여 계산
-    p.avgInterval = sumShots > 0 ? (sumTime / sumShots) / 1000 : null;
-    // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
-    p.cushRate = cushInn > 0 ? (cushMade / cushInn) * 100 : null;
+    // 누적 → 지표 변환 (통합/모드 공통 규칙)
+    const finalize = (dst, a) => {
+      dst.avgAvg = a.inn > 0 ? (a.score / a.inn) : 0;
+      dst.bestHr = a.hr;
+      dst.hitRate = a.inn > 0 ? ((a.inn - a.miss) / a.inn) * 100 : 0;
+      // 평균 연타수 = 득점한 이닝에서 평균 몇 점 몰아쳤나 (공타 이닝 제외). 득점 이닝 없으면 null
+      dst.streakAvg = (a.inn - a.miss) > 0 ? (a.score / (a.inn - a.miss)) : null;
+      // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
+      dst.avgInterval = a.shots > 0 ? (a.time / a.shots) / 1000 : null;
+      // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
+      dst.cushRate = a.ci > 0 ? (a.cm / a.ci) * 100 : null;
+    };
+    finalize(p, tot);
+    for (const mk in p.modes) {
+      if (byMode[mk]) finalize(p.modes[mk], byMode[mk]);
+    }
   }
 
   const now = new Date();
@@ -444,17 +451,27 @@ const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보�
   {k:'bestHr',   t:'하이런'},
   {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
 ];
+const COLS_SKILL = [  // 모드 공통 실력 지표
+  {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
+  {k:'streakAvg',t:'평균 연타수', fmt:v=>v.toFixed(2)},
+  {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
+  {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
+  {k:'bestHr',   t:'하이런'},
+  {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
+];
 const COLS_VS = [    // 2인 · 팀전: 두 진영 승부
   COL_NAME, COL_HDCP,
   {k:'games',   t:'경기'},
   {k:'wins',    t:'승'},
   {k:'winRate', t:'승률', fmt:v=>v.toFixed(0)+'%'},
+  ...COLS_SKILL,
 ];
 const COLS_MULTI = [ // 3인 · 4인: 다자전
   COL_NAME, COL_HDCP,
   {k:'games',   t:'경기'},
   {k:'avgRank', t:'평균순위', fmt:v=>v.toFixed(2)+'등'},
   {k:'winRate', t:'승률(1등)', fmt:v=>v.toFixed(0)+'%'},
+  ...COLS_SKILL,
 ];
 const MODE_TABS = ['통합','2인','3인','4인','팀전'];
 const colsFor = m => m==='통합' ? COLS_ALL : (m==='2인'||m==='팀전') ? COLS_VS : COLS_MULTI;
@@ -483,7 +500,7 @@ function renderRank(){
     return sortAsc ? r : -r;
   });
   
-  const modeSel = `<select class="field p-mode" style="flex:0 0 auto; width:84px; padding:6px 4px; font-size:0.95rem; border-radius:8px; margin:0;">` +
+  const modeSel = `<select class="field p-mode" style="flex:0 0 auto; width:84px; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">` +
     MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') +
     `</select>`;
 
@@ -597,13 +614,13 @@ function chart(vals, labels, opt){
 }
 
 const METRICS = [
-  {k:'avg', t:'에버리지', modes:['통합'], dec:2},
-  {k:'streak', t:'평균 연타수', modes:['통합'], dec:2},
-  {k:'hit', t:'득점률', modes:['통합'], max:100, suffix:'%', dec:0},
-  {k:'adj', t:'보정 승률', modes:['통합'], max:100, suffix:'%', dec:1},
-  {k:'games', t:'경기 수', modes:['통합'], dec:0},
-  {k:'cush', t:'쿠션 성공률', modes:['통합'], max:100, suffix:'%', dec:0},
-  {k:'hr', t:'하이런', modes:['통합'], dec:0},
+  {k:'avg', t:'에버리지', modes:MODE_TABS, dec:2},
+  {k:'streak', t:'평균 연타수', modes:MODE_TABS, dec:2},
+  {k:'hit', t:'득점률', modes:MODE_TABS, max:100, suffix:'%', dec:0},
+  {k:'adj', t:'보정 승률', modes:MODE_TABS, max:100, suffix:'%', dec:1},
+  {k:'games', t:'경기 수', modes:MODE_TABS, dec:0},
+  {k:'cush', t:'쿠션 성공률', modes:MODE_TABS, max:100, suffix:'%', dec:0},
+  {k:'hr', t:'하이런', modes:MODE_TABS, dec:0},
   {k:'winRate', t:'승률', modes:['2인','팀전'], max:100, suffix:'%', dec:0},
   {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1, invert:true, min:1, max:4}
 ];
@@ -787,7 +804,7 @@ function showPlayer(name){
       <h2 style="margin:0">${esc(p.name)}</h2>
       <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
       <div style="margin-bottom:12px;">
-        ${rangeRowHtml('pd-period', playerFrom, playerTo, `<select class="field ptab" style="flex:0 0 auto; width:84px; padding:6px 4px; font-size:0.95rem; border-radius:8px; margin:0;">
+        ${rangeRowHtml('pd-period', playerFrom, playerTo, `<select class="field ptab" style="flex:0 0 auto; width:84px; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">
             ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
           </select>`)}
       </div>
@@ -1229,7 +1246,7 @@ function openAdminTeamEditModal(team){
 }
 
 function renderGames(){
-  const modeSel = `<select class="field pg-mode" style="flex:0 0 auto; width:84px; padding:6px 4px; font-size:0.95rem; border-radius:8px; margin:0;">` +
+  const modeSel = `<select class="field pg-mode" style="flex:0 0 auto; width:84px; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">` +
     MODE_TABS.map(m => `<option value="${m}" ${m===gamesMode?'selected':''}>${m}</option>`).join('') +
     `</select>`;
 
