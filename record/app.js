@@ -27,10 +27,6 @@ function inRange(dateStr, from, to){
   if (hi && dateStr > hi) return false;
   return true;
 }
-function rangeSpanDays(from, to){
-  if (!from || !to) return Infinity;
-  return Math.abs((new Date(to) - new Date(from)) / 86400000);
-}
 // 2026-07-01 → 26/07/01 (표시용 축약)
 function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
 // 네이티브 date 입력을 투명하게 덮고 그 위에 26/07/01 형식 칸을 표시 (달력은 그대로 열림)
@@ -794,7 +790,6 @@ function showPlayer(name){
   if (!p) p = { name, id: null, handicap: 0, total_games: 0, win_rate: 0, avg: 0, hr: 0 };
   let playerMode = '통합';
   let chartCur = 'avg';
-  let chartGroup = 'day';
   let playerFrom = rankFrom;
   let playerTo = rankTo;
 
@@ -863,10 +858,6 @@ function showPlayer(name){
       <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
 
     el.querySelector('#chartArea').style.display = 'block';
-    // 하루면 경기별, 약 두 달 이내면 일별, 그 이상(또는 통산)이면 월별
-    if (playerFrom && playerFrom === playerTo) chartGroup = 'game';
-    else if ((playerFrom || playerTo) && rangeSpanDays(playerFrom, playerTo) <= 62) chartGroup = 'day';
-    else chartGroup = 'month';
 
       const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
       el.querySelector('#pMetricSel').innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
@@ -894,8 +885,8 @@ function showPlayer(name){
     const hAsc = [...h].reverse();
     const groups = {}; 
     
-    hAsc.forEach((r, idx) => {
-      const gKey = chartGroup === 'game' ? (idx + 1) + '경기' : chartGroup === 'day' ? r.date.substring(5, 10) : r.date.substring(0, 7);
+    hAsc.forEach(r => {
+      const gKey = r.date.substring(5, 10);   // 일별(MM-DD)로 통일
       if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, sumAdjPt: 0, maxHr: 0, cushMade: 0, cushInn: 0, wins: 0, rankSum: 0 };
       groups[gKey].games++;
       groups[gKey].sumInning += (r.inning || 0);
@@ -928,7 +919,7 @@ function showPlayer(name){
 
     box.innerHTML = chart(vals, labels, {...m, W: lastW});
     
-    const groupText = chartGroup === 'game' ? '경기별' : chartGroup === 'day' ? '일별' : '월별';
+    const groupText = '일별';
     let desc = m.t;
     if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 총 이닝)`;
     else if (key === 'streak') desc = `해당 ${groupText} 평균 연타수 (총 득점 / 득점한 이닝)`;
@@ -990,7 +981,6 @@ function showPlayer(name){
   chartRO = new ResizeObserver(es=>{ 
     const w = es[0].contentRect.width; 
     if(Math.abs(w - lastW) > 2) {
-      if (playerFrom && playerFrom === playerTo) return;   // 하루치(경기별)는 리사이즈 재계산 불필요
       let hPeriod = [...p.history];
       if (playerFrom || playerTo) {
         hPeriod = hPeriod.filter(r => inRange(r.date, playerFrom, playerTo));
