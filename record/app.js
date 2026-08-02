@@ -31,13 +31,41 @@ function rangeSpanDays(from, to){
   if (!from || !to) return Infinity;
   return Math.abs((new Date(to) - new Date(from)) / 86400000);
 }
-// 시작일 ~ 종료일 달력. 둘 다 비우면 통산(전체).
-function rangeRowHtml(cls, from, to){
-  return `<div class="${cls}-range" style="display:flex; align-items:center; gap:4px;">
-      <input type="date" class="field ${cls}-from" value="${from||''}" max="${todayYmd()}" style="flex:1 1 0; min-width:0; padding:6px 4px; font-size:0.9rem; border-radius:8px; margin:0;">
-      <span style="color:var(--muted); flex:0 0 auto;">~</span>
-      <input type="date" class="field ${cls}-to" value="${to||''}" max="${todayYmd()}" style="flex:1 1 0; min-width:0; padding:6px 4px; font-size:0.9rem; border-radius:8px; margin:0;">
+// 2026-07-01 → 26/07/01 (표시용 축약)
+function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
+// 네이티브 date 입력을 투명하게 덮고 그 위에 26/07/01 형식 칸을 표시 (달력은 그대로 열림)
+function dateFieldHtml(cls, role, val, ph){
+  return `<div style="position:relative; flex:1 1 0; min-width:0;">
+      <div class="${cls}-${role}-disp" style="padding:6px 2px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:${val?'var(--text)':'var(--muted)'}; font-size:0.9rem; text-align:center; white-space:nowrap; overflow:hidden;">${val ? ddmy(val) : ph}</div>
+      <input type="date" class="${cls}-${role}" value="${val||''}" max="${todayYmd()}" aria-label="${ph}" style="position:absolute; inset:0; width:100%; height:100%; opacity:0; margin:0; padding:0; border:0;">
     </div>`;
+}
+// 같은 줄: [leftHtml(모드)] [시작] ~ [종료]. 둘 다 비우면 통산(전체).
+function rangeRowHtml(cls, from, to, leftHtml){
+  return `<div class="${cls}-range" style="display:flex; align-items:center; gap:4px;">
+      ${leftHtml || ''}
+      ${dateFieldHtml(cls, 'from', from, '시작')}
+      <span style="color:var(--muted); flex:0 0 auto;">~</span>
+      ${dateFieldHtml(cls, 'to', to, '종료')}
+    </div>`;
+}
+// 데스크톱에서도 클릭 시 달력이 열리도록 showPicker 연결
+function bindRangePicker(el, cls){
+  ['from','to'].forEach(role => {
+    const inp = el.querySelector('.'+cls+'-'+role);
+    if (inp) inp.onclick = () => { if (inp.showPicker) { try { inp.showPicker(); } catch(_){} } };
+  });
+}
+// 입력값을 26/07/01 표시 칸에 반영 (툴바를 다시 그리지 않는 화면용)
+function syncRangeDisp(el, cls){
+  ['from','to'].forEach(role => {
+    const inp = el.querySelector('.'+cls+'-'+role);
+    const d = el.querySelector('.'+cls+'-'+role+'-disp');
+    if (!inp || !d) return;
+    const ph = role === 'from' ? '시작' : '종료';
+    d.textContent = inp.value ? ddmy(inp.value) : ph;
+    d.style.color = inp.value ? 'var(--text)' : 'var(--muted)';
+  });
 }
 
 function getFilteredData() {
@@ -455,8 +483,8 @@ function renderRank(){
     return sortAsc ? r : -r;
   });
   
-  const modeSel = `<select class="field p-mode" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` +
-    MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') + 
+  const modeSel = `<select class="field p-mode" style="flex:0 0 auto; width:84px; padding:6px 4px; font-size:0.95rem; border-radius:8px; margin:0;">` +
+    MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') +
     `</select>`;
 
   const head = COLS.map(c=>{
@@ -485,13 +513,11 @@ function renderRank(){
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
-        <div style="display:flex; gap:8px; margin-bottom:8px;">
-          ${modeSel}
-        </div>
-        ${rangeRowHtml('p-period', rankFrom, rankTo)}
+        ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
       </div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
+  bindRangePicker(el, 'p-period');
 
   const refreshRankSub = () => {
     const sub = document.getElementById('sub');
@@ -761,12 +787,9 @@ function showPlayer(name){
       <h2 style="margin:0">${esc(p.name)}</h2>
       <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
       <div style="margin-bottom:12px;">
-        <div style="display:flex; gap:8px; margin-bottom:8px;">
-          <select class="field ptab" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">
+        ${rangeRowHtml('pd-period', playerFrom, playerTo, `<select class="field ptab" style="flex:0 0 auto; width:84px; padding:6px 4px; font-size:0.95rem; border-radius:8px; margin:0;">
             ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
-          </select>
-        </div>
-        ${rangeRowHtml('pd-period', playerFrom, playerTo)}
+          </select>`)}
       </div>
       <div class="stats" id="pStats"></div>
       <div id="chartArea">
@@ -790,6 +813,7 @@ function showPlayer(name){
 
   el.querySelector('.back').onclick=()=>show('rank');
   el.querySelector('#tendArea').innerHTML = renderTendency(p.name);
+  bindRangePicker(el, 'pd-period');
   let lastW = 0;
 
   const renderMode = () => {
@@ -910,6 +934,7 @@ function showPlayer(name){
   const applyPlayerRange = () => {
     playerFrom = el.querySelector('.pd-period-from').value;
     playerTo = el.querySelector('.pd-period-to').value;
+    syncRangeDisp(el, 'pd-period');
     renderMode();
   };
   el.querySelector('.pd-period-from').onchange = applyPlayerRange;
@@ -1204,8 +1229,8 @@ function openAdminTeamEditModal(team){
 }
 
 function renderGames(){
-  const modeSel = `<select class="field pg-mode" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` +
-    MODE_TABS.map(m => `<option value="${m}" ${m===gamesMode?'selected':''}>${m}</option>`).join('') + 
+  const modeSel = `<select class="field pg-mode" style="flex:0 0 auto; width:84px; padding:6px 4px; font-size:0.95rem; border-radius:8px; margin:0;">` +
+    MODE_TABS.map(m => `<option value="${m}" ${m===gamesMode?'selected':''}>${m}</option>`).join('') +
     `</select>`;
 
   const filteredGames = gamesMode === '통합' 
@@ -1227,14 +1252,12 @@ function renderGames(){
 
   const el = $(`<div class="card">
     <div style="margin-bottom:14px;">
-      <div style="display:flex; gap:8px; margin-bottom:8px;">
-        ${modeSel}
-      </div>
-      ${rangeRowHtml('pg-period', rankFrom, rankTo)}
+      ${rangeRowHtml('pg-period', rankFrom, rankTo, modeSel)}
     </div>
     <div class="scroll">${inner}</div>
     <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div>
   </div>`);
+  bindRangePicker(el, 'pg-period');
 
   const refreshGamesSub = () => {
     const sub = document.getElementById('sub');
