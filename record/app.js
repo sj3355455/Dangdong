@@ -31,13 +31,12 @@ function rangeSpanDays(from, to){
   if (!from || !to) return Infinity;
   return Math.abs((new Date(to) - new Date(from)) / 86400000);
 }
-// 시작일 ~ 종료일 달력. 둘 다 비우면 통산(전체). '통산' 버튼으로 초기화.
+// 시작일 ~ 종료일 달력. 둘 다 비우면 통산(전체).
 function rangeRowHtml(cls, from, to){
-  return `<div class="${cls}-range" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-      <input type="date" class="field ${cls}-from" value="${from||''}" max="${todayYmd()}" style="flex:1; min-width:0; padding:6px; font-size:0.9rem; border-radius:8px; margin:0;">
+  return `<div class="${cls}-range" style="display:flex; align-items:center; gap:4px;">
+      <input type="date" class="field ${cls}-from" value="${from||''}" max="${todayYmd()}" style="flex:1 1 0; min-width:0; padding:6px 4px; font-size:0.9rem; border-radius:8px; margin:0;">
       <span style="color:var(--muted); flex:0 0 auto;">~</span>
-      <input type="date" class="field ${cls}-to" value="${to||''}" max="${todayYmd()}" style="flex:1; min-width:0; padding:6px; font-size:0.9rem; border-radius:8px; margin:0;">
-      <button type="button" class="field ${cls}-all" title="전체 기간(통산) 보기" style="flex:0 0 auto; width:auto; padding:6px 10px; font-size:0.9rem; border-radius:8px; margin:0; cursor:pointer; white-space:nowrap;">통산</button>
+      <input type="date" class="field ${cls}-to" value="${to||''}" max="${todayYmd()}" style="flex:1 1 0; min-width:0; padding:6px 4px; font-size:0.9rem; border-radius:8px; margin:0;">
     </div>`;
 }
 
@@ -507,12 +506,6 @@ function renderRank(){
   };
   el.querySelector('.p-period-from').onchange = applyRankRange;
   el.querySelector('.p-period-to').onchange = applyRankRange;
-  el.querySelector('.p-period-all').onclick = () => {
-    rankFrom = ''; rankTo = '';
-    DATA = getFilteredData();
-    refreshRankSub();
-    show('rank');
-  };
 
   el.querySelector('.p-mode').onchange = (e) => {
     rankMode = e.target.value;
@@ -921,12 +914,6 @@ function showPlayer(name){
   };
   el.querySelector('.pd-period-from').onchange = applyPlayerRange;
   el.querySelector('.pd-period-to').onchange = applyPlayerRange;
-  el.querySelector('.pd-period-all').onclick = () => {
-    playerFrom = ''; playerTo = '';
-    el.querySelector('.pd-period-from').value = '';
-    el.querySelector('.pd-period-to').value = '';
-    renderMode();
-  };
 
   el.querySelector('.ptab').onchange = (e) => {
     playerMode = e.target.value;
@@ -1262,12 +1249,6 @@ function renderGames(){
   };
   el.querySelector('.pg-period-from').onchange = applyGamesRange;
   el.querySelector('.pg-period-to').onchange = applyGamesRange;
-  el.querySelector('.pg-period-all').onclick = () => {
-    rankFrom = ''; rankTo = '';
-    DATA = getFilteredData();
-    refreshGamesSub();
-    show('games');
-  };
 
   el.querySelector('.pg-mode').onchange = (e) => {
     gamesMode = e.target.value;
