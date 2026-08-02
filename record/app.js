@@ -4,9 +4,8 @@ import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal } from './com
 let DATA = { updated: '', players: [], games: [] };
 let RAW_GAMES = [];
 let RAW_MEMBERS = [];
-let rankPeriod = '통산';
-let rankFrom = '';   // '기간' 모드 시작일 (YYYY-MM-DD, ''=제한 없음)
-let rankTo = '';     // '기간' 모드 종료일
+let rankFrom = '';   // 조회 시작일 (YYYY-MM-DD, ''=제한 없음)
+let rankTo = '';     // 조회 종료일 (둘 다 ''이면 통산)
 let gamesMode = '통합';
 
 // ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
@@ -32,29 +31,20 @@ function rangeSpanDays(from, to){
   if (!from || !to) return Infinity;
   return Math.abs((new Date(to) - new Date(from)) / 86400000);
 }
-// 기간 선택 드롭다운(통산/오늘/기간 지정)
-function periodSelHtml(cls, cur){
-  const opts = [['통산','통산'],['오늘','오늘'],['기간','기간 지정']]
-    .map(([v,l]) => `<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('');
-  return `<select class="field ${cls}" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">${opts}</select>`;
-}
-// 시작일 ~ 종료일 달력 입력 (기간 지정일 때만 펼침)
-function rangeRowHtml(cls, from, to, show){
-  return `<div class="${cls}-range" style="display:${show?'flex':'none'}; align-items:center; gap:6px; margin-top:8px;">
+// 시작일 ~ 종료일 달력. 둘 다 비우면 통산(전체). '통산' 버튼으로 초기화.
+function rangeRowHtml(cls, from, to){
+  return `<div class="${cls}-range" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
       <input type="date" class="field ${cls}-from" value="${from||''}" max="${todayYmd()}" style="flex:1; min-width:0; padding:6px; font-size:0.9rem; border-radius:8px; margin:0;">
       <span style="color:var(--muted); flex:0 0 auto;">~</span>
       <input type="date" class="field ${cls}-to" value="${to||''}" max="${todayYmd()}" style="flex:1; min-width:0; padding:6px; font-size:0.9rem; border-radius:8px; margin:0;">
+      <button type="button" class="field ${cls}-all" title="전체 기간(통산) 보기" style="flex:0 0 auto; width:auto; padding:6px 10px; font-size:0.9rem; border-radius:8px; margin:0; cursor:pointer; white-space:nowrap;">통산</button>
     </div>`;
 }
 
-function getFilteredData(period) {
-  let games = RAW_GAMES;
-  if (period === '오늘') {
-    const t = todayYmd();
-    games = RAW_GAMES.filter(g => ymd(new Date(g.played_at)) === t);
-  } else if (period === '기간') {
-    games = RAW_GAMES.filter(g => inRange(ymd(new Date(g.played_at)), rankFrom, rankTo));
-  }
+function getFilteredData() {
+  const games = (rankFrom || rankTo)
+    ? RAW_GAMES.filter(g => inRange(ymd(new Date(g.played_at)), rankFrom, rankTo))
+    : RAW_GAMES;
   return processData(games, RAW_MEMBERS);
 }
 
@@ -180,7 +170,7 @@ const adminApi = {
 async function reloadData(){
   RAW_GAMES = await fetchGames();
   RAW_MEMBERS = await fetchMembers().catch(() => RAW_MEMBERS);
-  DATA = getFilteredData(rankPeriod);
+  DATA = getFilteredData();
 }
 const NO_PERM = '권한이 없습니다. 관리자 계정으로 로그인했는지 확인하세요.';
 
@@ -466,8 +456,6 @@ function renderRank(){
     return sortAsc ? r : -r;
   });
   
-  const periodSel = periodSelHtml('p-period', rankPeriod);
-
   const modeSel = `<select class="field p-mode" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` +
     MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') + 
     `</select>`;
@@ -498,11 +486,10 @@ function renderRank(){
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
-        <div style="display:flex; gap:8px;">
-          ${periodSel}
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
           ${modeSel}
         </div>
-        ${rangeRowHtml('p-period', rankFrom, rankTo, rankPeriod==='기간')}
+        ${rangeRowHtml('p-period', rankFrom, rankTo)}
       </div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
@@ -511,21 +498,21 @@ function renderRank(){
     const sub = document.getElementById('sub');
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
   };
-  el.querySelector('.p-period').onchange = (e) => {
-    rankPeriod = e.target.value;
-    DATA = getFilteredData(rankPeriod);
-    refreshRankSub();
-    show('rank');
-  };
   const applyRankRange = () => {
     rankFrom = el.querySelector('.p-period-from').value;
     rankTo = el.querySelector('.p-period-to').value;
-    DATA = getFilteredData('기간');
+    DATA = getFilteredData();
     refreshRankSub();
     show('rank');
   };
   el.querySelector('.p-period-from').onchange = applyRankRange;
   el.querySelector('.p-period-to').onchange = applyRankRange;
+  el.querySelector('.p-period-all').onclick = () => {
+    rankFrom = ''; rankTo = '';
+    DATA = getFilteredData();
+    refreshRankSub();
+    show('rank');
+  };
 
   el.querySelector('.p-mode').onchange = (e) => {
     rankMode = e.target.value;
@@ -772,7 +759,6 @@ function showPlayer(name){
   let playerMode = '통합';
   let chartCur = 'avg';
   let chartGroup = 'day';
-  let playerPeriod = rankPeriod;
   let playerFrom = rankFrom;
   let playerTo = rankTo;
 
@@ -782,13 +768,12 @@ function showPlayer(name){
       <h2 style="margin:0">${esc(p.name)}</h2>
       <div class="sub" style="margin:2px 0 10px">수지 ${p.handicap * 10}</div>
       <div style="margin-bottom:12px;">
-        <div style="display:flex; gap:8px;">
-          ${periodSelHtml('pd-period', playerPeriod)}
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
           <select class="field ptab" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">
             ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
           </select>
         </div>
-        ${rangeRowHtml('pd-period', playerFrom, playerTo, playerPeriod==='기간')}
+        ${rangeRowHtml('pd-period', playerFrom, playerTo)}
       </div>
       <div class="stats" id="pStats"></div>
       <div id="chartArea">
@@ -816,9 +801,7 @@ function showPlayer(name){
 
   const renderMode = () => {
     let hPeriod = [...p.history];
-    if (playerPeriod === '오늘') {
-      hPeriod = hPeriod.filter(r => r.date === todayYmd());
-    } else if (playerPeriod === '기간') {
+    if (playerFrom || playerTo) {
       hPeriod = hPeriod.filter(r => inRange(r.date, playerFrom, playerTo));
     }
 
@@ -846,16 +829,10 @@ function showPlayer(name){
       <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
 
     el.querySelector('#chartArea').style.display = 'block';
-    if (playerPeriod === '오늘') {
-      chartGroup = 'game';
-    } else if (playerPeriod === '기간') {
-      // 하루면 경기별, 약 두 달 이내면 일별, 그 이상(또는 열린 범위)이면 월별
-      chartGroup = (playerFrom && playerFrom === playerTo) ? 'game'
-                 : (rangeSpanDays(playerFrom, playerTo) <= 62) ? 'day'
-                 : 'month';
-    } else {
-      chartGroup = 'month';
-    }
+    // 하루면 경기별, 약 두 달 이내면 일별, 그 이상(또는 통산)이면 월별
+    if (playerFrom && playerFrom === playerTo) chartGroup = 'game';
+    else if ((playerFrom || playerTo) && rangeSpanDays(playerFrom, playerTo) <= 62) chartGroup = 'day';
+    else chartGroup = 'month';
 
       const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
       el.querySelector('#pMetricSel').innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
@@ -937,11 +914,6 @@ function showPlayer(name){
     }
   };
 
-  el.querySelector('.pd-period').onchange = (e) => {
-    playerPeriod = e.target.value;
-    el.querySelector('.pd-period-range').style.display = (playerPeriod === '기간') ? 'flex' : 'none';
-    renderMode();
-  };
   const applyPlayerRange = () => {
     playerFrom = el.querySelector('.pd-period-from').value;
     playerTo = el.querySelector('.pd-period-to').value;
@@ -949,6 +921,12 @@ function showPlayer(name){
   };
   el.querySelector('.pd-period-from').onchange = applyPlayerRange;
   el.querySelector('.pd-period-to').onchange = applyPlayerRange;
+  el.querySelector('.pd-period-all').onclick = () => {
+    playerFrom = ''; playerTo = '';
+    el.querySelector('.pd-period-from').value = '';
+    el.querySelector('.pd-period-to').value = '';
+    renderMode();
+  };
 
   el.querySelector('.ptab').onchange = (e) => {
     playerMode = e.target.value;
@@ -983,9 +961,9 @@ function showPlayer(name){
   chartRO = new ResizeObserver(es=>{ 
     const w = es[0].contentRect.width; 
     if(Math.abs(w - lastW) > 2) {
-      if (playerPeriod === '오늘') return;
+      if (playerFrom && playerFrom === playerTo) return;   // 하루치(경기별)는 리사이즈 재계산 불필요
       let hPeriod = [...p.history];
-      if (playerPeriod === '기간') {
+      if (playerFrom || playerTo) {
         hPeriod = hPeriod.filter(r => inRange(r.date, playerFrom, playerTo));
       }
       const h = playerMode === '통합' ? hPeriod : hPeriod.filter(r => r.type === playerMode);
@@ -1239,8 +1217,6 @@ function openAdminTeamEditModal(team){
 }
 
 function renderGames(){
-  const periodSel = periodSelHtml('pg-period', rankPeriod);
-
   const modeSel = `<select class="field pg-mode" style="width:110px; padding:6px; font-size:0.95rem; border-radius:8px; margin:0;">` +
     MODE_TABS.map(m => `<option value="${m}" ${m===gamesMode?'selected':''}>${m}</option>`).join('') + 
     `</select>`;
@@ -1264,11 +1240,10 @@ function renderGames(){
 
   const el = $(`<div class="card">
     <div style="margin-bottom:14px;">
-      <div style="display:flex; gap:8px;">
-        ${periodSel}
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
         ${modeSel}
       </div>
-      ${rangeRowHtml('pg-period', rankFrom, rankTo, rankPeriod==='기간')}
+      ${rangeRowHtml('pg-period', rankFrom, rankTo)}
     </div>
     <div class="scroll">${inner}</div>
     <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div>
@@ -1278,21 +1253,21 @@ function renderGames(){
     const sub = document.getElementById('sub');
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
   };
-  el.querySelector('.pg-period').onchange = (e) => {
-    rankPeriod = e.target.value;
-    DATA = getFilteredData(rankPeriod);
-    refreshGamesSub();
-    show('games');
-  };
   const applyGamesRange = () => {
     rankFrom = el.querySelector('.pg-period-from').value;
     rankTo = el.querySelector('.pg-period-to').value;
-    DATA = getFilteredData('기간');
+    DATA = getFilteredData();
     refreshGamesSub();
     show('games');
   };
   el.querySelector('.pg-period-from').onchange = applyGamesRange;
   el.querySelector('.pg-period-to').onchange = applyGamesRange;
+  el.querySelector('.pg-period-all').onclick = () => {
+    rankFrom = ''; rankTo = '';
+    DATA = getFilteredData();
+    refreshGamesSub();
+    show('games');
+  };
 
   el.querySelector('.pg-mode').onchange = (e) => {
     gamesMode = e.target.value;
@@ -1367,7 +1342,7 @@ async function initDashboard() {
     RAW_GAMES = games;
     RAW_MEMBERS = members;
     IS_ADMIN = adm;
-    DATA = getFilteredData(rankPeriod);
+    DATA = getFilteredData();
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
     const t = new URLSearchParams(location.search).get('tab') || 'rank';
     if (t === 'me') { show('rank'); openMeModal(); }   // 점수판에서 넘어온 내 정보 딥링크 → 팝업
