@@ -312,6 +312,14 @@ function fillSelect(i, isUserAction = false){
   applySel(i, isUserAction);
 }
 
+// 인원수가 늘어날수록 게임이 비슷한 시간에 끝나도록 목표점수를 보정한다.
+// 총 득점량(≈게임 시간)이 인원수에 반비례하도록: 2인 기준 그대로, 3인 ×2/3, 4인 ×2/4(절반).
+// 팀전은 2진영이 번갈아 치므로 2인과 동일(보정 없이 평균만 사용).
+function scaledTarget(handicap, gameType){
+  const n = gameType === '3인' ? 3 : gameType === '4인' ? 4 : 2;
+  return Math.max(1, Math.round(handicap * 2 / n));
+}
+
 function applySel(i, isUserAction){
   const sel = $('#sel'+i);
   if(!sel) return;
@@ -337,7 +345,7 @@ function applySel(i, isUserAction){
           if($('#tval'+teamIdx)) $('#tval'+teamIdx).textContent = prefs.targets[teamIdx];
         }
       } else if (m && m.handicap != null) {
-        prefs.targets[i] = parseInt(m.handicap, 10);
+        prefs.targets[i] = scaledTarget(parseInt(m.handicap, 10), prefs.gameType);
         if($('#tval'+i)) $('#tval'+i).textContent = prefs.targets[i];
       }
     }
@@ -490,7 +498,7 @@ window.applyMyBall = function(i) {
   prefs.pids[i] = auth.uid;
   if (prefs.gameType !== '팀전') {
     const m = members.find(x => x.id === auth.uid);
-    if (m && m.handicap != null) prefs.targets[i] = parseInt(m.handicap, 10);
+    if (m && m.handicap != null) prefs.targets[i] = scaledTarget(parseInt(m.handicap, 10), prefs.gameType);
   }
   lsSet(LS_PREFS, prefs);
   syncSetup(prefs.gameType === '팀전');
