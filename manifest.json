@@ -1,8 +1,9 @@
 {
   "name": "당동 점수판 & 기록실",
-  "short_name": "당동 점수판 & 기록실",
+  "short_name": "당동",
   "description": "당구동아리 당동 점수판 — 4구 핸디 경기용",
   "lang": "ko",
+  "categories": ["sports", "utilities"],
   "start_url": "score/",
   "scope": "./",
   "display": "fullscreen",

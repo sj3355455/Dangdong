@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "PWABUILDER_에서_받은_패키지명_예_com.sj3355455.dangdong",
+      "sha256_cert_fingerprints": [
+        "PWABUILDER_에서_받은_SHA256_지문_예_AB:CD:12:34:...:EF"
+      ]
+    }
+  }
+]
