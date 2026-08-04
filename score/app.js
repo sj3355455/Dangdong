@@ -16,7 +16,8 @@ let auth = lsGet(LS_AUTH, null);
 let members = lsGet(LS_MEM, []);
 let myTeams = [];                        // [{id,name,slug,is_admin}] — 내가 속한 팀들
 let currentTeam = lsGet(LS_TEAM, null);  // 현재 기록 대상 팀 id (없으면 전역 폴백)
-let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:0, cushGoal:1, timeLimit:0 });
+// myBall — '내 공' 자리. null 이면 아직 어느 자리에도 안 들어간 상태(앱을 처음 열었을 때의 기본값).
+let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:null, cushGoal:1, timeLimit:0 });
 if (prefs.cushGoal == null) prefs.cushGoal = 1;
 if (prefs.timeLimit == null) prefs.timeLimit = 0;
 let S = lsGet(LS_STATE, null);
@@ -358,20 +359,31 @@ document.querySelectorAll('#gameTypeSeg button').forEach(b => {
     const newVal = b.dataset.v || b.innerText;
     const modeChanged = (prefs.gameType !== newVal);
     prefs.gameType = newVal;
-    
-    if (modeChanged) {
-      prefs.myBall = 0;
-      if (auth) {
-        prefs.pids[0] = auth.uid;
-      }
-    }
-    
+    // 인원수를 바꿔도 내 자리를 임의로 잡아주지 않는다. '내 공'은 normalizeMyBall 이
+    // 내 계정이 실제로 있는 자리에서 다시 계산한다(없으면 어디에도 안 속한 상태).
     lsSet(LS_PREFS, prefs);
     syncSetup(modeChanged);
   };
 });
 
+// '내 공'은 별도 상태가 아니라 "내 계정이 실제로 들어가 있는 자리"에서 그대로 끌어온다.
+// 그래서 아무 자리도 안 고른 첫 진입에는 null(=1~4번 어디에도 안 속함)이 되고,
+// 인원수를 바꿔 자리가 사라지면 저절로 풀린다. 자리에 넣는 건 '내 공' 버튼 클릭(applyMyBall)뿐.
+function normalizeMyBall(){
+  const isTeam = prefs.gameType === '팀전';
+  const slots = isTeam ? 2 : parseInt(prefs.gameType.replace('인',''), 10);
+  let me = null;
+  if (auth) {
+    for (let i = 0; i < slots; i++) {
+      // 팀전은 팀 단위라 2번 시드에 내가 있어도 그 팀이 '내 공'
+      if (prefs.pids[i] === auth.uid || (isTeam && prefs.pids[i + 2] === auth.uid)) { me = i; break; }
+    }
+  }
+  if (prefs.myBall !== me) { prefs.myBall = me; lsSet(LS_PREFS, prefs); }
+}
+
 function syncSetup(modeChanged = false){
+  normalizeMyBall();
   const lo = $('#btnLogout');
   if (lo) lo.onclick = () => {
     if (!confirm('처음 화면으로 돌아갈까요?')) return;
@@ -466,10 +478,11 @@ window.openTimePopup = function(){
 window.applyMyBall = function(i) {
   if (!auth) return toast('로그인이 필요합니다.');
   
-  if (prefs.myBall !== i) {
+  // 아직 어느 자리에도 안 들어가 있으면(myBall === null) 맞바꿀 자리가 없으니 그냥 이 자리에 들어간다.
+  if (prefs.myBall != null && prefs.myBall !== i) {
     const other = i;
     const current = prefs.myBall;
-    
+
     // 1시드(혹은 개인전 선수) 스왑
     const tempName = prefs.names[current];
     const tempPid = prefs.pids[current];
