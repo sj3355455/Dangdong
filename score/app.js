@@ -543,7 +543,7 @@ $('#btnStart').onclick = () => {
     inn: Array(N).fill(0), br: Array(N).fill(0), miss: Array(N).fill(0),
     done: Array(N).fill(false),
     cush: Array(N).fill(0), indCush: Array(N).fill(0), cushInn: Array(N).fill(0),
-    finished: Array(N).fill(false), rank: Array(N).fill(0),
+    finished: Array(N).fill(false), rank: Array(N).fill(0), cushGoalAt: Array(N).fill(null),
     round: prefs.cushGoal ?? 1, lastInning: false, winners: [],
     tp: 0, turn: 0, first: 0, tc: 0,
     timeMs: Array(N).fill(0), turnStart: Date.now(),
@@ -690,7 +690,8 @@ function pushHist(){
     sc:[...S.sc], indSc: S.indSc ? [...S.indSc] : [...S.sc],
     inn:[...S.inn], br:[...S.br], miss:[...S.miss],
     done:[...S.done], cush:[...S.cush], indCush: S.indCush ? [...S.indCush] : [...S.cush], cushInn:[...S.cushInn],
-    finished:[...S.finished], rank: S.rank ? [...S.rank] : [], round:S.round, lastInning:S.lastInning, winners:[...S.winners],
+    finished:[...S.finished], rank: S.rank ? [...S.rank] : [], cushGoalAt: S.cushGoalAt ? [...S.cushGoalAt] : null,
+    round:S.round, lastInning:S.lastInning, winners:[...S.winners],
     tp:S.tp, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin,
     timeMs: S.timeMs ? [...S.timeMs] : [], turnStart: S.turnStart
   }));
@@ -832,27 +833,47 @@ function passTurnInner(isMiss, skipHist, quiet) {
 }
 
 
-function endInning() {
-  const isTeam = S.type === '팀전' && S.sc.length === 4;
-  const is2p = S.sc.length === 2;
+// 등수 판정 단위 — 팀전은 팀(0/1), 2인·다인전은 선수 본인
+function unitOf(i){ return (S.type === '팀전' && S.sc.length === 4) ? (i % 2) : i; }
 
-  if (S.winners.length > 0) {
-    if (isTeam || is2p) {
-      const teamWins = new Set(S.winners.map(i => isTeam ? (i%2) : i));
-      if (teamWins.size === 2) {
-        S.round++;
-        S.lastInning = false;
-        S.winners = [];
-        S.cushInn[S.first]++;
-        vib([40,40,40]);
-        toast(`동점! 마무리 쿠션 ${S.round} — 연장`);
-        return;
-      }
-      save(); render(); return win(S.winners[0]);
-    } else {
-      save(); render(); return win(S.winners[0]);
-    }
+function unitTotal(){ return (S.type === '팀전' && S.sc.length === 4) ? 2 : S.sc.length; }
+
+// 아직 등수가 확정되지 않은 유닛 수. extra 는 이번 이닝에 확정될 예정인 선수들.
+function pendingUnitCount(extra){
+  const settled = new Set();
+  (S.rank || []).forEach((r, i) => { if (r) settled.add(unitOf(i)); });
+  (extra || []).forEach(i => settled.add(unitOf(i)));
+  return unitTotal() - settled.size;
+}
+
+// 다음에 매길 등수 = 이미 확정된 유닛 수 + 1.
+// 표준 경쟁 순위라 공동 1등이 둘이면 그 다음은 2등이 아니라 3등이 된다.
+function nextRankValue(){
+  return unitTotal() - pendingUnitCount() + 1;
+}
+
+function endInning() {
+  if (S.winners.length === 0) return;
+
+  const winUnits = new Set(S.winners.map(unitOf));
+
+  // 연장은 '공동 꼴등'일 때만 — 동시 달성으로 남은 유닛이 전부 확정돼 꼴등을 못 가리는 경우.
+  // 공동 1등은 같은 등수로 확정하고, 뒤에 남은 선수들은 '계속치기'로 꼴등전을 이어간다.
+  // (2인·팀전은 유닛이 둘뿐이라 동점 = 곧 공동 꼴등 → 기존과 같이 바로 연장)
+  if (winUnits.size > 1 && pendingUnitCount(S.winners) === 0) {
+    S.round++;
+    S.lastInning = false;
+    S.winners = [];
+    // 연장 이닝은 선구 선수 몫으로 계상. 꼴등전 중이면 이미 끝난 선수 대신 남아 있는 다음 선수에게.
+    S.cushInn[S.finished[S.first] ? nextTurnIndex(S.first) : S.first]++;
+    vib([40,40,40]);
+    const tieLabel = activePlayerCount() < S.sc.length ? '공동 꼴등' : '동점';
+    toast(`${tieLabel}! 마무리 쿠션 ${S.round} — 연장`);
+    speak('연장');
+    return;
   }
+
+  save(); render(); return win(S.winners[0]);
 }
 
 window.undoTurn = function(){
@@ -955,15 +976,13 @@ function render(){
 // ══ Win / Menu ══
 // 이번 라운드 승자를 등수에 반영 (동시 달성이면 같은 등수). 아직 못 끝낸 팀/개인 수를 반환.
 function assignRanksAndCountRemaining(){
-  const isTeam = S.type === '팀전';
   if (!S.rank) S.rank = Array(S.sc.length).fill(0);
-  const nextRank = Math.max(0, ...S.rank) + 1;
-  S.winners.forEach(w => { if (!S.rank[w]) S.rank[w] = nextRank; });
-  // 남은 유닛 수 (팀전은 팀 기준, 개인전은 사람 기준)
-  const doneUnits = new Set();
-  S.rank.forEach((r, i) => { if (r) doneUnits.add(isTeam ? i % 2 : i); });
-  const total = isTeam ? 2 : S.sc.length;
-  return total - doneUnits.size;
+  // 등수 확정 시점의 마무리 쿠션 개수를 남겨 둔다.
+  // 뒤에서 꼴등 연장이 붙어 S.round 가 올라가도 먼저 끝낸 선수 기록이 '쿠션 1/2'처럼 밀리지 않게.
+  if (!S.cushGoalAt) S.cushGoalAt = Array(S.sc.length).fill(null);
+  const nextRank = nextRankValue();   // 반드시 이번 승자를 반영하기 전에 계산
+  S.winners.forEach(w => { if (!S.rank[w]) { S.rank[w] = nextRank; S.cushGoalAt[w] = S.round; } });
+  return pendingUnitCount();          // 남은 유닛 수 (팀전은 팀 기준, 개인전은 사람 기준)
 }
 
 // 게임 종료 시 최종 기록을 서버에 저장 (등수 확정 · 못 끝낸 선수는 공동 꼴찌)
@@ -980,7 +999,7 @@ function saveGame(){
     S.timeMs[S.turn] = (S.timeMs[S.turn] || 0) + (Date.now() - S.turnStart);
     S.turnStart = Date.now();
   }
-  const lastRank = Math.max(0, ...S.rank) + 1;   // 끝까지 못 친 선수들의 공동 등수
+  const lastRank = nextRankValue();   // 끝까지 못 친 선수들의 공동 등수
   const pl = [];
   for (let i = 0; i < N; i++) {
     const rank = S.rank[i] || lastRank;
@@ -1033,18 +1052,23 @@ function win(winnerIdx){
     const nm = isTeam ? `${i%2===0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
     const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
     const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
-    const scStr = (S.done[i] && S.round > 0) ? `쿠션 ${indC}/${S.round}` : `${indS}/${S.targets[i]}`;
+    // 이미 등수가 확정된 선수는 그때의 쿠션 개수로 표시(꼴등 연장으로 S.round 가 올라간 경우 대비)
+    const cushGoal = (S.cushGoalAt && S.cushGoalAt[i] != null) ? S.cushGoalAt[i] : S.round;
+    const scStr = (S.done[i] && cushGoal > 0) ? `쿠션 ${indC}/${cushGoal}` : `${indS}/${S.targets[i]}`;
     const ev = S.inn[i] ? (indS / S.inn[i]).toFixed(3) : '0.000';
     const rankTag = dr[i] === 1 ? ' 🏆' : ` <span style="opacity:.6">${dr[i]}위</span>`;
     html += `<tr><td>${esc(nm)}${rankTag}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
   }
   $('#winStats').innerHTML = html;
 
-  // 아직 겨룰 선수가 남았으면 '계속치기'로 꼴등전 진행, 최종이면 여기서 저장
+  // 아직 겨룰 선수가 남았으면 '계속치기'로 꼴등전 진행.
+  // 저장은 자동으로 하지 않는다 — '경기 종료'를 눌러야 기록된다.
+  // (자동 저장하면 되돌리기 후 다시 끝냈을 때 같은 경기가 두 번 기록된다)
   $('#btnWinCont').style.display = isFinal ? 'none' : '';
   $('#btnWinUndo').style.display = '';   // 경기 끝내기에서 숨겼을 수 있어 복구
   if ($('#btnWinResume')) $('#btnWinResume').style.display = 'none';   // 시간초과 전용 버튼
-  if (isFinal) saveGame();
+  $('#saveStat').className = 'savestat';
+  $('#saveStat').textContent = "'경기 종료'를 눌러야 기록이 저장됩니다";
 }
 
 // ══ 경기 끝내기(중도 기록) ══
@@ -1064,7 +1088,7 @@ function displayRanks(){
   const out = S.rank.slice();
   const reps = isTeam ? [0, 1] : [...Array(N).keys()];
   const pending = reps.filter(r => !out[r] && !(isTeam && out[r + 2]));
-  const nextRank = Math.max(0, ...out) + 1;
+  const nextRank = nextRankValue();
   const EPS = 1e-9;
   pending.forEach(r => {
     const better = pending.filter(o => progRatio(o) > progRatio(r) + EPS).length;
@@ -1083,7 +1107,7 @@ function rankRemainingByRatio(){
   const reps = isTeam ? [0, 1] : [...Array(N).keys()];
   const pending = reps.filter(r => !S.rank[r] && !(isTeam && S.rank[r + 2]));
   if (!pending.length) return;
-  const nextRank = Math.max(0, ...S.rank) + 1;
+  const nextRank = nextRankValue();
   const EPS = 1e-9;
   pending.forEach(r => {
     // 표준 경쟁 순위: 나보다 비율이 확실히 높은 유닛 수 + 다음 등수 (동률은 공동)
@@ -1172,6 +1196,7 @@ function showEarlyResult(){
 // 경기 종료(저장) 후 새 경기 — 꼴등전을 안 하고 바로 끝낼 때도 여기서 저장된다.
 // 남은 선수는 공동 꼴찌가 아니라 지금까지의 달성 비율로 순위를 매겨 저장한다.
 $('#btnWinNew').onclick = () => {
+  if (!S) return;   // 연타로 두 번 눌려도 안전하게
   rankRemainingByRatio();
   saveGame();
   $('#winOvl').classList.remove('on'); S = null; save(); exitFS(); show('setup');
@@ -1185,8 +1210,14 @@ $('#btnWinCont').onclick = () => {
   S.fin = false;
 
   if (activePlayerCount() <= 1) {
+    // 더 겨룰 상대가 없으면 결과 화면으로 되돌아가 '경기 종료'를 누르게 한다(자동 저장 안 함)
     toast('더 이상 진행할 선수가 없습니다.');
-    S.fin = true; saveGame(); return;
+    S.fin = true; save();
+    $('#winOvl').classList.add('on');
+    $('#btnWinCont').style.display = 'none';
+    $('#saveStat').className = 'savestat';
+    $('#saveStat').textContent = "'경기 종료'를 눌러야 기록이 저장됩니다";
+    return;
   }
 
   // Set turn to the next non-finished player if current is finished
