@@ -35,6 +35,13 @@ function volatilityPct(avgs){
   const sd = Math.sqrt(avgs.reduce((x, y) => x + (y - m) ** 2, 0) / avgs.length);
   return (sd / m) * 100;
 }
+// 알 이닝 = 알을 쳐서 점수를 노린 이닝. 마무리 쿠션만 친 이닝은 뺀다. 에버·득점률·평균 타수의 분모.
+// (쿠션 이닝은 cushInn 으로 따로 세고 쿠션 성공률로만 쓴다. 목표에 도달한 이닝은 양쪽에 모두 들어간다)
+// ballInn 이 저장되기 전 기록에는 알/쿠션 구분이 없어 총 이닝을 그대로 쓴다(예전 화면과 같은 값 유지).
+function ballInnOf(p, innings){
+  const inn = innings != null ? innings : (p.innings || 0);
+  return p.ballInn != null ? p.ballInn : inn;
+}
 // 2026-07-01 → 26/07/01 (표시용 축약)
 function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
 // 네이티브 date 입력을 투명하게 덮고 그 위에 26/07/01 형식 칸을 표시 (달력은 그대로 열림)
@@ -208,7 +215,7 @@ const NO_PERM = '권한이 없습니다. 관리자 계정으로 로그인했는�
 function attachGameAdmin(el, id){
   const raw = RAW_GAMES.find(r => String(r.id) === String(id));
   if (!raw) return;
-  const F = [['rank','순위'],['score','점수'],['target','목표'],['innings','이닝'],['highRun','하이런'],['misses','공타'],['cushMade','쿠션성공'],['cushInn','쿠션시도']];
+  const F = [['rank','순위'],['score','점수'],['target','목표'],['innings','이닝'],['highRun','하이런'],['misses','공타'],['fouls','파울'],['cushMade','쿠션성공'],['cushInn','쿠션시도']];
   const bar = $(`<div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🛠 관리자</h3>
     <div style="display:flex; gap:8px;">
       <button class="mbtn" id="gAdmEdit">✏️ 경기 수정</button>
@@ -288,8 +295,10 @@ function processData(games, members) {
         name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
         rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
         timeMs: p.timeMs ?? p.time_ms ?? 0,
-        target: p.target, score: p.score, innings: p.innings,
-        highRun: p.highRun ?? p.high_run ?? 0, misses: p.misses ?? 0, cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0
+        target: p.target, score: p.score, innings: p.innings, ballInn: ballInnOf(p),
+        highRun: p.highRun ?? p.high_run ?? 0, misses: p.misses ?? 0, cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0,
+        // 파울은 나중에 추가된 항목 — 예전 기록에는 없으므로 0이 아니라 null(기록 없음)로 둔다
+        fouls: p.fouls ?? null
       }))
     });
 
@@ -342,8 +351,9 @@ function processData(games, members) {
 
       const opp = g.players.filter(x => (x.name || x.id) !== pName).map(x => x.name || x.id).join(', ');
       const innings = p.innings || p.turn_count || 0;
-      const average = innings ? (p.score / innings) : 0;
-      
+      const bInn = ballInnOf(p, innings);
+      const average = bInn ? (p.score / bInn) : 0;
+
       st.history.unshift({
         id: g.id,
         type: typeStr,
@@ -351,8 +361,10 @@ function processData(games, members) {
         date: dateStr,
         opponents: opp,
         score: p.score,
-        inning: innings,
+        inning: innings,       // 총 이닝(알 + 쿠션) — 인터벌 계산용
+        ballInn: bInn,         // 알 이닝 — 에버·득점률·평균타수의 분모
         miss: p.misses ?? p.miss_count ?? 0,
+        foul: p.fouls ?? null,   // 기록되기 전 경기는 null
         average: average,
         highRun: p.highRun ?? p.high_run ?? 0,
         cushMade: p.cushMade ?? p.cush_made ?? 0,
@@ -390,19 +402,20 @@ function processData(games, members) {
     }
 
     // 실력 지표: 전체(통합) 누적과 모드별 누적을 함께 계산한다.
-    const blankAcc = () => ({ inn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0, avgs:[] });
+    const blankAcc = () => ({ inn:0, binn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0, avgs:[] });
     const tot = blankAcc();
     const byMode = {};   // 모드별 실력 지표 누적
 
     for (const h of p.history) {
       const add = a => {
-        a.inn += h.inning;
+        a.inn += h.inning;      // 총 이닝 — 인터벌용
+        a.binn += h.ballInn;    // 알 이닝 — 에버·득점률·평균타수용
         a.score += h.score;
         a.miss += h.miss;
         if (h.highRun > a.hr) a.hr = h.highRun;
         a.cm += h.cushMade;
         a.ci += h.cushInn;
-        if (h.inning > 0) a.avgs.push(h.score / h.inning);   // 경기별 에버리지 (기복 계산용)
+        if (h.ballInn > 0) a.avgs.push(h.score / h.ballInn);   // 경기별 에버리지 (기복 계산용)
         if (h.timeMs > 0) {
           a.time += h.timeMs;
           a.shots += Math.max(1, h.score + h.inning);
@@ -414,11 +427,12 @@ function processData(games, members) {
 
     // 누적 → 지표 변환 (통합/모드 공통 규칙)
     const finalize = (dst, a) => {
-      dst.avgAvg = a.inn > 0 ? (a.score / a.inn) : 0;
+      // 에버 = 총득점 / 알 이닝 (마무리 쿠션만 친 이닝은 분모에서 뺀다)
+      dst.avgAvg = a.binn > 0 ? (a.score / a.binn) : 0;
       dst.bestHr = a.hr;
-      dst.hitRate = a.inn > 0 ? ((a.inn - a.miss) / a.inn) * 100 : 0;
+      dst.hitRate = a.binn > 0 ? ((a.binn - a.miss) / a.binn) * 100 : 0;
       // 평균 타수 = 득점한 이닝에서 평균 몇 점 몰아쳤나 (공타 이닝 제외). 득점 이닝 없으면 null
-      dst.streakAvg = (a.inn - a.miss) > 0 ? (a.score / (a.inn - a.miss)) : null;
+      dst.streakAvg = (a.binn - a.miss) > 0 ? (a.score / (a.binn - a.miss)) : null;
       // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
       dst.avgInterval = a.shots > 0 ? (a.time / a.shots) / 1000 : null;
       // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
@@ -637,11 +651,12 @@ const METRICS = [
 function calcStatsForHistory(h) {
   let games = h.length;
   let wins = h.filter(r => r.win).length;
-  let sumInnings = 0, sumScore = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
+  let sumInnings = 0, sumBallInn = 0, sumScore = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
   const avgs = [];   // 경기별 에버리지 (기복 계산용)
 
   h.forEach(r => {
-    sumInnings += (r.inning || 0);
+    sumInnings += (r.inning || 0);      // 총 이닝 — 인터벌용
+    sumBallInn += (r.ballInn || 0);     // 알 이닝 — 에버·득점률·평균타수용
     sumScore += (r.score || 0);
     totalMisses += (r.miss || 0);
     if ((r.highRun || 0) > maxHr) maxHr = r.highRun;
@@ -649,7 +664,7 @@ function calcStatsForHistory(h) {
     cushInn += (r.cushInn || 0);
     sumAdjPt += (r.adjPt || 0);
     rankSum += (r.rank || 0);
-    if (r.inning > 0) avgs.push(r.score / r.inning);
+    if (r.ballInn > 0) avgs.push(r.score / r.ballInn);
     if (r.timeMs > 0) {
       sumTime += r.timeMs;
       sumShots += Math.max(1, r.score + r.inning);
@@ -660,10 +675,10 @@ function calcStatsForHistory(h) {
     games,
     wins,
     winRate: games > 0 ? (wins / games) * 100 : 0,
-    avgAvg: sumInnings > 0 ? (sumScore / sumInnings) : 0,
+    avgAvg: sumBallInn > 0 ? (sumScore / sumBallInn) : 0,
     bestHr: maxHr,
-    hitRate: sumInnings > 0 ? ((sumInnings - totalMisses) / sumInnings) * 100 : 0,
-    streakAvg: (sumInnings - totalMisses) > 0 ? (sumScore / (sumInnings - totalMisses)) : null,
+    hitRate: sumBallInn > 0 ? ((sumBallInn - totalMisses) / sumBallInn) * 100 : 0,
+    streakAvg: (sumBallInn - totalMisses) > 0 ? (sumScore / (sumBallInn - totalMisses)) : null,
     cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
     avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
     volatility: volatilityPct(avgs),
@@ -693,7 +708,7 @@ function computeTendency(name){
     let sMade = 0, sCushInn = 0; const avgs = [];
     for (const h of p.history){
       sMade += (h.cushMade||0); sCushInn += (h.cushInn||0);
-      if (h.inning > 0) avgs.push(h.score / h.inning);   // 경기별 에버리지
+      if (h.ballInn > 0) avgs.push(h.score / h.ballInn);   // 경기별 에버리지
     }
     // ② 쿠션↔알: 마무리 쿠션 성공 에버 ÷ 전체 에버리지 (쿠션 1·2개 게임 보정)
     const cushRatio = (sCushInn > 0 && p.avgAvg > 0) ? (sMade / sCushInn) / p.avgAvg : null;
@@ -726,7 +741,7 @@ function computeTendency(name){
     if (N < 2) continue;
     for (let i = 0; i < N; i++){
       const me = P[i], nx = P[(i + 1) % N];
-      const nxEver = nx.innings > 0 ? nx.score / nx.innings : null;
+      const nxEver = nx.ballInn > 0 ? nx.score / nx.ballInn : null;
       const nxAvg = avgEver[nx.name];
       if (nxEver == null || nxAvg == null) continue;
       const a = defAcc[me.name] || (defAcc[me.name] = { sum: 0, n: 0 });
@@ -835,7 +850,7 @@ function showPlayer(name){
     <div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🗒️ 경기 이력</h3>
       <div class="scroll"><table>
         <thead><tr><th class="name">날짜</th><th class="name">상대</th><th>점수</th>
-          <th>이닝</th><th>에버</th><th>하이런</th><th>결과</th></tr></thead>
+          <th>알이닝</th><th>에버</th><th>하이런</th><th>결과</th></tr></thead>
         <tbody id="pHist"></tbody></table></div></div>
   </div>`);
 
@@ -870,7 +885,7 @@ function showPlayer(name){
 
     el.querySelector('#pHist').innerHTML = [...h].reverse().map(r=>`<tr onclick="showGame('${r.id}')" style="cursor:pointer">
       <td class="name">${esc(r.date)}</td><td class="name">${esc(r.opponents)}</td>
-      <td>${r.score}</td><td>${r.inning}</td><td>${+r.average.toFixed(3)}</td>
+      <td>${r.score}</td><td>${r.ballInn}</td><td>${+r.average.toFixed(3)}</td>
       <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
 
     el.querySelector('#chartArea').style.display = 'block';
@@ -905,7 +920,7 @@ function showPlayer(name){
       const gKey = r.date.substring(5, 10);   // 일별(MM-DD)로 통일
       if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, sumAdjPt: 0, maxHr: 0, cushMade: 0, cushInn: 0, wins: 0, rankSum: 0 };
       groups[gKey].games++;
-      groups[gKey].sumInning += (r.inning || 0);
+      groups[gKey].sumInning += (r.ballInn || 0);   // 차트 지표(에버·평균타수·득점률)는 모두 알 이닝 기준
       groups[gKey].sumScore += (r.score || 0);
       groups[gKey].sumMiss += (r.miss || 0);
       groups[gKey].sumAdjPt += (r.adjPt || 0);
@@ -937,7 +952,7 @@ function showPlayer(name){
     
     const groupText = '일별';
     let desc = m.t;
-    if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 총 이닝)`;
+    if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 알 이닝)`;
     else if (key === 'streak') desc = `해당 ${groupText} 평균 타수 (총 득점 / 득점한 이닝)`;
     else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (공타 제외 득점 비율)`;
     else if (key === 'adj') desc = `해당 ${groupText} 평균 보정 승률`;
@@ -1314,7 +1329,7 @@ function showGame(id){
     return (same > 1 ? '공동 ' : '') + (less + 1) + '등';
   };
   const pRows = [...g.players].sort((a,b)=>a.rank-b.rank).map(p => {
-    const avg = p.innings ? (p.score / p.innings).toFixed(3) : '0.000';
+    const avg = p.ballInn ? (p.score / p.ballInn).toFixed(3) : '0.000';   // 에버 분모는 알 이닝
     const medal = p.rank===1 ? ' 🏆' : '';
     const shots = Math.max(1, p.score + (p.innings||0));
     const itv = p.timeMs > 0 ? (p.timeMs / shots / 1000).toFixed(1) + '초' : '—';
@@ -1322,12 +1337,13 @@ function showGame(id){
       <td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>${medal}</td>
       <td>${rankLabel(p)}</td>
       <td><b>${p.score}</b> <span class="ar">/ ${p.target||''}</span></td>
-      <td>${p.innings}</td>
+      <td>${p.ballInn}</td>
       <td>${avg}</td>
       <td>${itv}</td>
       <td>${p.cushInn ? `${p.cushMade}/${p.cushInn}` : '—'}</td>
       <td>${p.highRun}</td>
       <td>${p.misses}</td>
+      <td>${p.fouls == null ? '—' : p.fouls}</td>
     </tr>`;
   }).join('');
   // 게임 총 시간 = 선수별 소모 시간 합 (시간 기록이 있는 경기만)
@@ -1340,7 +1356,7 @@ function showGame(id){
       <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}</div>
       <div class="scroll">
         <table class="statgrid">
-          <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>이닝</th><th>에버</th><th>인터벌</th><th>쿠션</th><th>하이런</th><th>공타</th></tr></thead>
+          <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>알이닝</th><th>에버</th><th>인터벌</th><th>쿠션</th><th>하이런</th><th>공타</th><th>파울</th></tr></thead>
           <tbody>${pRows}</tbody>
         </table>
       </div>

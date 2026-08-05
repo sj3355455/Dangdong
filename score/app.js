@@ -553,12 +553,12 @@ $('#btnStart').onclick = () => {
     type: prefs.gameType,
     names: [...pNames], pids: [...pPids], targets: [...pTargets],
     sc: Array(N).fill(0), indSc: Array(N).fill(0),
-    inn: Array(N).fill(0), br: Array(N).fill(0), miss: Array(N).fill(0),
+    inn: Array(N).fill(0), ballInn: Array(N).fill(0), br: Array(N).fill(0), miss: Array(N).fill(0), fouls: Array(N).fill(0),
     done: Array(N).fill(false),
     cush: Array(N).fill(0), indCush: Array(N).fill(0), cushInn: Array(N).fill(0),
     finished: Array(N).fill(false), rank: Array(N).fill(0), cushGoalAt: Array(N).fill(null),
     round: prefs.cushGoal ?? 1, lastInning: false, winners: [],
-    tp: 0, turn: 0, first: 0, tc: 0,
+    tp: 0, tpPts: 0, turn: 0, first: 0, tc: 0,
     timeMs: Array(N).fill(0), turnStart: Date.now(),
     timeLimitMs: (prefs.timeLimit ?? 0) * 60000, timeUp: false,
     hist: [], fin: false, saved: false, t0: Date.now()
@@ -701,11 +701,11 @@ function buildGameZones() {
 function pushHist(){
   S.hist.push(JSON.stringify({
     sc:[...S.sc], indSc: S.indSc ? [...S.indSc] : [...S.sc],
-    inn:[...S.inn], br:[...S.br], miss:[...S.miss],
+    inn:[...S.inn], ballInn: S.ballInn ? [...S.ballInn] : null, br:[...S.br], miss:[...S.miss], fouls: S.fouls ? [...S.fouls] : null,
     done:[...S.done], cush:[...S.cush], indCush: S.indCush ? [...S.indCush] : [...S.cush], cushInn:[...S.cushInn],
     finished:[...S.finished], rank: S.rank ? [...S.rank] : [], cushGoalAt: S.cushGoalAt ? [...S.cushGoalAt] : null,
     round:S.round, lastInning:S.lastInning, winners:[...S.winners],
-    tp:S.tp, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin,
+    tp:S.tp, tpPts:S.tpPts || 0, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin,
     timeMs: S.timeMs ? [...S.timeMs] : [], turnStart: S.turnStart
   }));
 }
@@ -748,6 +748,7 @@ function tapZone(i){
       pushHist();
       if (!S.indSc) S.indSc = [...S.sc];
       S.sc[i]++; S.indSc[i]++; S.tp++;
+      S.tpPts = (S.tpPts || 0) + 1;   // tp 는 쿠션도 같이 세므로, '알 득점'만 따로 센다
       if (S.type === '팀전' && S.sc.length === 4) S.sc[(i+2)%4]++;
       vib(12); popScore(i);
       const rem = S.targets[i] - S.sc[i];
@@ -801,14 +802,36 @@ function tapZone(i){
   save(); render();
 }
 
+// 한 선수의 턴을 이닝으로 마감하면서 두 가지로 나눠 센다. 둘은 배타적이지 않다 —
+// 목표에 도달한 이닝은 알도 치고(도달 전) 쿠션도 쳐볼 수 있어(도달 후) 양쪽에 모두 들어간다.
+//   · ballInn  알 이닝  — 알을 쳐서 점수를 노린 이닝. 그중 한 점도 못 낸 이닝이 '공타'.
+//                        에버·득점률·평균 타수의 분모.
+//   · cushInn  쿠션 이닝 — 마무리 쿠션을 쳐볼 수 있었던 이닝. 쿠션 성공률의 분모.
+//                        쿠션만 친 이닝은 알을 칠 수 없으므로 공타로 세지 않는다.
+// inn 은 총 턴 수로 남겨 둔다 — 다인전 후구 판정(이닝 경계)이 이 값에 의존한다.
+function ballInn(i){ return (S.ballInn && S.ballInn[i]) || 0; }
+
+function closeInning(i, isMiss){
+  // 턴이 끝날 때 마무리 쿠션 단계면 이번 이닝에 쿠션을 쳐볼 수 있었다는 뜻.
+  const cushPhase = S.round > 0 && S.done[i];
+  // 알 득점이 있었으면 이번 이닝에 목표를 채운 것이므로 알 이닝이기도 하다.
+  const ballPhase = !cushPhase || S.tpPts > 0;
+  S.inn[i]++;
+  if (!S.ballInn) S.ballInn = Array(S.sc.length).fill(0);
+  if (ballPhase) {
+    S.ballInn[i]++;
+    if (isMiss && S.tp === 0) S.miss[i]++;
+  }
+  if (cushPhase) S.cushInn[i]++;
+  S.tp = 0; S.tpPts = 0;
+}
+
 function passTurnInner(isMiss, skipHist, quiet) {
   if (!skipHist) pushHist();
   if (S.tp > S.br[S.turn]) S.br[S.turn] = S.tp;
-  if (isMiss && S.tp === 0) S.miss[S.turn]++;
-  
-  S.inn[S.turn]++; S.tp = 0;
-  if (S.done[S.turn] && S.round > 0) S.cushInn[S.turn]++;   // 쿠션 0개 모드는 마무리 쿠션 단계가 없으므로 세지 않음
-  
+
+  closeInning(S.turn, isMiss);
+
   const prevTurn = S.turn;
   // 직전 선수가 이번 턴에 소모한 시간을 누적
   if (S.timeMs) {
@@ -903,6 +926,9 @@ window.foul = function(i){
   if (!S || S.fin || i !== S.turn || S.finished[i] || S.paused) return;
   pushHist();
   S.sc[i]--; if (S.indSc) S.indSc[i]--;
+  // 파울 횟수는 '선수 개인' 기록 — 팀전이라도 짝꿍에게 미러링하지 않는다(아래 미러링 블록 참고)
+  if (!S.fouls) S.fouls = Array(S.sc.length).fill(0);
+  S.fouls[i]++;
   // 이미 목표를 달성해 마무리 쿠션 중이었는데 점수가 목표 밑으로 내려가면 완주 상태 해제
   if (S.done[i] && S.sc[i] < S.targets[i]) {
     S.done[i] = false;
@@ -965,7 +991,8 @@ function render(){
       $('#gsc'+i).style.fontSize = 'clamp(40px, 15vmin, 100px)';
     } else {
       $('#gsc'+i).innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.targets[i]}</span>`;
-      const curInn = Math.max(1, S.inn[i] + (S.turn === i ? 1 : 0));
+      // 에버 분모는 알 이닝(= 총 이닝 − 쿠션 이닝). 이 분기는 아직 알을 치는 중이라 현재 턴도 알 이닝으로 센다.
+      const curInn = Math.max(1, ballInn(i) + (S.turn === i ? 1 : 0));
       const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];   // 팀전은 sc가 팀 공유값 → 개인 에버는 indSc로
       const ev = (indS / curInn).toFixed(3);
       const curHr = (S.turn === i && S.tp > S.br[i]) ? S.tp : S.br[i];
@@ -1021,7 +1048,8 @@ function saveGame(){
     pl.push({
       id: S.pids[i] || null, name: S.names[i], win: rank === 1, rank,
       score: indS, target: S.targets[i], innings: S.inn[i],
-      highRun: S.br[i], misses: S.miss[i], cushMade: indC,
+      ballInn: ballInn(i),   // 알 이닝 — 에버·득점률·평균 타수의 분모
+      highRun: S.br[i], misses: S.miss[i], fouls: (S.fouls && S.fouls[i]) || 0, cushMade: indC,
       cushInn: S.cushInn[i], timeMs: (S.timeMs && S.timeMs[i]) || 0, isTeam
     });
   }
@@ -1068,7 +1096,7 @@ function win(winnerIdx){
     // 이미 등수가 확정된 선수는 그때의 쿠션 개수로 표시(꼴등 연장으로 S.round 가 올라간 경우 대비)
     const cushGoal = (S.cushGoalAt && S.cushGoalAt[i] != null) ? S.cushGoalAt[i] : S.round;
     const scStr = (S.done[i] && cushGoal > 0) ? `쿠션 ${indC}/${cushGoal}` : `${indS}/${S.targets[i]}`;
-    const ev = S.inn[i] ? (indS / S.inn[i]).toFixed(3) : '0.000';
+    const ev = ballInn(i) ? (indS / ballInn(i)).toFixed(3) : '0.000';   // 에버 분모는 알 이닝
     const rankTag = dr[i] === 1 ? ' 🏆' : ` <span style="opacity:.6">${dr[i]}위</span>`;
     html += `<tr><td>${esc(nm)}${rankTag}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
   }
@@ -1158,9 +1186,7 @@ function endGameEarly(){
   //  turn을 넘기지 않으므로 공타/파울로는 치지 않는다 → miss 증가 없음)
   if (!S.finished[S.turn]) {
     if (S.tp > S.br[S.turn]) S.br[S.turn] = S.tp;
-    S.inn[S.turn]++;
-    if (S.done[S.turn] && S.round > 0) S.cushInn[S.turn]++;   // 쿠션 0개 모드는 세지 않음
-    S.tp = 0;
+    closeInning(S.turn, false);   // 턴을 넘긴 게 아니므로 공타로는 치지 않는다(기존 동작 유지)
   }
 
   rankRemainingByRatio();
@@ -1338,6 +1364,10 @@ function init(){
     if (typeof S.tc !== 'number') {
       S.tc = S.inn.reduce((a, b) => a + b, 0);
     }
+    // 파울 집계는 도중 도입 — 진행 중이던 경기는 지금까지의 파울을 알 수 없어 0부터 센다
+    if (!Array.isArray(S.fouls)) S.fouls = Array(S.sc.length).fill(0);
+    // 알 이닝 분리도 도중 도입 — 진행 중이던 경기는 예전 cushInn(마무리 단계로 끝난 이닝)으로 되짚는다
+    if (!Array.isArray(S.ballInn)) S.ballInn = S.inn.map((v, i) => Math.max(0, v - (S.cushInn[i] || 0)));
     if (!Array.isArray(S.timeMs)) { S.timeMs = Array(S.sc.length).fill(0); S.turnStart = Date.now(); }
     if (typeof S.timeLimitMs !== 'number') { S.timeLimitMs = 0; S.timeUp = false; }
     save();
