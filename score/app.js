@@ -1177,17 +1177,28 @@ function endGameByTime(){
   $('#saveStat').className = 'savestat';
   $('#saveStat').textContent = "⏱ 시간 종료 — '경기 종료'를 누르면 기록이 저장됩니다";
 }
+// '경기 끝내기'는 한 바퀴가 온전히 끝난 시점까지만 기록으로 남긴다.
+// 돌다 만 바퀴를 그대로 두면 아직 안 친 선수가 이닝을 덜 갖게 되고, 진행 중이던 턴을
+// 이닝으로 마감하면 점수 0짜리 이닝이 에버·평균 타수의 분모만 늘린다.
+// 되돌리기 스냅샷(hist)을 되감아 그 시점의 점수·이닝·공타를 통째로 되살린다.
+function rewindToRoundEnd(){
+  const roundEnded = () => {
+    if (S.tp) return false;                                  // 진행 중이던 턴이 남아 있음
+    const active = S.inn.filter((_, i) => !S.finished[i]);
+    return active.length === 0 || active.every(v => v === active[0]);
+  };
+  let guard = 0;
+  while (!roundEnded() && S.hist.length && guard++ < 1000) {
+    try { Object.assign(S, JSON.parse(S.hist.pop())); }
+    catch(e){ break; }
+  }
+}
+
 function endGameEarly(){
   if (!S || S.fin) return;
   const N = S.sc.length;
 
-  // 진행 중이던 현재 턴을 이닝 하나로 마감한다.
-  // (점수는 이미 sc/indSc에 반영돼 있고, 여기서 이닝수·하이런·쿠션이닝만 확정.
-  //  turn을 넘기지 않으므로 공타/파울로는 치지 않는다 → miss 증가 없음)
-  if (!S.finished[S.turn]) {
-    if (S.tp > S.br[S.turn]) S.br[S.turn] = S.tp;
-    closeInning(S.turn, false);   // 턴을 넘긴 게 아니므로 공타로는 치지 않는다(기존 동작 유지)
-  }
+  rewindToRoundEnd();   // 한 바퀴가 끝난 시점까지 되감아 반쪽 이닝을 기록에서 뺀다
 
   rankRemainingByRatio();
 

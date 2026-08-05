@@ -49,6 +49,23 @@ function ballInnOf(p, innings){
   if (!cushInn) return inn;                       // 마무리 쿠션 단계가 없던 경기 → 전부 알 이닝
   return Math.max(0, inn - cushInn + (p.isTeam ? 0 : 1));
 }
+// 공타 = 알 이닝 중 한 점도 못 낸 이닝. 득점률·평균 타수에서 알 이닝과 짝을 이룬다.
+// 예전 기록은 공타를 이닝 종류와 무관하게 세서 마무리 쿠션을 못 친 이닝까지 들어가 있다.
+// 그대로 두면 공타가 알 이닝보다 커져 득점률이 음수가 된다 → 쿠션 쪽 실패를 덜어낸다.
+//   쿠션 이닝 = 목표를 채운 이닝(점수를 냈으니 공타 아님) + 쿠션을 성공한 이닝 + 쿠션 공타
+// 마지막으로 알 이닝 범위로 잘라 어떤 경우에도 0~100% 를 벗어나지 않게 한다.
+function missOf(p, bInn){
+  const miss = p.misses ?? p.miss_count ?? 0;
+  if (p.ballInn == null) {
+    const cushInn = p.cushInn ?? p.cush_inn ?? 0;
+    if (cushInn) {
+      const cushMade = p.cushMade ?? p.cush_made ?? 0;
+      const cushMiss = Math.max(0, cushInn - (p.isTeam ? 0 : 1) - cushMade);
+      return Math.max(0, Math.min(miss - cushMiss, bInn));
+    }
+  }
+  return Math.max(0, Math.min(miss, bInn));
+}
 // 2026-07-01 → 26/07/01 (표시용 축약)
 function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
 // 네이티브 date 입력을 투명하게 덮고 그 위에 26/07/01 형식 칸을 표시 (달력은 그대로 열림)
@@ -303,7 +320,7 @@ function processData(games, members) {
         rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
         timeMs: p.timeMs ?? p.time_ms ?? 0,
         target: p.target, score: p.score, innings: p.innings, ballInn: ballInnOf(p),
-        highRun: p.highRun ?? p.high_run ?? 0, misses: p.misses ?? 0, cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0,
+        highRun: p.highRun ?? p.high_run ?? 0, misses: missOf(p, ballInnOf(p)), cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0,
         // 파울은 나중에 추가된 항목 — 예전 기록에는 없으므로 0이 아니라 null(기록 없음)로 둔다
         fouls: p.fouls ?? null
       }))
@@ -370,7 +387,7 @@ function processData(games, members) {
         score: p.score,
         inning: innings,       // 총 이닝(알 + 쿠션) — 인터벌 계산용
         ballInn: bInn,         // 알 이닝 — 에버·득점률·평균타수의 분모
-        miss: p.misses ?? p.miss_count ?? 0,
+        miss: missOf(p, bInn),
         foul: p.fouls ?? null,   // 기록되기 전 경기는 null
         average: average,
         highRun: p.highRun ?? p.high_run ?? 0,
@@ -409,7 +426,7 @@ function processData(games, members) {
     }
 
     // 실력 지표: 전체(통합) 누적과 모드별 누적을 함께 계산한다.
-    const blankAcc = () => ({ inn:0, binn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0, avgs:[] });
+    const blankAcc = () => ({ inn:0, binn:0, score:0, gross:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0, avgs:[] });
     const tot = blankAcc();
     const byMode = {};   // 모드별 실력 지표 누적
 
@@ -418,6 +435,7 @@ function processData(games, members) {
         a.inn += h.inning;      // 총 이닝 — 인터벌용
         a.binn += h.ballInn;    // 알 이닝 — 에버·득점률·평균타수용
         a.score += h.score;
+        a.gross += h.score + (h.foul || 0);   // 파울 차감 전 득점 — 평균 타수의 분자
         a.miss += h.miss;
         if (h.highRun > a.hr) a.hr = h.highRun;
         a.cm += h.cushMade;
@@ -438,8 +456,10 @@ function processData(games, members) {
       dst.avgAvg = a.binn > 0 ? (a.score / a.binn) : 0;
       dst.bestHr = a.hr;
       dst.hitRate = a.binn > 0 ? ((a.binn - a.miss) / a.binn) * 100 : 0;
-      // 평균 타수 = 득점한 이닝에서 평균 몇 점 몰아쳤나 (공타 이닝 제외). 득점 이닝 없으면 null
-      dst.streakAvg = (a.binn - a.miss) > 0 ? (a.score / (a.binn - a.miss)) : null;
+      // 평균 타수 = 득점한 알 이닝에서 평균 몇 점씩 몰아쳤나. 득점 이닝 없으면 null.
+      // 분자는 파울 차감 전 득점 — 파울로 깎인 점수까지 빼면 '몰아친 양'이 실제보다 작아진다.
+      // (파울 이닝은 무득점이면 공타로 분모에서도 빠지므로 앞뒤가 맞는다)
+      dst.streakAvg = (a.binn - a.miss) > 0 ? (a.gross / (a.binn - a.miss)) : null;
       // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
       dst.avgInterval = a.shots > 0 ? (a.time / a.shots) / 1000 : null;
       // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
@@ -554,7 +574,7 @@ function renderRank(){
     inner = `<div class="scroll"><table><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
   const note = rankMode==='통합'
-    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 이닝에서 평균 몇 점씩 몰아쳤는지(공타 이닝 제외)입니다.'
+    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준).'
     : (rankMode==='3인'||rankMode==='4인')
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
@@ -658,13 +678,14 @@ const METRICS = [
 function calcStatsForHistory(h) {
   let games = h.length;
   let wins = h.filter(r => r.win).length;
-  let sumInnings = 0, sumBallInn = 0, sumScore = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
+  let sumInnings = 0, sumBallInn = 0, sumScore = 0, sumGross = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
   const avgs = [];   // 경기별 에버리지 (기복 계산용)
 
   h.forEach(r => {
     sumInnings += (r.inning || 0);      // 총 이닝 — 인터벌용
     sumBallInn += (r.ballInn || 0);     // 알 이닝 — 에버·득점률·평균타수용
     sumScore += (r.score || 0);
+    sumGross += (r.score || 0) + (r.foul || 0);   // 파울 차감 전 득점 — 평균 타수의 분자
     totalMisses += (r.miss || 0);
     if ((r.highRun || 0) > maxHr) maxHr = r.highRun;
     cushMade += (r.cushMade || 0);
@@ -685,7 +706,7 @@ function calcStatsForHistory(h) {
     avgAvg: sumBallInn > 0 ? (sumScore / sumBallInn) : 0,
     bestHr: maxHr,
     hitRate: sumBallInn > 0 ? ((sumBallInn - totalMisses) / sumBallInn) * 100 : 0,
-    streakAvg: (sumBallInn - totalMisses) > 0 ? (sumScore / (sumBallInn - totalMisses)) : null,
+    streakAvg: (sumBallInn - totalMisses) > 0 ? (sumGross / (sumBallInn - totalMisses)) : null,
     cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
     avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
     volatility: volatilityPct(avgs),
@@ -925,10 +946,11 @@ function showPlayer(name){
     
     hAsc.forEach(r => {
       const gKey = r.date.substring(5, 10);   // 일별(MM-DD)로 통일
-      if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, sumAdjPt: 0, maxHr: 0, cushMade: 0, cushInn: 0, wins: 0, rankSum: 0 };
+      if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumGross: 0, sumMiss: 0, sumAdjPt: 0, maxHr: 0, cushMade: 0, cushInn: 0, wins: 0, rankSum: 0 };
       groups[gKey].games++;
       groups[gKey].sumInning += (r.ballInn || 0);   // 차트 지표(에버·평균타수·득점률)는 모두 알 이닝 기준
       groups[gKey].sumScore += (r.score || 0);
+      groups[gKey].sumGross += (r.score || 0) + (r.foul || 0);
       groups[gKey].sumMiss += (r.miss || 0);
       groups[gKey].sumAdjPt += (r.adjPt || 0);
       if ((r.highRun || 0) > groups[gKey].maxHr) groups[gKey].maxHr = r.highRun;
@@ -944,7 +966,7 @@ function showPlayer(name){
     const vals = labels.map(lbl => {
       const g = groups[lbl];
       if (key === 'avg') return g.sumInning ? g.sumScore / g.sumInning : 0;
-      if (key === 'streak') return (g.sumInning - g.sumMiss) > 0 ? g.sumScore / (g.sumInning - g.sumMiss) : 0;
+      if (key === 'streak') return (g.sumInning - g.sumMiss) > 0 ? g.sumGross / (g.sumInning - g.sumMiss) : 0;
       if (key === 'hit') return g.sumInning ? (g.sumInning - g.sumMiss) / g.sumInning * 100 : 0;
       if (key === 'adj') return g.games ? g.sumAdjPt / g.games : 0;
       if (key === 'games') return g.games;
@@ -960,8 +982,8 @@ function showPlayer(name){
     const groupText = '일별';
     let desc = m.t;
     if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 알 이닝)`;
-    else if (key === 'streak') desc = `해당 ${groupText} 평균 타수 (총 득점 / 득점한 이닝)`;
-    else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (공타 제외 득점 비율)`;
+    else if (key === 'streak') desc = `해당 ${groupText} 평균 타수 (파울 차감 전 득점 / 득점한 알 이닝)`;
+    else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (알 이닝 중 점수를 낸 이닝 비율)`;
     else if (key === 'adj') desc = `해당 ${groupText} 평균 보정 승률`;
     else if (key === 'games') desc = `해당 ${groupText} 총 경기수`;
     else if (key === 'hr') desc = `해당 ${groupText} 최고 하이런`;
