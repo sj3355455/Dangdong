@@ -36,11 +36,18 @@ function volatilityPct(avgs){
   return (sd / m) * 100;
 }
 // 알 이닝 = 알을 쳐서 점수를 노린 이닝. 마무리 쿠션만 친 이닝은 뺀다. 에버·득점률·평균 타수의 분모.
-// (쿠션 이닝은 cushInn 으로 따로 세고 쿠션 성공률로만 쓴다. 목표에 도달한 이닝은 양쪽에 모두 들어간다)
-// ballInn 이 저장되기 전 기록에는 알/쿠션 구분이 없어 총 이닝을 그대로 쓴다(예전 화면과 같은 값 유지).
+// (쿠션 이닝은 cushInn 으로 따로 세고 쿠션 성공률로만 쓴다)
+//
+// ballInn 이 저장되기 전 기록은 총 이닝 − 쿠션 이닝으로 되살린다. cushInn 의 정의는
+// 예전부터 지금까지 '마무리 쿠션 단계로 끝난 이닝'으로 동일하므로 그대로 뺄 수 있다.
+// 다만 목표를 채운 이닝은 알(도달 전)과 쿠션(도달 후) 양쪽에 걸쳐 있어 뺄셈으로 사라진다 → 1을 되돌려준다.
+// 팀전은 짝꿍 둘 중 누가 마지막 점수를 냈는지가 저장돼 있지 않아 되돌리지 않는다(없는 이닝을 만들지 않기 위해).
 function ballInnOf(p, innings){
   const inn = innings != null ? innings : (p.innings || 0);
-  return p.ballInn != null ? p.ballInn : inn;
+  if (p.ballInn != null) return p.ballInn;
+  const cushInn = p.cushInn ?? p.cush_inn ?? 0;
+  if (!cushInn) return inn;                       // 마무리 쿠션 단계가 없던 경기 → 전부 알 이닝
+  return Math.max(0, inn - cushInn + (p.isTeam ? 0 : 1));
 }
 // 2026-07-01 → 26/07/01 (표시용 축약)
 function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
