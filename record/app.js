@@ -427,7 +427,7 @@ function processData(games, members) {
 
     // 실력 지표: 전체(통합) 누적과 모드별 누적을 함께 계산한다.
     const blankAcc = () => ({ inn:0, binn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0, avgs:[],
-                              fBinn:0, fMiss:0, fGross:0 });   // f* = 파울이 기록된 경기만 (평균 타수용)
+                              fBinn:0, fMiss:0, fGross:0, fFoul:0 });   // f* = 파울이 기록된 경기만 (평균 타수·파울률용)
     const tot = blankAcc();
     const byMode = {};   // 모드별 실력 지표 누적
 
@@ -437,8 +437,8 @@ function processData(games, members) {
         a.binn += h.ballInn;    // 알 이닝 — 에버·득점률·평균타수용
         a.score += h.score;
         a.miss += h.miss;
-        // 평균 타수는 파울이 기록된 경기만 모은다 — 파울 수를 모르면 분자(파울 차감 전 득점)를 복원할 수 없다
-        if (h.foul != null) { a.fBinn += h.ballInn; a.fMiss += h.miss; a.fGross += h.score + h.foul; }
+        // 평균 타수·파울률은 파울이 기록된 경기만 모은다 — 파울 수를 모르면 분자(파울 차감 전 득점)를 복원할 수 없다
+        if (h.foul != null) { a.fBinn += h.ballInn; a.fMiss += h.miss; a.fGross += h.score + h.foul; a.fFoul += h.foul; }
         if (h.highRun > a.hr) a.hr = h.highRun;
         a.cm += h.cushMade;
         a.ci += h.cushInn;
@@ -461,6 +461,18 @@ function processData(games, members) {
       // 평균 타수 = (파울 차감 전 득점) / 득점한 알 이닝. 파울이 기록되기 전 경기는 아예 뺀다.
       // 파울 수를 모르면 분자를 복원할 수 없어 실제보다 낮게 나오기 때문. 해당 경기가 없으면 null.
       dst.streakAvg = (a.fBinn - a.fMiss) > 0 ? (a.fGross / (a.fBinn - a.fMiss)) : null;
+      // 파울률 = 파울 / 총 타격수. 타격은 두 종류뿐이라 이렇게 센다:
+      //   · 득점한 타격 = 파울 차감 전 득점(fGross)  — 1점당 1타격
+      //   · 실패한 타격 = 알 이닝 수(fBinn)          — 알 이닝은 공타 아니면 파울로 끝난다
+      //
+      // '공타'를 분모로 쓰면 안 된다. 공타는 빗맞힌 타격 수가 아니라 '한 점도 못 낸 이닝 수'다
+      // (score/app.js 의 closeInning: isMiss && tp===0 일 때만 센다). 그래서 3점 뽑고 실패한 이닝의
+      // 마지막 타격이 통째로 빠지고, 반대로 무득점 이닝의 파울은 공타로도 세여 이중 계상된다.
+      //
+      // 한계: 목표를 채우며 끝난 이닝은 실패 타격이 없는데도 fBinn 에 들어가므로 분모가 경기당 최대
+      // 1 만큼 크다(≈ 실제보다 3% 낮게 나옴). 완주 여부는 저장된 값으로 팀전에서 가려낼 수 없어
+      // (score 는 개인 점수, target 은 팀 목표) 보정하지 않는다 — 모드별로 다르게 틀리는 게 더 나쁘다.
+      dst.foulRate = (a.fGross + a.fBinn) > 0 ? (a.fFoul / (a.fGross + a.fBinn)) * 100 : null;
       // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
       dst.avgInterval = a.shots > 0 ? (a.time / a.shots) / 1000 : null;
       // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
@@ -496,6 +508,7 @@ const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보�
   {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
   {k:'streakAvg',t:'평균 타수', fmt:v=>v.toFixed(2)},
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
+  {k:'foulRate', t:'파울률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
   {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
@@ -505,6 +518,7 @@ const COLS_SKILL = [  // 모드 공통 실력 지표
   {k:'avgAvg',   t:'에버리지',   fmt:v=>v.toFixed(3)},
   {k:'streakAvg',t:'평균 타수', fmt:v=>v.toFixed(2)},
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
+  {k:'foulRate', t:'파울률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
   {k:'bestHr',   t:'하이런'},
   {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
@@ -575,7 +589,7 @@ function renderRank(){
     inner = `<div class="scroll"><table><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
   const note = rankMode==='통합'
-    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준). 파울이 기록되기 시작한 이후 경기만 집계합니다.'
+    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준). · <b>파울률</b>은 전체 타격 중 파울의 비율이며, 낮을수록 좋습니다 (타격수 = 파울 차감 전 득점 + 알 이닝). 평균 타수·파울률은 파울이 기록되기 시작한 이후 경기만 집계합니다.'
     : (rankMode==='3인'||rankMode==='4인')
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
@@ -609,7 +623,8 @@ function renderRank(){
   };
   el.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
     const k = th.dataset.k;
-    if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'||k==='avgRank'); }
+    // 낮을수록 좋은 지표(순위·파울률)는 첫 클릭에 오름차순 — 잘한 사람이 위로 오게
+    if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'||k==='avgRank'||k==='foulRate'); }
     show('rank');
   });
   el.querySelectorAll('a.pl').forEach(a=>a.onclick=()=>showPlayer(a.dataset.p));

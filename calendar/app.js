@@ -185,9 +185,6 @@ function render(){
       <b>${y}년 ${m + 1}월</b>
       <button class="mbtn" id="nextM" aria-label="다음 달">›</button>
     </div>
-    <div style="text-align:center; margin-bottom:14px;">
-      <button class="todaybtn" id="goToday">오늘로</button>
-    </div>
     <div class="dow">${DOW.map((w, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</span>`).join('')}</div>
     <div class="grid" id="grid">${cells}</div>
     <div class="sub" style="text-align:center; margin:14px 0 20px;">
@@ -198,11 +195,6 @@ function render(){
 
   $('#prevM').onclick = () => moveMonth(-1);
   $('#nextM').onclick = () => moveMonth(1);
-  $('#goToday').onclick = () => {
-    const n = new Date(); n.setDate(1); n.setHours(0,0,0,0);
-    if (n.getTime() === cur.getTime()) return;
-    cur = n; refresh();
-  };
   document.querySelectorAll('#grid .cell[data-d]').forEach(el => {
     el.onclick = () => openDay(el.dataset.d);
   });
