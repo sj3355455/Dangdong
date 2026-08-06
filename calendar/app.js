@@ -28,6 +28,7 @@ let gameCnt = {};   // 날짜 → 경기 판수
 let counts = {};    // 날짜 → { o, x }
 let myVote = {};    // 날짜 → 'o' | 'x'
 let loading = false;
+let loadErr = '';   // 이번 달 데이터를 못 불러온 이유 (화면에 그대로 띄운다)
 
 // ── 날짜 유틸 (로컬 시간 기준. toISOString 은 UTC 라 하루 밀릴 수 있어 쓰지 않는다) ──
 const pad = n => String(n).padStart(2, '0');
@@ -67,7 +68,7 @@ function monthRange(){
 }
 
 async function loadMonth(){
-  events = {}; gameCnt = {}; counts = {}; myVote = {};
+  events = {}; gameCnt = {}; counts = {}; myVote = {}; loadErr = '';
   if (!currentTeam) return;
   const [d1, d2] = monthRange();
   const auth = getAuth();
@@ -96,12 +97,33 @@ async function loadMonth(){
       gameCnt[k] = (gameCnt[k] || 0) + 1;
     }
 
+  // 남의 표는 RLS 로 막혀 있어 이 집계 함수 말고는 인원수를 알 방법이 없다.
+  // 그래서 여기서 실패하면 '나만 보이고 남은 안 보이는' 상태가 된다 → 조용히 넘기지 않고 드러낸다.
   if (cnt.status === 'fulfilled' && Array.isArray(cnt.value))
     for (const c of cnt.value) counts[c.vote_date] = { o: c.o_cnt || 0, x: c.x_cnt || 0 };
+  else
+    loadErr = describeCountErr(cnt.reason);
 
   // day_votes 는 RLS 상 '내 행'만 돌아온다 — 그래서 이게 곧 내 표다
   if (mine.status === 'fulfilled' && Array.isArray(mine.value))
     for (const v of mine.value) myVote[v.vote_date] = v.choice;
+  else if (!loadErr)
+    loadErr = '내 투표를 불러오지 못했습니다: ' + errText(mine.reason);
+}
+
+const errText = e => (e && (e.message || e.msg)) || '알 수 없는 오류';
+
+// 집계 실패는 원인이 갈린다. 사람이 바로 조치할 수 있게 구분해서 알려준다.
+function describeCountErr(e){
+  const st = e && e.status;
+  if (st === 404 || st === 400) {
+    return '투표 집계 함수(vote_counts)를 찾지 못했습니다. calendar-setup.sql 을 Supabase 에서 실행했는지, '
+         + '실행했다면 스키마 캐시가 갱신됐는지 확인해 주세요. (' + errText(e) + ')';
+  }
+  if (st === 401 || st === 403) {
+    return '투표 집계를 볼 권한이 없습니다. 이 팀의 팀원인지 확인해 주세요. (' + errText(e) + ')';
+  }
+  return '투표 인원수를 불러오지 못했습니다: ' + errText(e);
 }
 
 // ══ 화면 ══
@@ -153,6 +175,11 @@ function render(){
   }
 
   view.innerHTML = `
+    ${loadErr ? `<div class="card" style="border-color:var(--no)">
+      <div style="font-weight:700; color:var(--no); margin-bottom:6px;">⚠️ 투표 현황을 불러오지 못했습니다</div>
+      <div class="sub" style="color:var(--text)">${esc(loadErr)}</div>
+      <div class="sub" style="margin-top:8px">이 상태에서는 다른 부원의 표가 보이지 않습니다.</div>
+    </div>` : ''}
     <div class="monthbar">
       <button class="mbtn" id="prevM" aria-label="이전 달">‹</button>
       <b>${y}년 ${m + 1}월</b>
@@ -408,6 +435,12 @@ $('#btnLogout').onclick = () => {
   try { localStorage.removeItem(LS_AUTH); localStorage.removeItem(LS_TEAM); } catch(e){}
   location.href = '../score/';
 };
+
+// 다른 부원이 투표한 건 서버에만 쌓이므로, 화면으로 돌아올 때 다시 읽어 온다.
+// (앱을 켜 둔 채로도 최신 인원수를 보게 된다. 폴링은 하지 않는다)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentTeam) refresh();
+});
 
 // ══ 시작 ══
 applyTheme(getTheme());
