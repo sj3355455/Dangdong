@@ -70,6 +70,8 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
   display:flex;flex-direction:column;gap:2px;transition:border-color .15s}
 .cell:active{background:var(--hover)}
 .cell.pad{background:transparent;border-color:transparent;cursor:default}
+.cell.past{background:transparent}
+.cell.past .dnum{opacity:.45}
 .cell.today{border-color:var(--accent);border-width:2px;padding:4px 3px 3px}
 .cell.mine{box-shadow:inset 0 0 0 2px var(--accent)}
 .dnum{font-size:.85rem;font-weight:700;line-height:1.1}
@@ -165,7 +167,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v201</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v202</span>
   </div>
 </div>
 
@@ -187,6 +189,8 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
       </div>
       <div class="sub">누가 무엇을 골랐는지는 아무에게도 보이지 않습니다. 인원수만 공개됩니다.</div>
     </div>
+
+    <div class="sub" id="dsPastNote" style="display:none; margin-top:16px;">지난 날짜라 투표할 수 없습니다.</div>
 
     <div class="tally">
       <div class="o"><b id="dsCntO">0</b><span>가능</span></div>

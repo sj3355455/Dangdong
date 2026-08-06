@@ -34,6 +34,9 @@ const pad = n => String(n).padStart(2, '0');
 const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const todayStr = () => ymd(new Date());
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+// 지난 날짜엔 투표할 수 없다 (이미 지나간 날의 참여 여부를 받을 이유가 없다).
+// 키가 'YYYY-MM-DD' 라 문자열 비교로 충분하다.
+const isPast = key => key < todayStr();
 const label = key => {
   const [y, m, dd] = key.split('-').map(Number);
   const d = new Date(y, m - 1, dd);
@@ -135,6 +138,7 @@ function render(){
     const cls = ['cell'];
     if (key === today) cls.push('today');
     if (mv) cls.push('mine');
+    if (key < today) cls.push('past');   // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
     const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
     cells += `<div class="${cls.join(' ')}" data-d="${key}">
       ${mv ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
@@ -177,11 +181,12 @@ function render(){
   });
 }
 
-// 이번 달에서 모이기 좋은 날 — 가능 인원이 많고 불가 인원이 적은 순
+// 이번 달에서 모이기 좋은 날 — 가능 인원이 많고 불가 인원이 적은 순.
+// 약속을 잡으려고 보는 목록이므로 이미 지난 날짜는 뺀다.
 function topDaysHtml(){
   const rows = Object.keys(counts)
     .map(k => ({ k, o: counts[k].o || 0, x: counts[k].x || 0 }))
-    .filter(r => r.o > 0)
+    .filter(r => r.o > 0 && !isPast(r.k))
     .sort((a, b) => (b.o - b.x) - (a.o - a.x) || b.o - a.o || a.k.localeCompare(b.k))
     .slice(0, 5);
   if (!rows.length) return '';
@@ -226,6 +231,10 @@ function openDay(key){
   if (g) bits.push(`🎱 ${g}판`);
   $('#dsInfo').innerHTML = bits.join(' · ') || '기록된 일정이 없습니다.';
 
+  // 지난 날짜는 투표 칸을 닫는다. 정기전·판수·인원수는 그대로 볼 수 있다.
+  const past = isPast(key);
+  $('#dsVoteBox').style.display = past ? 'none' : '';
+  $('#dsPastNote').style.display = past ? '' : 'none';
   syncVoteUI();
   $('#dsCntO').textContent = c.o;
   $('#dsCntX').textContent = c.x;
@@ -259,6 +268,7 @@ async function vote(choice){
   const auth = getAuth();
   if (!auth || !currentTeam) return;
   const key = openKey;
+  if (isPast(key)) return;   // 지난 날짜는 투표 대상이 아니다 (UI도 가려져 있지만 이중으로 막는다)
   const prev = myVote[key];
   const next = (choice && choice !== prev) ? choice : null;
 
