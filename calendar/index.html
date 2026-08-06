@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>당동 기록실</title>
+<title>당동 캘린더</title>
 <link rel="manifest" href="../manifest.json">
 <meta name="theme-color" content="#f6f7f9">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="당동 기록실">
+<meta name="apple-mobile-web-app-title" content="당동 캘린더">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
 <link rel="icon" type="image/png" href="../icon-192.png">
 <script>try{var t=localStorage.getItem('dangTheme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -17,128 +17,140 @@
   --sat: env(safe-area-inset-top,0px); --sab: env(safe-area-inset-bottom,0px);
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
   --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
+  --ok:#12894a; --no:#c62f38; --okbg:#e8f6ee; --nobg:#fdecec;
 }
 @media (prefers-color-scheme:dark){
   :root{ --bg:#15181c; --card:#1e2228; --text:#e8eaed; --muted:#9aa1ab;
-         --line:#2f343c; --accent:#ff8c42; --hover:#262b33; }
+         --line:#2f343c; --accent:#ff8c42; --hover:#262b33;
+         --ok:#4ade80; --no:#f87171; --okbg:#16281f; --nobg:#2a1a1c; }
 }
-/* 수동 테마 오버라이드 (설정에서 선택) — 미디어쿼리보다 우선 */
 :root[data-theme="light"]{ color-scheme:light;
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
-  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5; }
+  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
+  --ok:#12894a; --no:#c62f38; --okbg:#e8f6ee; --nobg:#fdecec; }
 :root[data-theme="dark"]{ color-scheme:dark;
   --bg:#15181c; --card:#1e2228; --text:#e8eaed; --muted:#9aa1ab;
-  --line:#2f343c; --accent:#ff8c42; --hover:#262b33; }
+  --line:#2f343c; --accent:#ff8c42; --hover:#262b33;
+  --ok:#4ade80; --no:#f87171; --okbg:#16281f; --nobg:#2a1a1c; }
 *{box-sizing:border-box}
 body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   line-height:1.5;}
 .wrap{max-width:960px;margin:0 auto}
-h1{font-size:1.5rem;margin:0 0 4px}
-.sub{color:var(--muted);font-size:.85rem;margin-bottom:20px}
+.sub{color:var(--muted);font-size:.85rem}
 .nav-toggle{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:24px;width:100%;max-width:420px;margin-left:auto;margin-right:auto}
 .nav-btn{flex:1;text-align:center;padding:10px 0;text-decoration:none;color:var(--muted);font-weight:600;font-size:.95rem;line-height:normal;border-radius:8px;transition:all .2s}
 .nav-btn.on{background:var(--accent);color:#fff}
-.tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;justify-content:center}
-.tab{padding:7px 11px;border:1px solid var(--line);background:var(--card);white-space:nowrap;
-  color:var(--text);border-radius:999px;cursor:pointer;font-size:.9rem}
-.tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .setgear{flex:0 0 auto;cursor:pointer;width:42px;height:42px;border-radius:50%;
   background:var(--card);border:1px solid var(--line);color:var(--text);font-size:1.35rem;line-height:1;
   display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .setgear:active{background:var(--hover)}
-.field{width:100%;background:var(--card);border:1px solid var(--line);color:var(--text);
-  padding:12px;border-radius:8px;outline:none;transition:border-color .2s;font-size:1rem;margin-bottom:12px;}
-.field:focus{border-color:var(--accent)}
-select.field{
-  appearance:none;
-  background-image:url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
-  background-repeat:no-repeat;
-  background-position:right 12px center;
-  background-size:16px;
-  padding-right:36px;
-}
-.bigbtn{width:100%;max-width:420px;padding:15px 0;border-radius:14px;background:var(--accent);
-  color:#fff;border:none;font-weight:bold;font-size:1.1rem;cursor:pointer;transition:transform .1s}
-.bigbtn:active{filter:brightness(.9)}
-.bigbtn:disabled{opacity:.5;cursor:not-allowed;}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-  padding:16px;margin-bottom:16px}
-.ovl{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(5px);
-  -webkit-backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;transition:opacity .2s;z-index:99}
-.ovl.on{opacity:1;pointer-events:auto}
-.ovlcard{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);
-  border-radius:18px;padding:24px;box-sizing:border-box}
-.scroll{overflow-x:auto}
-table{border-collapse:collapse;width:100%;font-size:.88rem;white-space:nowrap}
-th,td{padding:9px 10px;text-align:center;border-bottom:1px solid var(--line)}
-th{cursor:pointer;user-select:none;color:var(--muted);font-weight:600;
-  position:sticky;top:0;background:var(--card)}
-th:hover{color:var(--accent)}
-th .ar{opacity:.35;font-size:.7rem}
-th.on{color:var(--accent)} th.on .ar{opacity:1}
-td.name,th.name{text-align:left}
-tbody tr:hover{background:var(--hover)}
-.rk{width:34px;color:var(--muted)}
-a.pl{color:var(--text);text-decoration:none;font-weight:600;border-bottom:1px dashed var(--muted);cursor:pointer}
-a.pl:hover{color:var(--accent);border-color:var(--accent)}
-.win{color:var(--accent);font-weight:600}
-.back{background:none;border:none;color:var(--accent);cursor:pointer;
-  font-size:.9rem;padding:0;margin-bottom:12px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:10px;margin:14px 0}
-.st{background:var(--bg);border-radius:8px;padding:10px;text-align:center}
-.st .k{font-size:.72rem;color:var(--muted)}
-.st .v{font-size:1.15rem;font-weight:700;margin-top:2px}
-.empty{color:var(--muted);text-align:center;padding:24px;font-size:.9rem}
-.chead{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  flex-wrap:wrap;margin:18px 0 4px}
-.mbtns{display:flex;gap:4px}
-.mbtn{padding:5px 12px;border:1px solid var(--line);background:var(--card);
-  color:var(--muted);border-radius:999px;cursor:pointer;font-size:.8rem}
-.mbtn:hover{color:var(--accent);border-color:var(--accent)}
-.mbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-/* 그래프는 폭을 px 로 직접 지정한다(스크롤 가능해야 하므로 width:100% 금지) */
-.cscroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
-/* ══ 설정 모달 ══ */
-.setmask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:1100;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+.empty{color:var(--muted);text-align:center;padding:40px 16px}
+.linkbtn{background:none;border:none;color:var(--muted);font-size:.95rem;text-decoration:underline;padding:10px;cursor:pointer}
+.bigbtn{width:100%;padding:14px;border-radius:12px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:1rem;cursor:pointer}
+
+/* ══ 달 이동 ══ */
+.monthbar{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px}
+.monthbar b{font-size:1.15rem;min-width:8.5em;text-align:center}
+.mbtn{width:38px;height:38px;border-radius:10px;background:var(--card);border:1px solid var(--line);
+  color:var(--text);font-size:1.1rem;line-height:1;cursor:pointer}
+.mbtn:active{background:var(--hover)}
+.todaybtn{padding:7px 12px;border-radius:999px;background:var(--card);border:1px solid var(--line);
+  color:var(--text);font-size:.85rem;cursor:pointer}
+
+/* ══ 달력 격자 ══ */
+.dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
+.dow span{text-align:center;font-size:.78rem;color:var(--muted);font-weight:600;padding:2px 0}
+.dow span.sun{color:var(--no)}
+.dow span.sat{color:#3b82f6}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;
+  min-height:74px;padding:5px 4px 4px;cursor:pointer;overflow:hidden;
+  display:flex;flex-direction:column;gap:2px;transition:border-color .15s}
+.cell:active{background:var(--hover)}
+.cell.pad{background:transparent;border-color:transparent;cursor:default}
+.cell.today{border-color:var(--accent);border-width:2px;padding:4px 3px 3px}
+.cell.mine{box-shadow:inset 0 0 0 2px var(--accent)}
+.dnum{font-size:.85rem;font-weight:700;line-height:1.1}
+.dnum.sun{color:var(--no)} .dnum.sat{color:#3b82f6}
+.evchip{font-size:.66rem;font-weight:800;color:#fff;background:var(--accent);
+  border-radius:5px;padding:1px 4px;align-self:flex-start;line-height:1.35;white-space:nowrap;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.gchip{font-size:.66rem;color:var(--muted);line-height:1.3;white-space:nowrap}
+.votes{margin-top:auto;display:flex;gap:3px;flex-wrap:wrap}
+.vpill{font-size:.68rem;font-weight:800;border-radius:5px;padding:0 4px;line-height:1.45;white-space:nowrap}
+.vpill.o{color:var(--ok);background:var(--okbg)}
+.vpill.x{color:var(--no);background:var(--nobg)}
+.mymark{position:absolute;top:4px;right:4px;font-size:.62rem;font-weight:900;
+  width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff}
+.mymark.o{background:var(--ok)} .mymark.x{background:var(--no)}
+
+/* ══ 후보일 요약 ══ */
+.topday{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.topday:last-child{border-bottom:none}
+.topday .d{font-weight:700;min-width:6.5em}
+.topday .bar{flex:1;height:8px;background:var(--line);border-radius:999px;overflow:hidden;display:flex}
+.topday .bar i{display:block;height:100%}
+.topday .bar i.o{background:var(--ok)} .topday .bar i.x{background:var(--no)}
+.topday .n{font-size:.85rem;color:var(--muted);white-space:nowrap}
+
+/* ══ 날짜 상세 모달 ══ */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;
+  justify-content:center;z-index:1000}
+.mask.on{display:flex}
+.sheet{width:100%;max-width:460px;max-height:88vh;overflow-y:auto;background:var(--card);
+  border:1px solid var(--line);border-radius:18px 18px 0 0;padding:20px 20px calc(20px + var(--sab));color:var(--text)}
+@media(min-width:560px){ .mask{align-items:center} .sheet{border-radius:18px} }
+.sheethd{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.sheethd b{font-size:1.2rem}
+.closex{background:none;border:none;color:var(--muted);font-size:1.6rem;line-height:1;cursor:pointer;padding:0 4px}
+.vseg{display:flex;gap:8px;margin:14px 0 6px}
+.vseg button{flex:1;padding:13px 0;border-radius:12px;background:var(--bg);color:var(--text);
+  border:1.5px solid var(--line);font-weight:700;font-size:.98rem;cursor:pointer}
+.vseg button.on.o{background:var(--ok);border-color:var(--ok);color:#fff}
+.vseg button.on.x{background:var(--no);border-color:var(--no);color:#fff}
+.vseg button.on.c{background:var(--muted);border-color:var(--muted);color:#fff}
+.tally{display:flex;gap:8px;margin-top:14px}
+.tally div{flex:1;text-align:center;border-radius:12px;padding:10px 6px}
+.tally .o{background:var(--okbg);color:var(--ok)}
+.tally .x{background:var(--nobg);color:var(--no)}
+.tally b{display:block;font-size:1.5rem;line-height:1.2}
+.tally span{font-size:.78rem;font-weight:600;opacity:.85}
+.admbox{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.admrow{display:flex;gap:8px;align-items:center}
+.inp{flex:1 1 auto;min-width:0;padding:10px 12px;border-radius:8px;background:var(--bg);color:var(--text);
+  border:1px solid var(--line);font-size:.95rem}
+.sbtn{flex:0 0 auto;padding:10px 14px;border-radius:8px;background:var(--accent);color:#fff;border:none;
+  font-weight:700;font-size:.9rem;cursor:pointer}
+.dbtn{flex:0 0 auto;padding:10px 14px;border-radius:8px;background:var(--card);color:var(--no);
+  border:1px solid var(--no);font-weight:700;font-size:.9rem;cursor:pointer}
+.msg{font-size:.85rem;margin-top:12px;min-height:1.2em}
+.msg.err{color:var(--no)} .msg.ok{color:var(--ok)}
+
+/* ══ 설정 모달 (기록실과 동일) ══ */
+.setmask{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
 .setmask.on{display:flex}
-.setcard{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;color:var(--text);max-height:88vh;overflow-y:auto}
-.sethd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.sethd b{font-size:1.15rem}
+.setcard{width:100%;max-width:340px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.sethd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .setx{background:none;border:none;color:var(--muted);font-size:1.5rem;line-height:1;cursor:pointer;padding:0 4px}
-.setlink{width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:13px 14px;font-size:.98rem;font-weight:600;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:8px}
-.setlink:hover{border-color:var(--accent)}
-.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 2px;border-top:1px solid var(--line)}
-.setrow .lb{font-size:.98rem;font-weight:600}
-.sw{position:relative;width:48px;height:28px;flex:0 0 auto;border-radius:999px;background:var(--line);transition:background .2s;cursor:pointer;border:none;padding:0}
-.sw.on{background:var(--accent)}
-.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s}
-.sw.on::after{transform:translateX(20px)}
-.setseg{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
-.setseg button{flex:1;padding:8px 4px;border:none;background:none;color:var(--muted);font-size:.85rem;font-weight:600;border-radius:7px;cursor:pointer}
+.setlink{width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);color:var(--text);
+  border-radius:10px;padding:12px 14px;font-size:.95rem;cursor:pointer;margin-bottom:10px}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px}
+.setrow .lb{font-size:.95rem}
+.setseg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
+.setseg button{flex:1;padding:8px 0;border:none;background:none;color:var(--muted);font-size:.88rem;font-weight:600;border-radius:8px;cursor:pointer}
 .setseg button.on{background:var(--accent);color:#fff}
-.linkbtn{background:none;border:none;color:var(--muted);font-size:.95rem;text-decoration:underline;
-  padding:10px;cursor:pointer}
-/* ══ 플레이 성향 (MBTI식 수직선) ══ */
-.tend{display:flex;flex-direction:column;gap:18px}
-.tlab{display:flex;justify-content:space-between;font-size:.85rem;color:var(--muted);margin-bottom:7px;font-weight:600}
-.tlab .on{color:var(--accent)}
-.ttrack{position:relative;height:8px;background:var(--line);border-radius:999px}
-.tmid{position:absolute;left:50%;top:-3px;width:2px;height:14px;background:var(--muted);opacity:.4;transform:translateX(-1px)}
-.tdot{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--card);box-shadow:0 1px 4px rgba(0,0,0,.35);transform:translate(-50%,-50%);transition:left .35s ease}
-.tdot.off{background:var(--muted);opacity:.4}
-.tsub{font-size:.75rem;color:var(--muted);margin-top:5px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1 style="margin:0 0 16px 0; font-size:1.6rem; line-height:normal; text-align:center;">🎱 당동 기록실</h1>
+  <h1 style="margin:0 0 16px 0; font-size:1.6rem; line-height:normal; text-align:center;">📅 당동 캘린더</h1>
 
   <div class="nav-toggle">
     <a href="../score/" class="nav-btn">🎱 점수판</a>
-    <a href="../record/" class="nav-btn on">📊 기록실</a>
-    <a href="../calendar/" class="nav-btn">📅 캘린더</a>
+    <a href="../record/" class="nav-btn">📊 기록실</a>
+    <a href="../calendar/" class="nav-btn on">📅 캘린더</a>
   </div>
 
   <div style="display:flex; align-items:center; gap:8px; width:100%; max-width:420px; margin:0 auto 14px;">
@@ -149,26 +161,57 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
     <button id="btnSettings" class="setgear" aria-label="설정" style="margin-left:auto;">⚙️</button>
   </div>
 
-  <div class="tabs" style="flex-wrap:nowrap; margin-bottom:16px;">
-    <div style="display:flex; gap:4px; align-items:center;">
-      <button class="tab on" data-v="rank">🏆 순위</button>
-      <button class="tab" data-v="games">🕒 경기</button>
-      <button id="btnMyRec" class="tab" style="display:none;">📊 내 기록</button>
-    </div>
-  </div>
   <div id="view"></div>
+
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v170</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v200</span>
   </div>
 </div>
+
+<!-- ══ 날짜 상세 ══ -->
+<div id="daySheet" class="mask">
+  <div class="sheet">
+    <div class="sheethd">
+      <b id="dsTitle">날짜</b>
+      <button class="closex" id="dsClose">&times;</button>
+    </div>
+    <div class="sub" id="dsInfo"></div>
+
+    <div id="dsVoteBox">
+      <div style="font-size:.82rem; color:var(--muted); margin-top:16px; font-weight:600;">이 날 참여할 수 있나요?</div>
+      <div class="vseg">
+        <button id="dsO" class="o">⭕ 가능</button>
+        <button id="dsX" class="x">❌ 불가</button>
+        <button id="dsC" class="c">– 취소</button>
+      </div>
+      <div class="sub">누가 무엇을 골랐는지는 아무에게도 보이지 않습니다. 인원수만 공개됩니다.</div>
+    </div>
+
+    <div class="tally">
+      <div class="o"><b id="dsCntO">0</b><span>가능</span></div>
+      <div class="x"><b id="dsCntX">0</b><span>불가</span></div>
+    </div>
+
+    <div class="admbox" id="dsAdm" style="display:none;">
+      <div style="font-size:.82rem; color:var(--muted); margin-bottom:8px; font-weight:600;">👑 정기전 설정 (관리자)</div>
+      <div class="admrow">
+        <input id="dsRound" class="inp" type="number" inputmode="numeric" min="1" max="9999" placeholder="회차 (예: 12)">
+        <button id="dsSave" class="sbtn">저장</button>
+        <button id="dsDel" class="dbtn">삭제</button>
+      </div>
+      <input id="dsNote" class="inp" maxlength="30" placeholder="메모 (선택 · 장소 등)" style="margin-top:8px;">
+    </div>
+
+    <div class="msg" id="dsMsg"></div>
+  </div>
+</div>
+
 <!-- ══ 설정 모달 ══ -->
 <div id="setModal" class="setmask">
   <div class="setcard">
     <div class="sethd"><b>⚙️ 설정</b><button class="setx" id="setClose">&times;</button></div>
     <button class="setlink" id="setTeam">🏷️ 팀 설정</button>
-    <button class="setlink" id="setMe">👤 내 정보 설정</button>
-    <div class="setrow"><span class="lb">🔊 점수 음성</span><button class="sw" id="setVoice" aria-label="점수 음성"></button></div>
     <div class="setrow" style="flex-direction:column; align-items:stretch; gap:10px;">
       <span class="lb">🎨 화면 테마</span>
       <div class="setseg" id="setTheme">
@@ -177,17 +220,6 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
         <button data-t="dark">다크</button>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- ══ 내 정보 설정 모달 ══ -->
-<div id="meModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;">
-  <div style="width:100%; max-width:360px; max-height:88vh; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; color:var(--text);">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
-      <b style="font-size:1.15rem;">👤 내 정보 설정</b>
-      <button id="meClose" style="background:none; border:none; color:var(--muted); font-size:1.5rem; line-height:1; cursor:pointer; padding:0 4px;">&times;</button>
-    </div>
-    <div id="meModalBody"></div>
   </div>
 </div>
 
@@ -232,7 +264,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 </div>
 
 <script>
-  // 테스트(beta) 배포에서만 눈에 띄는 배지 — 본 앱과 헷갈려 실제 팀에 테스트 경기를 저장하는 사고 방지
+  // 테스트(beta) 배포에서만 눈에 띄는 배지 — 본 앱과 헷갈리지 않도록
   if (location.pathname.includes('-beta')) {
     document.title = '[테스트] ' + document.title;
     addEventListener('DOMContentLoaded', () => {
