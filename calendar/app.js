@@ -17,7 +17,7 @@ const tSet = v => { try { localStorage.setItem(LS_TEAM, JSON.stringify(v)); } ca
 
 let myTeams = [];
 let currentTeam = tGet();
-let isTeamAdmin = false;
+let isTeamLeader = false;
 
 // 보고 있는 달 (1일 기준)
 let cur = new Date(); cur.setDate(1); cur.setHours(0, 0, 0, 0);
@@ -57,7 +57,7 @@ async function loadTeams(){
     tSet(currentTeam);
   } catch(e){ /* my_teams 미배포 → 팀 없음으로 처리 */ }
   const me = myTeams.find(t => t.id === currentTeam);
-  isTeamAdmin = !!(me && me.is_admin);
+  isTeamLeader = !!(me && me.is_admin);
 }
 
 // 이번 달의 첫날/마지막날 (문자열)
@@ -262,15 +262,14 @@ function openDay(key){
   const past = isPast(key);
   $('#dsO').disabled = past;
   $('#dsX').disabled = past;
-  $('#dsVoteHint').style.display = past ? 'none' : '';
   $('#dsPastNote').style.display = past ? '' : 'none';
   syncVoteUI();
   $('#dsCntO').textContent = c.o;
   $('#dsCntX').textContent = c.x;
 
   const adm = $('#dsAdm');
-  adm.style.display = isTeamAdmin ? 'block' : 'none';
-  if (isTeamAdmin) {
+  adm.style.display = isTeamLeader ? 'block' : 'none';
+  if (isTeamLeader) {
     $('#dsRound').value = ev && ev.round_no != null ? ev.round_no : '';
     $('#dsNote').value = ev && ev.note ? ev.note : '';
     $('#dsDel').style.display = ev ? '' : 'none';
@@ -338,9 +337,9 @@ async function vote(choice){
   }
 }
 
-// 정기전 등록/수정 (관리자)
+// 정기전 등록/수정 (팀장 — 사이트 전체 관리자와는 다른 권한이다)
 async function saveEvent(){
-  if (!isTeamAdmin || !currentTeam) return;
+  if (!isTeamLeader || !currentTeam) return;
   const key = openKey;
   const raw = $('#dsRound').value.trim();
   const round = raw === '' ? null : parseInt(raw, 10);
@@ -353,7 +352,7 @@ async function saveEvent(){
       headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
       body: JSON.stringify({ team_id: currentTeam, event_date: key, round_no: round, note })
     });
-    if (!rows || !rows.length) throw new Error('권한이 없습니다. 팀 관리자만 등록할 수 있습니다.');
+    if (!rows || !rows.length) throw new Error('권한이 없습니다. 팀장만 등록할 수 있습니다.');
     events[key] = rows[0];
     render();
     openDay(key);              // 시트 내용 갱신 — msg 를 지우므로 안내는 그 뒤에 띄운다
@@ -362,7 +361,7 @@ async function saveEvent(){
 }
 
 async function delEvent(){
-  if (!isTeamAdmin || !currentTeam) return;
+  if (!isTeamLeader || !currentTeam) return;
   const key = openKey;
   if (!events[key]) return;
   if (!confirm(`${label(key)} 정기전 기록을 지울까요?`)) return;
@@ -394,7 +393,7 @@ function renderTeamBar(){
     if (!sel.value) return;
     currentTeam = sel.value; tSet(currentTeam);
     const me = myTeams.find(t => t.id === currentTeam);
-    isTeamAdmin = !!(me && me.is_admin);
+    isTeamLeader = !!(me && me.is_admin);
     await refresh();
   };
 }

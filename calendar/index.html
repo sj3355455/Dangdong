@@ -169,7 +169,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v204</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v205</span>
   </div>
 </div>
 
@@ -187,11 +187,10 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
       <button type="button" id="dsO" class="o"><b id="dsCntO">0</b><span>⭕ 가능</span></button>
       <button type="button" id="dsX" class="x"><b id="dsCntX">0</b><span>❌ 불가</span></button>
     </div>
-    <div class="sub" id="dsVoteHint" style="margin-top:8px;">눌러서 참여 여부를 남기세요. 같은 쪽을 다시 누르면 취소됩니다. 인원수만 공개되고 누가 골랐는지는 보이지 않습니다.</div>
     <div class="sub" id="dsPastNote" style="display:none; margin-top:8px;">지난 날짜라 투표할 수 없습니다.</div>
 
     <div class="admbox" id="dsAdm" style="display:none;">
-      <div style="font-size:.82rem; color:var(--muted); margin-bottom:8px; font-weight:600;">👑 정기전 설정 (관리자)</div>
+      <div style="font-size:.82rem; color:var(--muted); margin-bottom:8px; font-weight:600;">👑 정기전 설정 (팀장)</div>
       <div class="admrow">
         <input id="dsRound" class="inp" type="number" inputmode="numeric" min="1" max="9999" placeholder="회차 (예: 12)">
         <button id="dsSave" class="sbtn">저장</button>
