@@ -67,9 +67,40 @@ function monthRange(){
   return [ymd(first), ymd(last)];
 }
 
-async function loadMonth(){
+let monthCache = {};
+
+function getMonthKey() {
+  return (currentTeam || 'none') + ':' + cur.getFullYear() + '-' + pad(cur.getMonth() + 1);
+}
+
+function updateMonthCache() {
+  const k = getMonthKey();
+  monthCache[k] = {
+    events: { ...events },
+    gameCnt: { ...gameCnt },
+    counts: { ...counts },
+    myVote: { ...myVote },
+    loadErr
+  };
+}
+
+async function loadMonth(force = false){
+  if (!currentTeam) {
+    events = {}; gameCnt = {}; counts = {}; myVote = {}; loadErr = '';
+    return;
+  }
+  const cacheKey = getMonthKey();
+  if (!force && monthCache[cacheKey]) {
+    const cached = monthCache[cacheKey];
+    events = { ...cached.events };
+    gameCnt = { ...cached.gameCnt };
+    counts = { ...cached.counts };
+    myVote = { ...cached.myVote };
+    loadErr = cached.loadErr;
+    return;
+  }
+
   events = {}; gameCnt = {}; counts = {}; myVote = {}; loadErr = '';
-  if (!currentTeam) return;
   const [d1, d2] = monthRange();
   const auth = getAuth();
 
@@ -109,6 +140,8 @@ async function loadMonth(){
     for (const v of mine.value) myVote[v.vote_date] = v.choice;
   else if (!loadErr)
     loadErr = '내 투표를 불러오지 못했습니다: ' + errText(mine.reason);
+
+  updateMonthCache();
 }
 
 const errText = e => (e && (e.message || e.msg)) || '알 수 없는 오류';
@@ -229,10 +262,10 @@ function moveMonth(delta){
   refresh();
 }
 
-async function refresh(){
+async function refresh(force = false){
   if (loading) return;
   loading = true;
-  try { await loadMonth(); } finally { loading = false; }
+  try { await loadMonth(force); } finally { loading = false; }
   render();
 }
 
@@ -316,6 +349,7 @@ async function vote(choice){
         { method: 'DELETE' });
     }
     msg(next ? (next === 'o' ? '가능으로 저장했습니다.' : '불가로 저장했습니다.') : '표를 취소했습니다.', 'ok');
+    updateMonthCache();
     render();
   } catch(e){
     // 되돌리기
@@ -325,6 +359,7 @@ async function vote(choice){
     syncVoteUI();
     $('#dsCntO').textContent = c.o;
     $('#dsCntX').textContent = c.x;
+    updateMonthCache();
     msg('저장하지 못했습니다: ' + (e.message || '알 수 없는 오류'), 'err');
   }
 }
@@ -346,6 +381,7 @@ async function saveEvent(){
     });
     if (!rows || !rows.length) throw new Error('권한이 없습니다. 팀장만 등록할 수 있습니다.');
     events[key] = rows[0];
+    updateMonthCache();
     render();
     openDay(key);              // 시트 내용 갱신 — msg 를 지우므로 안내는 그 뒤에 띄운다
     msg('정기전을 저장했습니다.', 'ok');
@@ -361,6 +397,7 @@ async function delEvent(){
   try {
     await sbFetch(`/rest/v1/club_events?team_id=eq.${currentTeam}&event_date=eq.${key}`, { method: 'DELETE' });
     delete events[key];
+    updateMonthCache();
     render();
     openDay(key);
     msg('삭제했습니다.', 'ok');
@@ -433,7 +470,7 @@ $('#btnLogout').onclick = () => {
 // 다른 부원이 투표한 건 서버에만 쌓이므로, 화면으로 돌아올 때 다시 읽어 온다.
 // (앱을 켜 둔 채로도 최신 인원수를 보게 된다. 폴링은 하지 않는다)
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentTeam) refresh();
+  if (document.visibilityState === 'visible' && currentTeam) refresh(true);
 });
 
 // ══ 시작 ══

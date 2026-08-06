@@ -103,11 +103,34 @@ function syncRangeDisp(el, cls){
   });
 }
 
+let fullProcessCache = null;
+let filteredDataCache = null;
+let filteredCacheKey = '';
+
+function clearProcessCache() {
+  fullProcessCache = null;
+  filteredDataCache = null;
+  filteredCacheKey = '';
+}
+
+function getFullProcessData() {
+  if (!fullProcessCache) {
+    fullProcessCache = processData(RAW_GAMES, RAW_MEMBERS);
+  }
+  return fullProcessCache;
+}
+
 function getFilteredData() {
+  const cacheKey = `${rankFrom}|${rankTo}|${RAW_GAMES.length}`;
+  if (filteredDataCache && filteredCacheKey === cacheKey) {
+    return filteredDataCache;
+  }
   const games = (rankFrom || rankTo)
     ? RAW_GAMES.filter(g => inRange(ymd(new Date(g.played_at)), rankFrom, rankTo))
     : RAW_GAMES;
-  return processData(games, RAW_MEMBERS);
+  filteredDataCache = processData(games, RAW_MEMBERS);
+  filteredCacheKey = cacheKey;
+  return filteredDataCache;
 }
 
 const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
@@ -230,6 +253,7 @@ const adminApi = {
   renamePlayer: (id, name, handicap) => sbFetch('/rest/v1/rpc/rename_player', { method: 'POST', body: JSON.stringify({ target: id, new_name: name, new_handicap: handicap }) })
 };
 async function reloadData(){
+  clearProcessCache();
   RAW_GAMES = await fetchGames();
   RAW_MEMBERS = await fetchMembers().catch(() => RAW_MEMBERS);
   DATA = getFilteredData();
@@ -735,7 +759,7 @@ function calcStatsForHistory(h) {
 // ══ 플레이 성향(MBTI식 4축) — 소속 팀 전체와 비교한 상대 위치로 계산 ══
 // 축마다 원지표를 팀 모집단 기준 z-score 로 바꾼 뒤, ±2σ 를 막대 끝으로 매핑한다.
 function computeTendency(name){
-  const full = processData(RAW_GAMES, RAW_MEMBERS);           // 통산(기간 필터 없음) 기준
+  const full = getFullProcessData();           // 통산(기간 필터 없음) 기준 (메모이제이션 적용)
   const pool = full.players.filter(p => p.games >= 3);        // 비교 모집단(게스트 포함, 최소 3경기)
   const target = full.players.find(p => p.name === name);
 

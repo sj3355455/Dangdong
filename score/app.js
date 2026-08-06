@@ -682,15 +682,25 @@ function buildGameZones() {
   // insert zones into #gameZones
   $('#gameZones').innerHTML = gameHtml;
   
-  
-  
+  zoneCache = [];
   for(let i=0; i<N; i++){
-    $('#zone'+i).addEventListener('pointerdown', e => {
-      if (e.target.closest('.minusbtn')) return;
-      tapZone(i);
-    });
-    $('#zone'+i).addEventListener('contextmenu', e => e.preventDefault());
-    $('#mbtn'+i).addEventListener('pointerdown', e => { e.stopPropagation(); foul(i); });
+    const z = $('#zone'+i);
+    if (z) {
+      zoneCache[i] = {
+        zone: z,
+        gball: $('#gball'+i),
+        gsc: $('#gsc'+i),
+        gstat: $('#gstat'+i),
+        run: $('#run'+i)
+      };
+      z.addEventListener('pointerdown', e => {
+        if (e.target.closest('.minusbtn')) return;
+        tapZone(i);
+      });
+      z.addEventListener('contextmenu', e => e.preventDefault());
+    }
+    const mbtn = $('#mbtn'+i);
+    if (mbtn) mbtn.addEventListener('pointerdown', e => { e.stopPropagation(); foul(i); });
   }
   
   if ($('#btnUndo')) {
@@ -949,12 +959,15 @@ window.foul = function(i){
   save(); render();
 };
 
+let zoneCache = [];
+
 function render(){
   if (!S) return;
   const isTeam = S.type === '팀전';
   const N = S.sc.length;
   for(let i=0; i<N; i++) {
-    const el = $('#zone'+i);
+    const c = zoneCache[i];
+    const el = c ? c.zone : $('#zone'+i);
     if(!el) continue;
     
     el.classList.toggle('on', S.turn === i && !S.fin && !S.finished[i]);
@@ -979,32 +992,42 @@ function render(){
     el.classList.toggle('w', isWhite);
     el.classList.toggle('y', !isWhite);
     
-    const ballSpan = $('#gball'+i);
+    const ballSpan = c ? c.gball : $('#gball'+i);
     if (ballSpan) {
       ballSpan.textContent = isWhite ? '⚪ ' : '🟡 ';
       ballSpan.style.marginRight = '4px';
     }
     
+    const gscEl = c ? c.gsc : $('#gsc'+i);
+    const gstatEl = c ? c.gstat : $('#gstat'+i);
+    const runEl = c ? c.run : $('#run'+i);
+
     if (S.done[i] && S.round > 0) {
-      $('#gsc'+i).innerHTML = `${S.cush[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.round}</span>`;
-      $('#gstat'+i).innerHTML = `<span style="color:var(--accent)">마무리 쿠션 단계</span>`;
-      $('#gsc'+i).style.fontSize = 'clamp(40px, 15vmin, 100px)';
+      if (gscEl) {
+        gscEl.innerHTML = `${S.cush[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.round}</span>`;
+        gscEl.style.fontSize = 'clamp(40px, 15vmin, 100px)';
+      }
+      if (gstatEl) gstatEl.innerHTML = `<span style="color:var(--accent)">마무리 쿠션 단계</span>`;
     } else {
-      $('#gsc'+i).innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.targets[i]}</span>`;
+      if (gscEl) {
+        gscEl.innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.targets[i]}</span>`;
+        gscEl.style.fontSize = 'clamp(64px, 22vmin, 150px)';
+      }
       // 에버 분모는 알 이닝(= 총 이닝 − 쿠션 이닝). 이 분기는 아직 알을 치는 중이라 현재 턴도 알 이닝으로 센다.
       const curInn = Math.max(1, ballInn(i) + (S.turn === i ? 1 : 0));
       const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];   // 팀전은 sc가 팀 공유값 → 개인 에버는 indSc로
       const ev = (indS / curInn).toFixed(3);
       const curHr = (S.turn === i && S.tp > S.br[i]) ? S.tp : S.br[i];
-      $('#gstat'+i).textContent = `에버 ${ev} · 하이런 ${curHr}`;
-      $('#gsc'+i).style.fontSize = 'clamp(64px, 22vmin, 150px)';
+      if (gstatEl) gstatEl.textContent = `에버 ${ev} · 하이런 ${curHr}`;
     }
     
-    if (S.turn === i && S.tp > 0) {
-      $('#run'+i).textContent = '+' + S.tp;
-      $('#run'+i).classList.add('show');
-    } else {
-      $('#run'+i).classList.remove('show');
+    if (runEl) {
+      if (S.turn === i && S.tp > 0) {
+        runEl.textContent = '+' + S.tp;
+        runEl.classList.add('show');
+      } else {
+        runEl.classList.remove('show');
+      }
     }
   }
   

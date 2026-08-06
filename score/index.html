@@ -386,45 +386,7 @@ select.field{appearance:none;background-image:
   </div>
 </div>
 
-<!-- ══ 팀 설정 모달 ══ -->
-<div id="teamModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;">
-  <div style="width:100%; max-width:360px; max-height:88vh; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; color:var(--text);">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
-      <b style="font-size:1.15rem;">팀 설정</b>
-      <button id="tmClose" style="background:none; border:none; color:var(--muted); font-size:1.5rem; line-height:1; cursor:pointer; padding:0 4px;">&times;</button>
-    </div>
 
-    <div style="font-size:.8rem; color:var(--muted); margin-bottom:6px; font-weight:600;">팀 참가</div>
-    <div style="display:flex; gap:8px; margin-bottom:20px;">
-      <input id="tmCode" placeholder="참여 코드 입력" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1 1 auto; min-width:0; padding:10px 12px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:.95rem;">
-      <button id="tmJoin" style="flex:0 0 auto; padding:10px 16px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-weight:700; font-size:.9rem; cursor:pointer;">참가</button>
-    </div>
-
-    <div style="font-size:.8rem; color:var(--muted); margin-bottom:6px; font-weight:600;">팀 만들기</div>
-    <div style="display:flex; gap:8px;">
-      <input id="tmName" placeholder="새 팀 이름" maxlength="20" autocomplete="off" style="flex:1 1 auto; min-width:0; padding:10px 12px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:.95rem;">
-      <button id="tmCreate" style="flex:0 0 auto; padding:10px 16px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-weight:700; font-size:.9rem; cursor:pointer;">만들기</button>
-    </div>
-
-    <div id="tmLeader" style="display:none; margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
-      <div id="tmCodeRow" style="display:none; align-items:center; gap:8px; margin-bottom:14px;">
-        <span style="font-size:.9rem; white-space:nowrap;">초대 코드</span>
-        <input id="tmCurCode" maxlength="16" autocapitalize="characters" autocomplete="off" spellcheck="false" style="flex:1 1 auto; min-width:0; padding:7px 10px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:.9rem;">
-        <button id="tmRegen" style="flex:0 0 auto; padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:.85rem; cursor:pointer;">변경</button>
-      </div>
-      <div id="tmNameRow" style="display:none; align-items:center; gap:8px; margin-bottom:14px;">
-        <span style="font-size:.9rem; white-space:nowrap;">팀 이름</span>
-        <input id="tmTeamName" maxlength="20" autocomplete="off" style="flex:1 1 auto; min-width:0; padding:7px 10px; border-radius:8px; background:var(--bg); color:var(--text); border:1px solid var(--line); font-size:.9rem;">
-        <button id="tmRename" style="flex:0 0 auto; padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); border:1px solid var(--line); font-weight:600; font-size:.85rem; cursor:pointer;">이름 변경</button>
-      </div>
-      <div style="font-size:.85rem; color:var(--muted); margin-bottom:6px;">팀원</div>
-      <div id="tmRoster" style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;"></div>
-      <button id="tmLeave" style="margin-top:16px; width:100%; padding:10px; border-radius:8px; background:var(--card); color:var(--danger,#e5484d); border:1px solid var(--danger,#e5484d); font-weight:700; font-size:.9rem; cursor:pointer;">🚪 팀 나가기</button>
-    </div>
-
-    <div id="tmMsg" style="font-size:.85rem; margin-top:16px; min-height:1.2em; line-height:1.5;"></div>
-  </div>
-</div>
 
 <script>
   // 테스트(beta) 배포에서만 눈에 띄는 배지 — 본 앱과 헷갈려 실제 팀에 테스트 경기를 저장하는 사고 방지
