@@ -258,9 +258,11 @@ function openDay(key){
   if (g) bits.push(`🎱 ${g}판`);
   $('#dsInfo').innerHTML = bits.join(' · ') || '기록된 일정이 없습니다.';
 
-  // 지난 날짜는 투표 칸을 닫는다. 정기전·판수·인원수는 그대로 볼 수 있다.
+  // 점수판이 투표 버튼이므로 지난 날짜엔 숫자만 남기고 버튼을 잠근다.
   const past = isPast(key);
-  $('#dsVoteBox').style.display = past ? 'none' : '';
+  $('#dsO').disabled = past;
+  $('#dsX').disabled = past;
+  $('#dsVoteHint').style.display = past ? 'none' : '';
   $('#dsPastNote').style.display = past ? '' : 'none';
   syncVoteUI();
   $('#dsCntO').textContent = c.o;
@@ -279,9 +281,11 @@ function openDay(key){
 
 function syncVoteUI(){
   const mv = myVote[openKey];
-  $('#dsO').classList.toggle('on', mv === 'o');
-  $('#dsX').classList.toggle('on', mv === 'x');
-  $('#dsC').classList.toggle('on', !mv);
+  const o = $('#dsO'), x = $('#dsX');
+  o.classList.toggle('on', mv === 'o');
+  x.classList.toggle('on', mv === 'x');
+  o.setAttribute('aria-pressed', mv === 'o');
+  x.setAttribute('aria-pressed', mv === 'x');
 }
 
 function msg(t, kind){
@@ -426,7 +430,6 @@ $('#dsClose').onclick = () => $('#daySheet').classList.remove('on');
 $('#daySheet').onclick = e => { if (e.target.id === 'daySheet') $('#daySheet').classList.remove('on'); };
 $('#dsO').onclick = () => vote('o');
 $('#dsX').onclick = () => vote('x');
-$('#dsC').onclick = () => vote(null);
 $('#dsSave').onclick = saveEvent;
 $('#dsDel').onclick = delEvent;
 
