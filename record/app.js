@@ -10,22 +10,14 @@ let gamesMode = '통합';
 
 // ── 정기전 필터 ──
 // 경기는 날짜가 아니라 정기전(club_events)에 붙어 있다. 날짜 범위로는 "정기전 날에 낀
-// 정기전 아닌 경기"를 뺄 수 없어서 따로 둔다. 기간 필터와 겹쳐서 쓸 수 있다.
-//   ''      전체
-//   'club'  정기전 경기 전부
-//   'none'  정기전이 아닌 경기(연습·친선)
-//   <uuid>  특정 회차
+// 정기전 아닌 경기"를 뺄 수 없어서 따로 둔다. 켜고 끄는 것 하나면 충분하다 —
+// 특정 회차만 보고 싶으면 이걸 켠 채 기간을 그 날짜로 잡으면 된다.
+const EVT_ICON = '⭐';   // 정기전 표시. 🏆 는 우승 표시로 이미 쓰고 있어 겹치면 안 된다.
 let RAW_EVENTS = [];
-let eventFilter = '';
+let clubOnly = false;
 let HAS_EVENTS = true;   // DB에 event_id 컬럼이 있는지 (없으면 필터 UI를 숨긴다)
 const evtLabel = e => e ? ((e.round_no ? `제${e.round_no}회 정기전` : '정기전') + ' (' + ddmy(e.event_date) + ')') : '';
 const evtById = id => RAW_EVENTS.find(e => String(e.id) === String(id)) || null;
-function matchesEvent(g){
-  if (!eventFilter) return true;
-  if (eventFilter === 'club') return !!g.event_id;
-  if (eventFilter === 'none') return !g.event_id;
-  return String(g.event_id) === eventFilter;
-}
 
 // ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
 const LS_TEAM = 'dangCurrentTeam';
@@ -103,22 +95,18 @@ function rangeRowHtml(cls, from, to, leftHtml){
       ${dateFieldHtml(cls, 'to', to, '종료')}
     </div>`;
 }
-// 정기전 선택 줄. 기간 줄 아래에 따로 둔다 — 한 줄에 넣으면 폰에서 너무 좁다.
+// 정기전만 보기 토글. 기간 줄 아래에 따로 둔다 — 한 줄에 넣으면 폰에서 너무 좁다.
 // 등록된 정기전이 없거나 DB에 event_id 컬럼이 없으면 아예 그리지 않는다.
 function eventRowHtml(cls){
   if (!HAS_EVENTS || !RAW_EVENTS.length) return '';
-  const opt = (v, t) => `<option value="${esc(v)}" ${v===eventFilter?'selected':''}>${esc(t)}</option>`;
-  return `<select class="field ${cls}-evt" style="width:100%; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:6px 0 0;">
-      ${opt('', '전체 경기')}
-      ${opt('club', '🏆 정기전 경기만')}
-      ${opt('none', '일반 경기만 (정기전 제외)')}
-      ${RAW_EVENTS.map(e => opt(e.id, evtLabel(e))).join('')}
-    </select>`;
+  return `<button class="mbtn ${cls}-evt ${clubOnly?'on':''}" style="margin:8px 0 0">
+      ${clubOnly ? '✓ ' : ''}${EVT_ICON} 정기전만 보기
+    </button>`;
 }
-// 정기전 셀렉트를 변경 핸들러에 연결. 없으면 아무것도 하지 않는다.
+// 토글 버튼을 변경 핸들러에 연결. 없으면 아무것도 하지 않는다.
 function bindEventSel(el, cls, onChange){
-  const sel = el.querySelector('.'+cls+'-evt');
-  if (sel) sel.onchange = () => { eventFilter = sel.value; onChange(); };
+  const btn = el.querySelector('.'+cls+'-evt');
+  if (btn) btn.onclick = () => { clubOnly = !clubOnly; onChange(); };
 }
 // 데스크톱에서도 클릭 시 달력이 열리도록 showPicker 연결
 function bindRangePicker(el, cls){
@@ -157,14 +145,14 @@ function getFullProcessData() {
 }
 
 function getFilteredData() {
-  const cacheKey = `${rankFrom}|${rankTo}|${eventFilter}|${RAW_GAMES.length}`;
+  const cacheKey = `${rankFrom}|${rankTo}|${clubOnly}|${RAW_GAMES.length}`;
   if (filteredDataCache && filteredCacheKey === cacheKey) {
     return filteredDataCache;
   }
   const byDate = (rankFrom || rankTo)
     ? RAW_GAMES.filter(g => inRange(ymd(new Date(g.played_at)), rankFrom, rankTo))
     : RAW_GAMES;
-  const games = eventFilter ? byDate.filter(matchesEvent) : byDate;
+  const games = clubOnly ? byDate.filter(g => !!g.event_id) : byDate;
   filteredDataCache = processData(games, RAW_MEMBERS);
   filteredCacheKey = cacheKey;
   return filteredDataCache;
@@ -316,8 +304,6 @@ async function reloadData(){
   RAW_GAMES = await fetchGames();
   RAW_MEMBERS = await fetchMembers().catch(() => RAW_MEMBERS);
   RAW_EVENTS = await fetchEvents();
-  // 팀을 바꾸면 이전 팀의 정기전 id 가 남아 아무것도 안 나오는 상태가 된다 → 전체로 되돌린다
-  if (eventFilter && eventFilter !== 'club' && eventFilter !== 'none' && !evtById(eventFilter)) eventFilter = '';
   DATA = getFilteredData();
 }
 const NO_PERM = '권한이 없습니다. 관리자 계정으로 로그인했는지 확인하세요.';
@@ -673,14 +659,27 @@ function renderRank(){
   if(!COLS.some(c=>c.k===sortKey)) sortKey = defSort(rankMode);
   const rows = rankRows(rankMode).sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey], r;
-    if(x==null && y==null) return 0;
-    if(x==null) return 1;
-    if(y==null) return -1;
-    if(typeof x==='string') r = x.localeCompare(y,'ko');
+    if(x==null && y==null) r = 0;
+    else if(x==null) return 1;    // 값이 없는 사람은 정렬 방향과 무관하게 항상 아래로
+    else if(y==null) return -1;
+    else if(typeof x==='string') r = x.localeCompare(y,'ko');
     else r = x-y;
-    if(r===0) r = (b.avgAvg||0)-(a.avgAvg||0);
-    return sortAsc ? r : -r;
+    if(r !== 0) return sortAsc ? r : -r;
+    // 동점자끼리의 줄 순서 — 정렬 방향을 따라가면 안 된다(내림차순일 때 에버 낮은 사람이
+    // 위로 올라오던 문제). 항상 에버리지 높은 쪽을 위에 둔다. 등수는 어차피 공동이다.
+    return (b.avgAvg||0)-(a.avgAvg||0);
   });
+
+  // 공동 등수 — 정렬 기준 열의 값이 같으면 같은 등수. 표준 경쟁 순위라 공동 2등이 둘이면
+  // 다음은 4등이다. 값 비교는 정렬 기준 열만 본다(동점 안에서 에버리지로 줄만 세운 것이지
+  // 그게 등수를 가르지는 않는다). 값이 둘 다 없으면(—) 그것도 같은 값으로 친다.
+  const sameRank = (a, b) => {
+    const x = a[sortKey], y = b[sortKey];
+    if (x == null || y == null) return x == null && y == null;
+    return x === y;
+  };
+  const rankOf = [];
+  rows.forEach((p, i) => { rankOf[i] = (i > 0 && sameRank(p, rows[i-1])) ? rankOf[i-1] : i + 1; });
   
   const modeSel = `<select class="field p-mode" style="flex:0 0 auto; width:84px; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">` +
     MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') +
@@ -695,10 +694,11 @@ function renderRank(){
   if(rows.length===0){
     inner = `<div class="empty">아직 ${rankMode==='통합'?'':rankMode+'전 '}기록이 없습니다</div>`;
   } else {
-    // 이름순 정렬은 성적 순위가 아니므로 메달을 붙이지 않는다(그냥 줄 번호)
+    // 이름순 정렬은 성적 순위가 아니므로 메달도 등수도 아닌 그냥 줄 번호
     const ranked = sortKey !== 'name';
     const body = rows.map((p,i)=>{
-      const medal = (ranked && ['🥇','🥈','🥉'][i]) || (i+1);
+      const rk = rankOf[i];
+      const medal = !ranked ? (i+1) : (['🥇','🥈','🥉'][rk-1] || rk);
       const tds = COLS.map(c=>{
         if(c.k==='name') return `<td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a></td>`;
         return `<td>${cell(p, c)}</td>`;
@@ -712,13 +712,16 @@ function renderRank(){
     : (rankMode==='3인'||rankMode==='4인')
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.';
+  // 공동 등수 안내는 어느 모드에서나 필요하다 (이름순은 등수가 아니라 줄 번호라 제외)
+  const rankNote = sortKey === 'name' ? '' :
+    ' · 정렬 기준 값이 같으면 <b>공동 등수</b>입니다 (공동 2등이 둘이면 다음은 4등).';
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
         ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
         ${eventRowHtml('p-period')}
       </div>
       ${inner}
-      <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
+      <div class="sub" style="margin:10px 0 0">${note}${rankNote}</div></div>`);
   bindRangePicker(el, 'p-period');
 
   const refreshRankSub = () => {
@@ -1464,7 +1467,7 @@ function renderGames(){
     const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
     const all = g.players.map(p=>p.name).join(', ');
     return `<tr onclick="showGame('${g.id}')" style="cursor:pointer">
-      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}${g.eventId ? ' 🏆' : ''}</td>
+      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}${g.eventId ? ' ' + EVT_ICON : ''}</td>
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
   }).join('');
   
@@ -1543,7 +1546,7 @@ function showGame(id){
     <button class="back">← 경기 목록으로</button>
     <div class="card">
       <h2 style="margin:0 0 4px">🎱 ${esc(g.name||g.type)}</h2>
-      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}${evtOf ? ' · 🏆 ' + esc(evtOf) : ''}</div>
+      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}${evtOf ? ' · ' + EVT_ICON + ' ' + esc(evtOf) : ''}</div>
       <div class="scroll">
         <table class="statgrid">
           <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>알이닝</th><th>에버</th><th>인터벌</th><th>쿠션</th><th>하이런</th><th>공타</th><th>파울</th></tr></thead>

@@ -180,6 +180,7 @@ function eventForGame(ts){
   const key = clubDateOf(ts);
   return clubEvents.find(e => e && e.event_date === key) || null;
 }
+const EVT_ICON = '⭐';   // 정기전 표시. 🏆 는 우승 표시로 이미 쓰고 있어 겹치면 안 된다.
 const eventLabel = e => e ? (e.round_no ? `제${e.round_no}회 정기전` : '정기전') : '';
 
 // 설정 화면 상단의 소속 팀 스위처
@@ -1379,8 +1380,8 @@ function updEvtBtn(){
   if (!evt) { b.style.display = 'none'; return; }
   b.style.display = '';
   b.textContent = S.evtOff
-    ? `🏆 ${eventLabel(evt)} 기록: 제외`
-    : `🏆 ${eventLabel(evt)} 기록: 포함`;
+    ? `${EVT_ICON} ${eventLabel(evt)} 기록: 제외`
+    : `${EVT_ICON} ${eventLabel(evt)} 기록: 포함`;
 }
 if ($('#btnEvt')) $('#btnEvt').onclick = () => {
   if (!S) return;
@@ -1398,7 +1399,7 @@ function updEvtNote(){
   n.style.display = '';
   n.textContent = S.evtOff
     ? `${eventLabel(evt)} 기록에서 제외됨`
-    : `🏆 ${eventLabel(evt)} 기록으로 저장`;
+    : `${EVT_ICON} ${eventLabel(evt)} 기록으로 저장`;
 }
 const updVoiceBtn = () => { const b = $('#btnVoice'); if (b) b.textContent = voiceOn ? '🔊 점수 음성: 켜짐' : '🔇 점수 음성: 꺼짐'; };
 updVoiceBtn();
