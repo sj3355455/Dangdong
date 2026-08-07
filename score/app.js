@@ -33,6 +33,7 @@ const api = {
   joinTeam: code => sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) }),
   createTeam: name => sbFetch('/rest/v1/rpc/create_team', { method: 'POST', body: JSON.stringify({ team_name: name }) }),
   myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
+  clubEvents: teamId => sbFetch('/rest/v1/club_events?select=id,event_date,round_no,note&team_id=eq.' + teamId + '&order=event_date.desc&limit=200'),
   createProfile: (uid, name, handicap) => sbFetch('/rest/v1/profiles', { method: 'POST', body: JSON.stringify({ id: uid, display_name: name, handicap: handicap || null }) }),
   submitGame: payload => sbFetch('/rest/v1/games', { method: 'POST', body: JSON.stringify(payload) })
 };
@@ -152,6 +153,35 @@ async function loadMembers(){
   } catch(e){ /* 완전 실패 시 캐시 유지 */ }
 }
 
+// ══ 정기전 ══
+// 경기를 날짜가 아니라 정기전 자체(club_events)에 붙여 둔다. 그래야 나중에 기록실에서
+// "정기전 날에 낀 정기전 아닌 경기"를 빼낼 수 있다. 소속은 저장할 때 한 번 정해진다 —
+// 부원은 games 를 수정할 권한이 없기 때문(수정은 관리자가 기록실에서).
+const LS_EVENTS = 'dangClubEvents';
+let clubEvents = lsGet(LS_EVENTS, []);   // [{id, event_date, round_no, note}] — 오프라인 대비 캐시
+
+async function loadClubEvents(){
+  if (!currentTeam) { clubEvents = []; lsSet(LS_EVENTS, clubEvents); return; }
+  try {
+    const rows = await api.clubEvents(currentTeam);
+    clubEvents = Array.isArray(rows) ? rows : [];
+    lsSet(LS_EVENTS, clubEvents);
+  } catch(e){ /* 캘린더 미배포·오프라인 → 캐시 유지 */ }
+}
+
+// 경기가 속한 "정기전 날짜". 당구는 밤에 치니 새벽 1시에 끝난 경기도 전날 모임이다.
+// 5시간을 빼고 날짜를 뽑아 새벽 5시 이전은 전날로 넘긴다. (백필 SQL 과 같은 규칙)
+function clubDateOf(ts){
+  const d = new Date((ts || Date.now()) - 5*60*60*1000);
+  const p2 = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p2(d.getMonth()+1) + '-' + p2(d.getDate());
+}
+function eventForGame(ts){
+  const key = clubDateOf(ts);
+  return clubEvents.find(e => e && e.event_date === key) || null;
+}
+const eventLabel = e => e ? (e.round_no ? `제${e.round_no}회 정기전` : '정기전') : '';
+
 // 설정 화면 상단의 소속 팀 스위처
 function renderTeamBar(){
   const bar = $('#teamBar'), sel = $('#teamSel');
@@ -169,7 +199,7 @@ function renderTeamBar(){
   sel.onchange = async () => {
     if (!sel.value) return;
     currentTeam = sel.value; lsSet(LS_TEAM, currentTeam);
-    await loadMembers(); syncSetup();
+    await loadMembers(); await loadClubEvents(); syncSetup();
     toast('소속 팀 전환됨');
   };
 }
@@ -181,7 +211,7 @@ const { open: openTeamModal } = initTeamModal({
   setCurrentTeam: id => { currentTeam = id; lsSet(LS_TEAM, currentTeam); },
   getMyTeams: () => myTeams,
   reloadTeams: loadTeams,
-  afterChange: async () => { await loadMembers(); syncSetup(); },
+  afterChange: async () => { await loadMembers(); await loadClubEvents(); syncSetup(); },
   notify: m => toast(m)
 });
 function upsertMember(id, name){
@@ -1048,6 +1078,24 @@ function assignRanksAndCountRemaining(){
   return pendingUnitCount();          // 남은 유닛 수 (팀전은 팀 기준, 개인전은 사람 기준)
 }
 
+// event_id 는 마이그레이션(event-games.sql)이 돌아간 뒤에야 있는 컬럼이다. 아직 없거나
+// PostgREST 스키마 캐시가 덜 갱신됐으면 400 으로 떨어지는데, 그 때문에 경기 기록 자체를
+// 잃으면 안 된다. 소속만 떼고 한 번 더 보낸다 — 소속은 나중에 관리자가 붙일 수 있지만
+// 사라진 기록은 되살릴 방법이 없다.
+async function submitGameSafe(payload){
+  try {
+    return await api.submitGame(payload);
+  } catch(e){
+    const s = e && e.status;
+    if (payload.event_id && (s === 400 || s === 404)) {
+      const fallback = Object.assign({}, payload);
+      delete fallback.event_id;
+      return await api.submitGame(fallback);
+    }
+    throw e;
+  }
+}
+
 // 게임 종료 시 최종 기록을 서버에 저장 (등수 확정 · 못 끝낸 선수는 공동 꼴찌)
 function saveGame(){
   if (S.saved) return;
@@ -1076,9 +1124,12 @@ function saveGame(){
       cushInn: S.cushInn[i], timeMs: (S.timeMs && S.timeMs[i]) || 0, isTeam
     });
   }
-  const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl, team_id: currentTeam || null };
+  // 정기전 소속은 저장할 때 확정된다. 나중에 고치려면 관리자 권한이 필요하므로(RLS),
+  // 예외 경기는 치기 전에 메뉴에서 '정기전 기록: 제외'로 바꿔 둬야 한다.
+  const evt = S.evtOff ? null : eventForGame(S.t0);
+  const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl, team_id: currentTeam || null, event_id: evt ? evt.id : null };
   $('#saveStat').className = 'savestat'; $('#saveStat').textContent = '서버에 기록 저장 중...';
-  api.submitGame(payload).then(() => {
+  submitGameSafe(payload).then(() => {
     $('#saveStat').className = 'savestat ok'; $('#saveStat').textContent = '기록 저장 완료 ✓';
   }).catch(() => {
     queueAdd(payload);
@@ -1095,6 +1146,7 @@ function win(winnerIdx){
   save();
   const winOvl = $('#winOvl');
   winOvl.classList.add('on');
+  updEvtNote();
   // 마지막 점수 탭이 방금 뜬 결과 메뉴 버튼으로 관통되는 것 방지: 잠깐 입력을 무시
   winOvl.style.pointerEvents = 'none';
   setTimeout(() => { winOvl.style.pointerEvents = ''; }, 600);
@@ -1240,6 +1292,7 @@ function showEarlyResult(){
   const isTeam = S.type === '팀전' && N === 4;
   const winOvl = $('#winOvl');
   winOvl.classList.add('on');
+  updEvtNote();
   winOvl.style.pointerEvents = 'none';
   setTimeout(() => { winOvl.style.pointerEvents = ''; }, 600);
 
@@ -1314,8 +1367,39 @@ if ($('#btnWinResume')) $('#btnWinResume').onclick = () => {
   toast('연장 — 시간제한 해제됨');
 };
 
-$('#btnMenu').onclick = () => $('#menuOvl').classList.add('on');
+$('#btnMenu').onclick = () => { updEvtBtn(); $('#menuOvl').classList.add('on'); };
 $('#btnMenuClose').onclick = () => $('#menuOvl').classList.remove('on');
+
+// 정기전 토글 — 그 날 정기전이 등록돼 있을 때만 메뉴에 나온다.
+// 기본은 '포함'. 정기전 날에 낀 친선 경기 등은 치기 전에 여기서 빼 둔다.
+function updEvtBtn(){
+  const b = $('#btnEvt');
+  if (!b) return;
+  const evt = S ? eventForGame(S.t0) : null;
+  if (!evt) { b.style.display = 'none'; return; }
+  b.style.display = '';
+  b.textContent = S.evtOff
+    ? `🏆 ${eventLabel(evt)} 기록: 제외`
+    : `🏆 ${eventLabel(evt)} 기록: 포함`;
+}
+if ($('#btnEvt')) $('#btnEvt').onclick = () => {
+  if (!S) return;
+  S.evtOff = !S.evtOff; save(); updEvtBtn();
+  toast(S.evtOff ? '이 경기는 정기전 기록에서 빠집니다' : '이 경기는 정기전 기록에 포함됩니다');
+};
+
+// 결과 화면에 소속을 한 줄로 알려 준다. 저장 뒤에는 관리자만 고칠 수 있으므로
+// 잘못 들어갔으면 여기서 알아채고 기록실에서 고치라는 뜻.
+function updEvtNote(){
+  const n = $('#evtNote');
+  if (!n) return;
+  const evt = S ? eventForGame(S.t0) : null;
+  if (!evt) { n.style.display = 'none'; n.textContent = ''; return; }
+  n.style.display = '';
+  n.textContent = S.evtOff
+    ? `${eventLabel(evt)} 기록에서 제외됨`
+    : `🏆 ${eventLabel(evt)} 기록으로 저장`;
+}
 const updVoiceBtn = () => { const b = $('#btnVoice'); if (b) b.textContent = voiceOn ? '🔊 점수 음성: 켜짐' : '🔇 점수 음성: 꺼짐'; };
 updVoiceBtn();
 if ($('#btnVoice')) $('#btnVoice').onclick = () => {
@@ -1360,7 +1444,7 @@ async function queueFlush(){
   let sent = 0;
   for (const p of q) {
     try {
-      await api.submitGame(p);
+      await submitGameSafe(p);
       sent++;
     } catch(e) {
       // 회복 가능한 실패는 대기열에 남긴다:
@@ -1379,7 +1463,7 @@ async function queueFlush(){
 
 function init(){
   setMode('login');
-  if (auth) { if (auth.loginId) $('#aId').value = auth.loginId; loadTeams().then(loadMembers).then(()=>queueFlush()); }
+  if (auth) { if (auth.loginId) $('#aId').value = auth.loginId; loadTeams().then(loadMembers).then(loadClubEvents).then(()=>queueFlush()); }
   else { show('auth'); }
 
   // 구버전 상태 마이그레이션: finished 배열이 없으면 추가

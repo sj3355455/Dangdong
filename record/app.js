@@ -8,6 +8,25 @@ let rankFrom = '';   // 조회 시작일 (YYYY-MM-DD, ''=제한 없음)
 let rankTo = '';     // 조회 종료일 (둘 다 ''이면 통산)
 let gamesMode = '통합';
 
+// ── 정기전 필터 ──
+// 경기는 날짜가 아니라 정기전(club_events)에 붙어 있다. 날짜 범위로는 "정기전 날에 낀
+// 정기전 아닌 경기"를 뺄 수 없어서 따로 둔다. 기간 필터와 겹쳐서 쓸 수 있다.
+//   ''      전체
+//   'club'  정기전 경기 전부
+//   'none'  정기전이 아닌 경기(연습·친선)
+//   <uuid>  특정 회차
+let RAW_EVENTS = [];
+let eventFilter = '';
+let HAS_EVENTS = true;   // DB에 event_id 컬럼이 있는지 (없으면 필터 UI를 숨긴다)
+const evtLabel = e => e ? ((e.round_no ? `제${e.round_no}회 정기전` : '정기전') + ' (' + ddmy(e.event_date) + ')') : '';
+const evtById = id => RAW_EVENTS.find(e => String(e.id) === String(id)) || null;
+function matchesEvent(g){
+  if (!eventFilter) return true;
+  if (eventFilter === 'club') return !!g.event_id;
+  if (eventFilter === 'none') return !g.event_id;
+  return String(g.event_id) === eventFilter;
+}
+
 // ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
 const LS_TEAM = 'dangCurrentTeam';
 const tGet = () => { try { return JSON.parse(localStorage.getItem(LS_TEAM)); } catch(e){ return null; } };
@@ -84,6 +103,23 @@ function rangeRowHtml(cls, from, to, leftHtml){
       ${dateFieldHtml(cls, 'to', to, '종료')}
     </div>`;
 }
+// 정기전 선택 줄. 기간 줄 아래에 따로 둔다 — 한 줄에 넣으면 폰에서 너무 좁다.
+// 등록된 정기전이 없거나 DB에 event_id 컬럼이 없으면 아예 그리지 않는다.
+function eventRowHtml(cls){
+  if (!HAS_EVENTS || !RAW_EVENTS.length) return '';
+  const opt = (v, t) => `<option value="${esc(v)}" ${v===eventFilter?'selected':''}>${esc(t)}</option>`;
+  return `<select class="field ${cls}-evt" style="width:100%; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:6px 0 0;">
+      ${opt('', '전체 경기')}
+      ${opt('club', '🏆 정기전 경기만')}
+      ${opt('none', '일반 경기만 (정기전 제외)')}
+      ${RAW_EVENTS.map(e => opt(e.id, evtLabel(e))).join('')}
+    </select>`;
+}
+// 정기전 셀렉트를 변경 핸들러에 연결. 없으면 아무것도 하지 않는다.
+function bindEventSel(el, cls, onChange){
+  const sel = el.querySelector('.'+cls+'-evt');
+  if (sel) sel.onchange = () => { eventFilter = sel.value; onChange(); };
+}
 // 데스크톱에서도 클릭 시 달력이 열리도록 showPicker 연결
 function bindRangePicker(el, cls){
   ['from','to'].forEach(role => {
@@ -121,13 +157,14 @@ function getFullProcessData() {
 }
 
 function getFilteredData() {
-  const cacheKey = `${rankFrom}|${rankTo}|${RAW_GAMES.length}`;
+  const cacheKey = `${rankFrom}|${rankTo}|${eventFilter}|${RAW_GAMES.length}`;
   if (filteredDataCache && filteredCacheKey === cacheKey) {
     return filteredDataCache;
   }
-  const games = (rankFrom || rankTo)
+  const byDate = (rankFrom || rankTo)
     ? RAW_GAMES.filter(g => inRange(ymd(new Date(g.played_at)), rankFrom, rankTo))
     : RAW_GAMES;
+  const games = eventFilter ? byDate.filter(matchesEvent) : byDate;
   filteredDataCache = processData(games, RAW_MEMBERS);
   filteredCacheKey = cacheKey;
   return filteredDataCache;
@@ -145,11 +182,32 @@ async function fetchGames() {
     if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
   } catch(e) {}
   
-  let url = SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc';
-  url += '&team_id=eq.' + currentTeam;   // 현재 팀 게임만 (위에서 currentTeam 없으면 이미 반환)
-  const res = await fetch(url, { headers: headers });
-  if (!res.ok) throw new Error('fetch error');
-  return await res.json();
+  // event_id 는 마이그레이션(event-games.sql) 이후에만 있는 컬럼이다. 아직 없는 DB에서도
+  // 기록실이 통째로 죽지 않도록, 실패하면 빼고 한 번 더 부른다(정기전 필터만 비활성).
+  const base = SB_URL + '/rest/v1/games?select=';
+  const tail = '&order=played_at.asc&team_id=eq.' + currentTeam;
+  const get = async cols => {
+    const res = await fetch(base + cols + tail, { headers: headers });
+    if (!res.ok) throw Object.assign(new Error('fetch error'), { status: res.status });
+    return await res.json();
+  };
+  try {
+    return await get('id,played_at,players,event_id');
+  } catch(e){
+    if (e.status !== 400 && e.status !== 404) throw e;
+    HAS_EVENTS = false;
+    return await get('id,played_at,players');
+  }
+}
+
+// 정기전 목록 (캘린더에서 관리자가 등록한 것). 기록실에서는 읽기만 한다.
+async function fetchEvents(){
+  if (!currentTeam) return [];
+  try {
+    const rows = await sbFetch('/rest/v1/club_events?select=id,event_date,round_no,note&team_id=eq.'
+      + currentTeam + '&order=event_date.desc');
+    return Array.isArray(rows) ? rows : [];
+  } catch(e){ return []; }   // 캘린더 미배포 → 정기전 필터만 사라짐
 }
 
 // 내 소속 팀 로드 + 현재 팀 확정 (실패 시 전역 폴백)
@@ -247,6 +305,7 @@ async function fetchAdmin(){
 const REP = { headers: { Prefer: 'return=representation' } };
 const adminApi = {
   updateGame: (id, players) => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify({ players }) }, REP)),
+  updateGameEvent: (id, event_id) => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify({ event_id }) }, REP)),
   deleteGame: id => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'DELETE' }, REP)),
   updateProfile: (id, fields) => sbFetch('/rest/v1/profiles?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify(fields) }, REP)),
   // 이름 변경을 한 번에: 프로필 + 그 사람이 뛴 모든 경기의 저장된 이름을 서버에서 갱신 (본인/관리자만)
@@ -256,6 +315,9 @@ async function reloadData(){
   clearProcessCache();
   RAW_GAMES = await fetchGames();
   RAW_MEMBERS = await fetchMembers().catch(() => RAW_MEMBERS);
+  RAW_EVENTS = await fetchEvents();
+  // 팀을 바꾸면 이전 팀의 정기전 id 가 남아 아무것도 안 나오는 상태가 된다 → 전체로 되돌린다
+  if (eventFilter && eventFilter !== 'club' && eventFilter !== 'none' && !evtById(eventFilter)) eventFilter = '';
   DATA = getFilteredData();
 }
 const NO_PERM = '권한이 없습니다. 관리자 계정으로 로그인했는지 확인하세요.';
@@ -264,11 +326,23 @@ function attachGameAdmin(el, id){
   const raw = RAW_GAMES.find(r => String(r.id) === String(id));
   if (!raw) return;
   const F = [['rank','순위'],['score','점수'],['target','목표'],['innings','이닝'],['highRun','하이런'],['misses','공타'],['fouls','파울'],['cushMade','쿠션성공'],['cushInn','쿠션시도']];
+  // 정기전 소속 정정 — 부원은 games 를 수정할 권한이 없어서(RLS) 잘못 저장된 소속은 여기서만 고친다.
+  // 예: 정기전 날에 낀 친선 경기를 '정기전 아님'으로 내리는 경우.
+  const evtSel = !HAS_EVENTS ? '' : `
+    <div style="margin-top:12px">
+      <div class="sub" style="margin:0 0 6px">정기전 소속</div>
+      <select id="gAdmEvt" class="field" style="width:100%; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">
+        <option value="" ${!raw.event_id?'selected':''}>정기전 아님 (일반 경기)</option>
+        ${RAW_EVENTS.map(e => `<option value="${esc(e.id)}" ${String(raw.event_id)===String(e.id)?'selected':''}>${esc(evtLabel(e))}</option>`).join('')}
+      </select>
+      <div id="gAdmEvtMsg" class="sub" style="margin-top:6px"></div>
+    </div>`;
   const bar = $(`<div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🛠 관리자</h3>
     <div style="display:flex; gap:8px;">
       <button class="mbtn" id="gAdmEdit">✏️ 경기 수정</button>
       <button class="mbtn" id="gAdmDel" style="color:#e5484d;border-color:#e5484d">🗑 경기 삭제</button>
     </div>
+    ${evtSel}
     <div id="gAdmForm" style="display:none; margin-top:12px">
       <div class="scroll"><table>
         <thead><tr><th class="name">선수</th>${F.map(f=>`<th>${f[1]}</th>`).join('')}</tr></thead>
@@ -286,6 +360,24 @@ function attachGameAdmin(el, id){
   bar.querySelector('#gAdmEdit').onclick = () => {
     const f = bar.querySelector('#gAdmForm');
     f.style.display = f.style.display === 'none' ? '' : 'none';
+  };
+  const evtSelEl = bar.querySelector('#gAdmEvt');
+  if (evtSelEl) evtSelEl.onchange = async () => {
+    const msg = bar.querySelector('#gAdmEvtMsg');
+    const prev = raw.event_id || '';
+    evtSelEl.disabled = true;
+    msg.textContent = '저장 중...'; msg.style.color = 'var(--muted)';
+    try {
+      const d = await adminApi.updateGameEvent(raw.id, evtSelEl.value || null);
+      if (!d || !d.length) throw new Error(NO_PERM);
+      await reloadData();
+      // 정기전 필터를 켜 둔 상태에서 소속을 바꾸면 이 경기가 목록에서 빠질 수 있다 → 목록으로
+      if (DATA.games.some(v => v.id === String(id))) showGame(id);
+      else show('games');
+    } catch(err){
+      evtSelEl.value = prev; evtSelEl.disabled = false;
+      msg.textContent = '변경 실패: ' + err.message; msg.style.color = '#f44336';
+    }
   };
   bar.querySelector('#gAdmCancel').onclick = () => { bar.querySelector('#gAdmForm').style.display = 'none'; };
   bar.querySelector('#gAdmSave').onclick = async e => {
@@ -339,6 +431,7 @@ function processData(games, members) {
       datetime: datetimeStr,
       type: typeStr,
       name: nameStr,
+      eventId: g.event_id || null,
       players: pls.map(p => ({
         name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
         rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
@@ -622,6 +715,7 @@ function renderRank(){
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
         ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
+        ${eventRowHtml('p-period')}
       </div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
@@ -640,6 +734,7 @@ function renderRank(){
   };
   el.querySelector('.p-period-from').onchange = applyRankRange;
   el.querySelector('.p-period-to').onchange = applyRankRange;
+  bindEventSel(el, 'p-period', () => { DATA = getFilteredData(); refreshRankSub(); show('rank'); });
 
   el.querySelector('.p-mode').onchange = (e) => {
     rankMode = e.target.value;
@@ -1369,7 +1464,7 @@ function renderGames(){
     const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
     const all = g.players.map(p=>p.name).join(', ');
     return `<tr onclick="showGame('${g.id}')" style="cursor:pointer">
-      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}</td>
+      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}${g.eventId ? ' 🏆' : ''}</td>
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
   }).join('');
   
@@ -1381,6 +1476,7 @@ function renderGames(){
   const el = $(`<div class="card">
     <div style="margin-bottom:14px;">
       ${rangeRowHtml('pg-period', rankFrom, rankTo, modeSel)}
+      ${eventRowHtml('pg-period')}
     </div>
     <div class="scroll">${inner}</div>
     <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div>
@@ -1400,6 +1496,7 @@ function renderGames(){
   };
   el.querySelector('.pg-period-from').onchange = applyGamesRange;
   el.querySelector('.pg-period-to').onchange = applyGamesRange;
+  bindEventSel(el, 'pg-period', () => { DATA = getFilteredData(); refreshGamesSub(); show('games'); });
 
   el.querySelector('.pg-mode').onchange = (e) => {
     gamesMode = e.target.value;
@@ -1439,11 +1536,14 @@ function showGame(id){
   // 게임 총 시간 = 선수별 소모 시간 합 (시간 기록이 있는 경기만)
   const totMs = g.players.reduce((a,p)=>a+(p.timeMs||0), 0);
   const totStr = totMs > 0 ? ` · 총 ${Math.floor(totMs/60000)}분 ${Math.round(totMs%60000/1000)}초` : '';
+  const ev = g.eventId ? evtById(g.eventId) : null;
+  // 정기전에 붙어 있는데 캘린더에서 그 정기전이 지워진 경우 — 소속은 살아 있으니 그렇게 표시
+  const evtOf = g.eventId ? (ev ? evtLabel(ev) : '정기전 (삭제된 일정)') : '';
   const el = $(`<div>
     <button class="back">← 경기 목록으로</button>
     <div class="card">
       <h2 style="margin:0 0 4px">🎱 ${esc(g.name||g.type)}</h2>
-      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}</div>
+      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}${evtOf ? ' · 🏆 ' + esc(evtOf) : ''}</div>
       <div class="scroll">
         <table class="statgrid">
           <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>알이닝</th><th>에버</th><th>인터벌</th><th>쿠션</th><th>하이런</th><th>공타</th><th>파울</th></tr></thead>
@@ -1467,14 +1567,16 @@ async function initDashboard() {
   if (sub) sub.textContent = '서버에서 데이터를 불러오는 중입니다...';
   try {
     await loadTeams();   // 현재 팀 확정 후 그 팀 게임만 로드
-    const [games, members, adm] = await Promise.all([
+    const [games, members, adm, events] = await Promise.all([
       fetchGames(),
       fetchMembers().catch(() => []),
-      fetchAdmin()
+      fetchAdmin(),
+      fetchEvents()
     ]);
     RAW_GAMES = games;
     RAW_MEMBERS = members;
     IS_ADMIN = adm;
+    RAW_EVENTS = events;
     DATA = getFilteredData();
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
     const t = new URLSearchParams(location.search).get('tab') || 'rank';
