@@ -72,7 +72,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .week{position:relative}
 .wrow{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--gap)}
 /* 일정 막대는 칸 위에 얹되 탭은 통과시킨다 (칸을 눌러 날짜 상세가 열려야 하므로) */
-.wbars{position:absolute;left:0;right:0;bottom:3px;pointer-events:none}
+.wbars{position:absolute;left:0;right:0;top:21px;pointer-events:none}
 .xbar{position:absolute;height:13px;line-height:13px;background:var(--nobg);color:var(--no);
   font-size:.62rem;font-weight:800;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .xbar.lcap{border-radius:4px 0 0 4px}
@@ -89,10 +89,12 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .cell.event{background:var(--accent-bg);border-color:var(--accent-soft)}
 .cell.today{border-color:var(--accent);border-width:2px;padding:2px 2px 2px}
 .cell.mine{box-shadow:inset 0 0 0 1.5px var(--accent-soft)}
-/* 칸 안은 높이가 고정된 두 줄 — 첫째 줄 날짜(+판수), 둘째 줄 인원수 또는 정기전.
-   셋째 줄(일정 막대)은 .wbars 가 칸 아래 여백 위에 얹힌다. 높이를 박아 둬야 세로가 안 흔들린다. */
+/* 칸 안 세 줄 — 1) 날짜(+정기전) 2) 일정 막대 자리 3) 인원수 또는 판수.
+   높이를 박아 둬야 칸마다 세로가 흔들리지 않는다. 막대는 .wbars 가 2번 자리 위에 얹는다. */
 .r1{display:flex;align-items:center;gap:3px;height:17px;overflow:hidden}
-.r2{display:flex;align-items:center;gap:2px;height:17px;overflow:hidden;white-space:nowrap}
+.cell.mine .r1{padding-right:15px}         /* 오른쪽 위 내 표 동그라미와 겹치지 않게 */
+.rbar{flex:0 0 auto}                       /* 둘째 줄 — 막대가 앉을 자리만 비워 둔다 */
+.r3{display:flex;align-items:center;gap:2px;height:17px;margin-top:auto;overflow:hidden;white-space:nowrap}
 .dnum{font-size:.85rem;font-weight:700;line-height:1.1}
 .dnum.sun{color:var(--no)} .dnum.sat{color:#3b82f6}
 .evchip{font-size:.64rem;font-weight:800;color:#fff;background:var(--accent);
@@ -100,12 +102,12 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
   max-width:100%;overflow:hidden;text-overflow:ellipsis}
 /* 칸이 이미 주황이니 칩까지 채우면 답답하다 — 글자만 남긴다 */
 .cell.event .evchip{background:none;color:var(--accent);padding:0}
-.gchip{font-size:.62rem;color:var(--muted);line-height:1.2;white-space:nowrap;margin-left:auto}
+.gchip{font-size:.66rem;color:var(--muted);line-height:1.2;white-space:nowrap}
 /* 가능/불가 인원 — 좁은 칸에 두 줄로 넘치지 않게 "5 / 2" 한 줄로 */
-.r2 b{font-size:.74rem;font-weight:800;font-variant-numeric:tabular-nums}
-.r2 .vo{color:var(--ok)}
-.r2 .vx{color:var(--no)}
-.r2 .vsep{font-style:normal;font-size:.66rem;color:var(--muted)}
+.r3 b{font-size:.74rem;font-weight:800;font-variant-numeric:tabular-nums}
+.r3 .vo{color:var(--ok)}
+.r3 .vx{color:var(--no)}
+.r3 .vsep{font-style:normal;font-size:.66rem;color:var(--muted)}
 .mymark{position:absolute;top:4px;right:4px;font-size:.62rem;font-weight:900;
   width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff}
 .mymark.o{background:var(--ok)} .mymark.x{background:var(--no)}
@@ -234,7 +236,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v222</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v223</span>
   </div>
 </div>
 

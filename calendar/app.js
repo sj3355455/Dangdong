@@ -226,20 +226,26 @@ function render(){
       const past = key < today;
       // 정기전 날은 칸 전체를 칠해서 알린다 — 좁은 칸에 인원수까지 넣으면 줄이 넘친다.
       const showVotes = !past && !ev && (c.o || c.x);
+      // 판수는 날짜가 지난 뒤에만. 오늘 친 판수를 바로 띄우면 아직 유효한 O/X 와 자리를 다툰다.
+      const showGames = past && g;
       const cls = ['cell'];
       if (ev) cls.push('event');
       if (key === today) cls.push('today');
       if (mv && !past) cls.push('mine');
       if (past) cls.push('past');          // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
       const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
-      // 첫째 줄 = 날짜(+판수), 둘째 줄 = 인원수 또는 정기전, 셋째 줄 = 일정 막대.
-      // 각 줄의 높이를 고정해 두어야 칸마다 위아래로 흔들리지 않는다.
-      cells += `<div class="${cls.join(' ')}" data-d="${key}" style="padding-bottom:${3 + barBox}px">
+      // 첫째 줄 = 날짜(+정기전), 둘째 줄 = 일정 막대, 셋째 줄 = 인원수 또는 판수.
+      // .rbar 는 막대가 앉을 자리만 차지하는 빈 칸이다 — 실제 막대는 .wbars 가 그 위에 얹는다.
+      // 줄 높이를 고정해 둬야 칸마다 위아래로 흔들리지 않는다.
+      cells += `<div class="${cls.join(' ')}" data-d="${key}">
         ${mv && !past ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
-        <span class="r1"><span class="dnum${dcls}">${d}</span>${g ? `<span class="gchip">🎱${g}</span>` : ''}</span>
-        <span class="r2">${
-          ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>`
-          : showVotes ? `<b class="vo">${c.o}</b><i class="vsep">/</i><b class="vx">${c.x}</b>`
+        <span class="r1"><span class="dnum${dcls}">${d}</span>${
+          ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>` : ''
+        }</span>
+        <span class="rbar" style="height:${barBox}px"></span>
+        <span class="r3">${
+          showVotes ? `<b class="vo">${c.o}</b><i class="vsep">/</i><b class="vx">${c.x}</b>`
+          : showGames ? `<span class="gchip">🎱 ${g}판</span>`
           : ''
         }</span>
       </div>`;
