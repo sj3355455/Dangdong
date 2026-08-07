@@ -13,6 +13,159 @@ export function applyTheme(t){
   else r.removeAttribute('data-theme');
 }
 
+// ══ 기간 선택기 (기록실 조회 기간 · 캘린더 일정 기간이 함께 쓴다) ══
+// 시작·종료를 따로 두지 않고 달력 한 번으로 둘 다 고른다.
+//   · 첫 번째로 누른 날 = 시작일, 두 번째 = 종료일 (거꾸로 눌러도 앞뒤를 맞춘다)
+//   · 위쪽 "2026년 7월"을 누르면 고르던 중이든 아니든 그 달이 통째로 들어간다
+// 값은 숨은 입력(.<cls>-from / .<cls>-to)에 담고 to 쪽에 change 를 쏜다.
+//
+// 쓰는 곳마다 경계가 다르다 — 기록실은 지난 기록을 보므로 max=오늘, 캘린더 일정은
+// 앞으로의 예정이라 min=오늘이다. 그래서 min/max 를 옵션으로 받는다.
+const pad2 = n => String(n).padStart(2, '0');
+export const ymd = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+export const todayYmd = () => ymd(new Date());
+// 2026-07-01 → 26/07/01 (표시용 축약)
+export const ddmy = v => v ? v.slice(2).replace(/-/g, '/') : '';
+
+// 기간을 한 줄로 요약. 한쪽이 비면 열린 구간으로 읽는다.
+export function rangeLabel(from, to, empty){
+  if (!from && !to) return empty || '전체 기간';
+  if (from && to) return from === to ? ddmy(from) + ' 하루' : ddmy(from) + ' ~ ' + ddmy(to);
+  if (from) return ddmy(from) + ' ~ 지금';
+  return '처음 ~ ' + ddmy(to);
+}
+
+// 같은 줄: [leftHtml] [기간 한 칸]. opt.empty 로 비었을 때 문구를 바꾼다.
+export function rangeRowHtml(cls, from, to, leftHtml, opt){
+  const o = opt || {};
+  const has = !!(from || to);
+  return `<div class="${cls}-range" style="display:flex; align-items:center; gap:6px;">
+      ${leftHtml || ''}
+      <div class="${cls}-disp" role="button" tabindex="0" aria-label="${o.aria || '기간'}" style="flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; justify-content:center; padding:0 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:${has?'var(--text)':'var(--muted)'}; font-size:0.9rem; white-space:nowrap; overflow:hidden; cursor:pointer;">📅 ${rangeLabel(from, to, o.empty)}</div>
+      <input type="hidden" class="${cls}-from" value="${from||''}">
+      <input type="hidden" class="${cls}-to" value="${to||''}">
+    </div>`;
+}
+
+const DOW_KO = ['일','월','화','수','목','금','토'];
+export function openCalendar(opt){
+  const lo = opt.min || '', hi = opt.max || '';        // '' = 제한 없음
+  const today = todayYmd();
+  const inBounds = s => (!lo || s >= lo) && (!hi || s <= hi);
+  let pend = null;              // 시작일만 고른 상태 (null 이면 처음부터 고르는 중)
+  let committed = false;
+  // 처음 보여 줄 달: 이미 고른 값 → 오늘 → 경계 안쪽 순으로 잡는다
+  let seed = opt.from || opt.to || (inBounds(today) ? today : (lo || hi));
+  let cur = new Date(Number(seed.slice(0,4)), Number(seed.slice(5,7)) - 1, 1);
+
+  const mask = document.createElement('div');
+  mask.className = 'calmask';
+  mask.innerHTML = `<div class="calcard">
+      <div class="calhd">
+        <button class="calnav cal-prev" aria-label="이전 달">‹</button>
+        <button class="caltitle cal-title"></button>
+        <button class="calnav cal-next" aria-label="다음 달">›</button>
+      </div>
+      <div class="calhint cal-hint"></div>
+      <div class="calgrid cal-dow">${DOW_KO.map((d,i)=>`<div class="caldow"${i===0?' style="color:#e5484d"':''}>${d}</div>`).join('')}</div>
+      <div class="calgrid cal-days"></div>
+      <div class="calft">${opt.allowClear ? `<button class="cal-clear">${opt.clearLabel || '전체 기간'}</button>` : ''}<button class="cal-close">닫기</button></div>
+    </div>`;
+  const q = s => mask.querySelector(s);
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  // 닫기·배경·ESC 로 나갈 때 시작일만 골라 뒀으면 그것만이라도 확정한다.
+  // 종료가 빈 값이면 기록실은 "그날 이후 전체", 일정 등록은 "그 하루"로 읽는다(openEnded).
+  function close(){
+    mask.remove();
+    document.removeEventListener('keydown', onKey);
+    if (!committed && pend) { committed = true; opt.onCommit(pend, opt.openEnded === false ? pend : ''); }
+  }
+  function commit(a, b){ committed = true; close(); opt.onCommit(a, b); }
+  mask.onclick = e => { if (e.target === mask) close(); };
+  document.addEventListener('keydown', onKey);
+
+  function draw(){
+    const y = cur.getFullYear(), m = cur.getMonth();
+    const first = new Date(y, m, 1), lastD = new Date(y, m + 1, 0).getDate();
+    q('.cal-title').textContent = y + '년 ' + (m + 1) + '월';
+    // 그 방향으로 고를 수 있는 날이 하나도 없으면 넘기지 못하게 한다
+    q('.cal-next').disabled = !!hi && ymd(new Date(y, m + 1, 1)) > hi;
+    q('.cal-prev').disabled = !!lo && ymd(new Date(y, m, 0)) < lo;
+    const tail = opt.openEnded === false ? `그냥 닫으면 ${ddmy(pend)} 하루` : `그냥 닫으면 ${ddmy(pend)} 이후 전체`;
+    q('.cal-hint').innerHTML = pend
+      ? `<b>종료일</b>을 고르세요 · ${tail}`
+      : '첫 번째가 <b>시작일</b>, 두 번째가 <b>종료일</b> · 위 <b>연·월</b>을 누르면 그 달 전체';
+    // 고르는 중이면 방금 누른 날만, 아니면 확정된 기간을 보여 준다 (뒤집혀 있어도 자연스럽게)
+    let a = pend || opt.from, b = pend ? '' : opt.to;
+    if (a && b && a > b) { const t = a; a = b; b = t; }
+    let cells = '';
+    for (let i = 0; i < first.getDay(); i++) cells += '<div></div>';
+    for (let d = 1; d <= lastD; d++){
+      const s = ymd(new Date(y, m, d));
+      const dis = !inBounds(s);
+      const sel = s === a || s === b;
+      const inr = !sel && a && b && s > a && s < b;
+      const sun = new Date(y, m, d).getDay() === 0;
+      const cl = 'calday' + (sel ? ' sel' : '') + (inr ? ' inr' : '') + (s === today ? ' today' : '');
+      const st = (!sel && !dis && sun) ? ' style="color:#e5484d"' : '';
+      cells += `<button class="${cl}" data-d="${s}"${dis?' disabled':''}${st}>${d}</button>`;
+    }
+    q('.cal-days').innerHTML = cells;
+    q('.cal-days').querySelectorAll('.calday').forEach(btn => {
+      btn.onclick = () => {
+        const s = btn.dataset.d;
+        if (!pend) { pend = s; draw(); return; }              // 첫 번째 = 시작일
+        commit(pend <= s ? pend : s, pend <= s ? s : pend);   // 두 번째 = 종료일
+      };
+    });
+  }
+  q('.cal-prev').onclick = () => { cur.setMonth(cur.getMonth() - 1); draw(); };
+  q('.cal-next').onclick = () => { cur.setMonth(cur.getMonth() + 1); draw(); };
+  q('.cal-title').onclick = () => {
+    const y = cur.getFullYear(), m = cur.getMonth();
+    let a = ymd(new Date(y, m, 1)), b = ymd(new Date(y, m + 1, 0));
+    if (lo && a < lo) a = lo;         // 경계에 걸친 달은 고를 수 있는 쪽으로 잘라 준다
+    if (hi && b > hi) b = hi;
+    if (a > b) return;                // 통째로 경계 밖인 달은 고를 게 없다
+    commit(a, b);                     // 고르던 중이어도 월 선택이 우선
+  };
+  const clr = q('.cal-clear');
+  if (clr) clr.onclick = () => { pend = null; commit('', ''); };
+  q('.cal-close').onclick = close;
+  draw();
+  document.body.appendChild(mask);
+}
+
+// 기간 칸을 누르면 달력을 연다. opt 는 openCalendar 로 그대로 넘어간다.
+export function bindRangePicker(el, cls, opt){
+  const o = opt || {};
+  const fromInp = el.querySelector('.'+cls+'-from');
+  const toInp = el.querySelector('.'+cls+'-to');
+  const disp = el.querySelector('.'+cls+'-disp');
+  if (!fromInp || !toInp || !disp) return;
+  // 두 입력의 onchange 는 어차피 같은 함수라(from/to 를 함께 읽는다) 한 번만 쏘면 된다
+  const open = () => openCalendar(Object.assign({}, o, {
+    from: fromInp.value, to: toInp.value,
+    onCommit: (a, b) => {
+      fromInp.value = a; toInp.value = b;
+      syncRangeDisp(el, cls, o.empty);
+      toInp.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }));
+  disp.onclick = open;
+  disp.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+}
+
+// 입력값을 기간 칸에 반영 (툴바를 다시 그리지 않는 화면용)
+export function syncRangeDisp(el, cls, empty){
+  const f = el.querySelector('.'+cls+'-from');
+  const t = el.querySelector('.'+cls+'-to');
+  const d = el.querySelector('.'+cls+'-disp');
+  if (!f || !t || !d) return;
+  d.textContent = '📅 ' + rangeLabel(f.value, t.value, empty);
+  d.style.color = (f.value || t.value) ? 'var(--text)' : 'var(--muted)';
+}
+
 // ── 서비스워커 등록 + 무중단 자동 업데이트 ──
 // sw.js 의 VERSION 변경 → 새 워커 설치·활성화 → controllerchange → 앱 자동 1회 새로고침. 폴링 없음.
 export function registerSW(){

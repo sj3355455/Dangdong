@@ -5,7 +5,8 @@
 //   · 인원수     : vote_counts() 함수가 서버에서 세어 O/X 숫자만 돌려준다
 // 자세한 정책은 저장소 루트의 calendar-sql/ 참고 (1~4 를 순서대로 실행).
 import { sbFetch } from '../record/supabase.js';
-import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal } from '../record/common.js';
+import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
+         ddmy, rangeRowHtml, bindRangePicker } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -392,7 +393,9 @@ function topDaysHtml(){
 const BAR_H = 13;                                   // 막대 한 줄 높이(px)
 // 칸 간격은 CSS 의 --gap 하나만 보고 계산한다 — 여기에 숫자를 박아 두면 CSS 를 고칠 때 막대가 어긋난다.
 // INSET: 칸 폭에 딱 맞추면 둥근 모서리 밖으로 삐져나와 보이므로 양쪽을 조금 들여 그린다.
-const BAR_INSET = 5;
+// 막대는 칸 세로 한가운데(top:26px)에 놓여 둥근 모서리와 멀다. 그래서 조금만 들여도 되고,
+// 좁은 폰에서 이름 한두 글자가 더 들어가는 쪽이 훨씬 쓸모 있다. 5 → 2 로 줄여 폭 6px 을 벌었다.
+const BAR_INSET = 2;
 const colLeft  = i => `calc((100% - var(--gap) * 6) / 7 * ${i} + var(--gap) * ${i} + ${BAR_INSET}px)`;
 const colWidth = n => `calc((100% - var(--gap) * 6) / 7 * ${n} + var(--gap) * ${n - 1} - ${BAR_INSET * 2}px)`;
 
@@ -518,11 +521,14 @@ function openDay(key){
   $('#dsPlan').style.display = canPlan ? '' : 'none';
   if (canPlan) {
     $('#dsPlanName').value = '';
-    // 기본 기간은 연 날짜 하루. 지난 날짜는 못 고르게 min 을 오늘로 묶는다.
-    const s = $('#dsStart'), e = $('#dsEnd');
-    s.min = e.min = todayStr();
-    s.value = e.value = key;
-    renderMyPlans();
+    // 기본 기간은 연 날짜 하루. 앞으로의 예정이라 지난 날짜는 못 고른다(min=오늘).
+    // 기록실 조회 기간과 같은 선택기지만 경계가 반대다 — 거긴 max=오늘.
+    const box = $('#dsPlanRange');
+    box.innerHTML = rangeRowHtml('dsp', key, key, '', { aria: '일정 기간', empty: '기간 선택' });
+    bindRangePicker(box, 'dsp', {
+      min: todayStr(), allowClear: false, openEnded: false,
+      aria: '일정 기간', empty: '기간 선택'
+    });
   }
 
   const adm = $('#dsAdm');
@@ -558,19 +564,6 @@ function syncVoteUI(){
       syncToWheelState();
     });
   }
-}
-
-// 그 날 내가 걸어 둔 일정 목록. 같은 날에 여러 개가 있을 수 있다.
-function renderMyPlans(){
-  const rows = plansOn(openKey);
-  $('#dsMyPlans').innerHTML = rows.map(p => `<div class="pln">
-    <span class="nm">${esc(p.name)}</span>
-    <span class="rg">${shortRange(p.start_date, p.end_date)}</span>
-    <button class="del" data-id="${esc(p.id)}" aria-label="일정 삭제">&times;</button>
-  </div>`).join('');
-  $('#dsMyPlans').querySelectorAll('.del').forEach(b => {
-    b.onclick = () => delPlan(b.dataset.id);
-  });
 }
 
 const shortRange = (a, b) => {
@@ -732,10 +725,12 @@ async function saveRange(){
   const auth = getAuth();
   if (!auth || !currentTeam || isPast(key)) return;
   const name = $('#dsPlanName').value.trim();
-  const start = $('#dsStart').value, end = $('#dsEnd').value;
+  // 기간은 한 칸이지만 값은 숨은 입력 둘에 담긴다 (기록실과 같은 규약)
+  let start = $('#dsPlanRange .dsp-from').value, end = $('#dsPlanRange .dsp-to').value;
+  if (!end) end = start;                       // 하루만 고르고 닫은 경우
   if (!name) return msg('일정 이름을 적어 주세요.', 'err');
-  if (!start || !end) return msg('시작일과 종료일을 골라 주세요.', 'err');
-  if (end < start) return msg('종료일이 시작일보다 빠릅니다.', 'err');
+  if (!start) return msg('기간을 골라 주세요.', 'err');
+  if (end < start) { const t = start; start = end; end = t; }
   if (daysBetween(start, end) > RANGE_MAX)
     return msg(`한 번에 ${RANGE_MAX}일까지만 등록할 수 있습니다.`, 'err');
 
@@ -756,7 +751,8 @@ async function saveRange(){
 
 async function delPlan(id){
   const p = myPlans.find(x => x.id === id);
-  if (!p || !confirm(`'${p.name}' 일정을 지울까요?`)) return;
+  // 하루만 열어 놓고 지워도 기간 전체가 사라진다 → 기간을 확인 문구에 같이 보여 준다
+  if (!p || !confirm(`'${p.name}' 일정을 지울까요?\n(${shortRange(p.start_date, p.end_date)} 전체가 사라집니다)`)) return;
   msg('삭제 중...');
   try {
     await sbFetch(`/rest/v1/day_plans?id=eq.${id}`, { method: 'DELETE' });
@@ -804,11 +800,23 @@ function renderAgg(key){
       + `</div>`;
   }
   if (reasons.length) {
+    // 서버가 주는 목록은 이름만 있고 누구 것인지는 없다(익명). 그래서 내 일정과 이름을 맞춰
+    // 내가 등록한 줄에만 삭제 버튼을 붙인다. 인원수는 쓸모가 없어 빼고 그 자리를 버튼에 준다.
+    const mine = plansOn(key);
     html += `<div class="agg"><div class="agghd">📌 등록된 일정</div>`
-      + reasons.map(([t, n]) => `<div class="rsn"><span class="t">${esc(t)}</span><span class="n">${n}명</span></div>`).join('')
+      + reasons.map(([t]) => {
+          const p = mine.find(x => String(x.name).trim() === t);
+          const right = p
+            ? `<button class="del" data-id="${esc(p.id)}" title="내 일정 삭제" aria-label="'${esc(t)}' 일정 삭제">&times;</button>`
+            : `<span class="pad"></span>`;
+          return `<div class="rsn"><span class="t">${esc(t)}</span>${right}</div>`;
+        }).join('')
       + `</div>`;
   }
   $('#dsAgg').innerHTML = html;
+  $('#dsAgg').querySelectorAll('.rsn .del').forEach(b => {
+    b.onclick = () => delPlan(b.dataset.id);
+  });
 }
 
 // 정기전 등록/수정 (팀장 — 사이트 전체 관리자와는 다른 권한이다)

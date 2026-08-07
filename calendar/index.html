@@ -151,8 +151,6 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 /* ── 표에 붙는 부가 입력 (가능 시간 / 불가 사유) ── */
 .vbox{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
 .vlab{font-size:.82rem;color:var(--muted);font-weight:700;margin-bottom:8px}
-.hrow{display:flex;align-items:center;gap:8px}
-.tilde{color:var(--muted);font-weight:700}
 /* 시간 휠 — 점수판 제한시간 피커(.twheel)와 같은 방식. 세로로 돌려서 고른다.
    높이 132 = 위 여백 48 + 항목 36 + 아래 여백 48 → 가운데 띠에 딱 맞는다. */
 .hwheels{position:relative;display:flex;align-items:stretch;gap:6px;height:132px}
@@ -169,18 +167,6 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .hw-sep{align-self:center;color:var(--muted);font-weight:700;flex:0 0 auto}
 .hw-band{position:absolute;left:0;right:0;top:48px;height:36px;border-top:1px solid var(--accent);
   border-bottom:1px solid var(--accent);pointer-events:none;opacity:.5}
-/* 내가 등록한 일정 목록 — 각 줄 오른쪽 ✕ 로 지운다 */
-.pln{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;
-  background:var(--card);border:1px solid var(--line);border-radius:8px}
-.pln .nm{font-size:.9rem;font-weight:700;flex:0 1 auto;overflow:hidden;text-overflow:clip;white-space:nowrap}
-.pln .rg{font-size:.76rem;color:var(--muted);white-space:nowrap;margin-left:auto}
-.pln .del{flex:0 0 auto;background:none;border:none;color:var(--muted);font-size:1.1rem;
-  line-height:1;padding:0 2px;cursor:pointer;font-family:inherit}
-.pln .del:active{color:var(--no)}
-/* 날짜 입력 — 누르면 기기 기본 달력이 뜬다 */
-.dsel{flex:1 1 0;min-width:0;padding:10px 12px;border-radius:8px;background:var(--card);color:var(--text);
-  border:1px solid var(--line);font-size:.95rem;font-family:inherit;-webkit-appearance:none;appearance:none}
-.dsel::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer}
 
 /* ── 익명 집계 (가능 시간대 막대 / 불가 사유) ── */
 .agg{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
@@ -198,7 +184,11 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .rsn{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
 .rsn:last-child{border-bottom:none}
 .rsn .t{font-size:.9rem;word-break:break-all}
-.rsn .n{font-size:.82rem;font-weight:700;color:var(--muted);white-space:nowrap;flex:0 0 auto}
+/* 내가 등록한 일정만 지울 수 있다. 남의 일정 줄은 자리만 비워 둬서 목록이 들쭉날쭉하지 않게 한다. */
+.rsn .del{flex:0 0 auto;width:26px;height:26px;padding:0;background:none;border:1px solid var(--line);
+  border-radius:7px;color:var(--muted);font-size:1rem;line-height:1;cursor:pointer}
+.rsn .del:active{color:var(--no);border-color:var(--no)}
+.rsn .pad{flex:0 0 auto;width:26px}
 .admbox{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .admrow{display:flex;gap:8px;align-items:center}
 .inp{flex:1 1 auto;min-width:0;padding:10px 12px;border-radius:8px;background:var(--bg);color:var(--text);
@@ -210,6 +200,34 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .msg{font-size:.85rem;margin-top:12px;min-height:1.2em}
 .msg.err{color:var(--no)} .msg.ok{color:var(--ok)}
 
+/* ══ 기간 선택 달력 (기록실과 동일 — common.js 의 openCalendar 가 쓴다) ══ */
+.calmask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;
+  justify-content:center;z-index:1200;padding:20px}
+.calcard{width:100%;max-width:330px;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:14px 14px 12px;color:var(--text)}
+.calhd{display:flex;align-items:center;gap:6px}
+.calnav{flex:0 0 auto;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+  background:var(--card);color:var(--text);font-size:1.1rem;line-height:1;cursor:pointer}
+.calnav:disabled{opacity:.3;cursor:not-allowed}
+.caltitle{flex:1 1 auto;height:34px;border-radius:9px;border:1px solid var(--line);
+  background:var(--bg);color:var(--text);font-weight:700;font-size:.98rem;cursor:pointer}
+.caltitle:hover{border-color:var(--accent);color:var(--accent)}
+/* 안내 문구는 고르는 단계에 따라 바뀐다 — 높이를 잡아 두어 달력이 위아래로 흔들리지 않게 */
+.calhint{font-size:.72rem;color:var(--muted);text-align:center;margin:8px 0;min-height:2.2em;
+  display:flex;align-items:center;justify-content:center}
+.calhint b{color:var(--accent)}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.caldow{text-align:center;font-size:.72rem;color:var(--muted);font-weight:600;padding:2px 0 4px}
+.calday{height:38px;border:none;background:none;color:var(--text);border-radius:9px;
+  font-size:.9rem;cursor:pointer;padding:0}
+.calday:disabled{opacity:.25;cursor:default}
+.calday.today{box-shadow:inset 0 0 0 1px var(--accent)}
+.calday.inr{background:var(--hover)}
+.calday.sel{background:var(--accent);color:#fff;font-weight:700}
+.calft{display:flex;gap:6px;margin-top:10px}
+.calft button{flex:1;padding:9px 0;border-radius:9px;border:1px solid var(--line);
+  background:var(--card);color:var(--muted);font-size:.85rem;cursor:pointer}
+.calft button:hover{color:var(--accent);border-color:var(--accent)}
 /* ══ 설정 모달 (점수판·기록실과 동일) ══ */
 .setmask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:1100;padding:20px}
 .setmask.on{display:flex}
@@ -283,16 +301,12 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
       </div>
     </div>
 
-    <!-- 내 일정 — O/X 와 별개로 언제든 등록한다. 같은 날에 몇 개든 쌓을 수 있다 -->
+    <!-- 내 일정 — O/X 와 별개로 언제든 등록한다. 같은 날에 몇 개든 쌓을 수 있다.
+         등록한 일정은 아래 '등록된 일정' 목록에 나오고 거기서 지운다. -->
     <div class="vbox" id="dsPlan" style="display:none;">
       <div class="vlab">📌 일정 등록</div>
-      <div id="dsMyPlans"></div>
       <input id="dsPlanName" class="inp" maxlength="20" placeholder="일정 이름 (예: 시험기간)">
-      <div class="hrow" style="margin-top:8px;">
-        <input id="dsStart" class="dsel" type="date">
-        <span class="tilde">~</span>
-        <input id="dsEnd" class="dsel" type="date">
-      </div>
+      <div id="dsPlanRange" style="margin-top:8px;"></div>
       <button id="dsRangeSave" class="sbtn" style="width:100%; margin-top:8px;">＋ 일정 등록</button>
       <div class="sub" style="margin-top:8px; font-size:.75rem;">달력에 표시만 됩니다. 못 오는 날은 ❌ 를 따로 눌러 주세요.</div>
     </div>
