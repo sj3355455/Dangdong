@@ -73,9 +73,11 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .wrow{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--gap)}
 /* 일정 막대는 칸 위에 얹되 탭은 통과시킨다 (칸을 눌러 날짜 상세가 열려야 하므로) */
 .wbars{position:absolute;left:0;right:0;top:26px;pointer-events:none}
-.xbar{position:absolute;height:13px;line-height:13px;background:var(--nobg);color:var(--no);
-  font-size:.62rem;font-weight:800;padding:0 4px;text-align:center;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 일정 막대. 좁은 칸에서는 이름이 반드시 잘리는데, '…' 이 두 글자 몫을 잡아먹으므로
+   clip 으로 그냥 자른다 — 한 글자라도 더 보이는 쪽이 알아보기 쉽다. 전체 이름은 title 로 뜬다. */
+.xbar{position:absolute;height:13px;line-height:13px;background:var(--hover);color:var(--muted);
+  font-size:.62rem;font-weight:800;padding:0 3px;text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:clip}
 .xbar.lcap{border-radius:4px 0 0 4px}
 .xbar.rcap{border-radius:0 4px 4px 0}
 .xbar.lcap.rcap{border-radius:4px}
@@ -170,7 +172,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 /* 내가 등록한 일정 목록 — 각 줄 오른쪽 ✕ 로 지운다 */
 .pln{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;
   background:var(--card);border:1px solid var(--line);border-radius:8px}
-.pln .nm{font-size:.9rem;font-weight:700;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pln .nm{font-size:.9rem;font-weight:700;flex:0 1 auto;overflow:hidden;text-overflow:clip;white-space:nowrap}
 .pln .rg{font-size:.76rem;color:var(--muted);white-space:nowrap;margin-left:auto}
 .pln .del{flex:0 0 auto;background:none;border:none;color:var(--muted);font-size:1.1rem;
   line-height:1;padding:0 2px;cursor:pointer;font-family:inherit}
@@ -196,7 +198,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .rsn{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
 .rsn:last-child{border-bottom:none}
 .rsn .t{font-size:.9rem;word-break:break-all}
-.rsn .n{font-size:.82rem;font-weight:700;color:var(--no);white-space:nowrap;flex:0 0 auto}
+.rsn .n{font-size:.82rem;font-weight:700;color:var(--muted);white-space:nowrap;flex:0 0 auto}
 .admbox{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .admrow{display:flex;gap:8px;align-items:center}
 .inp{flex:1 1 auto;min-width:0;padding:10px 12px;border-radius:8px;background:var(--bg);color:var(--text);
@@ -292,7 +294,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
         <input id="dsEnd" class="dsel" type="date">
       </div>
       <button id="dsRangeSave" class="sbtn" style="width:100%; margin-top:8px;">＋ 일정 등록</button>
-      <div class="sub" style="margin-top:8px; font-size:.75rem;">등록한 기간은 ❌ 불가로 함께 집계됩니다.</div>
+      <div class="sub" style="margin-top:8px; font-size:.75rem;">달력에 표시만 됩니다. 못 오는 날은 ❌ 를 따로 눌러 주세요.</div>
     </div>
 
     <!-- 모두에게 보이는 집계 — 이름 없이 인원수만 -->

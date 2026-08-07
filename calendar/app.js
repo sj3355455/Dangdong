@@ -3,7 +3,7 @@
 // 익명성은 서버(RLS)가 지킨다. 이 파일은 남의 표를 조회하는 코드를 아예 갖고 있지 않다.
 //   · 내 표      : day_votes 에서 내 행만 읽고 쓴다 (RLS 가 남의 행을 막는다)
 //   · 인원수     : vote_counts() 함수가 서버에서 세어 O/X 숫자만 돌려준다
-// 자세한 정책은 저장소 루트의 calendar-setup.sql 참고.
+// 자세한 정책은 저장소 루트의 calendar-sql/ 참고 (1~4 를 순서대로 실행).
 import { sbFetch } from '../record/supabase.js';
 import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal } from '../record/common.js';
 
@@ -40,11 +40,11 @@ const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 // 지난 날짜엔 투표할 수 없다 (이미 지나간 날의 참여 여부를 받을 이유가 없다).
 // 키가 'YYYY-MM-DD' 라 문자열 비교로 충분하다.
 const isPast = key => key < todayStr();
-// 그 날 내가 고른 값 ('o' | 'x' | null). myVote 는 시간·사유까지 담은 객체라 한 겹 벗겨서 쓴다.
 // 그 날 내가 등록해 둔 일정들
 const plansOn = key => myPlans.filter(p => p.start_date <= key && key <= p.end_date);
-// 그 날 내 선택 ('o' | 'x' | null). 일정이 걸려 있으면 그 자체가 '불가'다 — 서버 집계도 그렇게 센다.
-const myChoice = key => (myVote[key] && myVote[key].c) || (plansOn(key).length ? 'x' : null);
+// 그 날 내 선택 ('o' | 'x' | null). 일정은 개인 메모일 뿐 참석 여부가 아니라서 여기에 끼지 않는다
+// (서버 vote_counts 도 같은 기준으로 센다). myVote 는 시간까지 담은 객체라 한 겹 벗겨서 쓴다.
+const myChoice = key => (myVote[key] && myVote[key].c) || null;
 const label = key => {
   const [y, m, dd] = key.split('-').map(Number);
   const d = new Date(y, m - 1, dd);
@@ -165,7 +165,7 @@ async function loadMonth(force = false){
     loadErr = '내 투표를 불러오지 못했습니다: ' + errText(mine.reason);
   }
 
-  // 일정 기능은 나중에 붙었다. calendar-setup.sql 을 아직 안 돌린 서버라면 여기서 404 가 난다.
+  // 일정 기능은 나중에 붙었다. calendar-sql/4-plan-spans.sql 을 아직 안 돌린 서버라면 여기서 404 가 난다.
   // 막대가 안 보일 뿐 달력은 그대로 쓸 수 있으므로 조용히 비워 두고 넘어간다.
   planSpans = (spans.status === 'fulfilled' && Array.isArray(spans.value))
     ? spans.value.map(r => ({ name: r.name, from: r.start_date, to: r.end_date, cnt: r.cnt }))
@@ -181,8 +181,8 @@ const errText = e => (e && (e.message || e.msg)) || '알 수 없는 오류';
 function describeCountErr(e){
   const st = e && e.status;
   if (st === 404 || st === 400) {
-    return '투표 집계 함수(vote_counts)를 찾지 못했습니다. calendar-setup.sql 을 Supabase 에서 실행했는지, '
-         + '실행했다면 스키마 캐시가 갱신됐는지 확인해 주세요. (' + errText(e) + ')';
+    return '투표 집계 함수(vote_counts)를 찾지 못했습니다. calendar-sql/3-vote-counts.sql 을 Supabase 에서 '
+         + '실행했는지, 실행했다면 스키마 캐시가 갱신됐는지 확인해 주세요. (' + errText(e) + ')';
   }
   if (st === 401 || st === 403) {
     return '투표 집계를 볼 권한이 없습니다. 이 팀의 팀원인지 확인해 주세요. (' + errText(e) + ')';
@@ -638,17 +638,11 @@ async function vote(choice){
   if (!auth || !currentTeam) return;
   const key = openKey;
   if (isPast(key)) return;   // 지난 날짜는 투표 대상이 아니다 (UI도 가려져 있지만 이중으로 막는다)
-  // 일정이 걸린 날은 서버가 무조건 '불가'로 센다. 버튼으로 뒤집으면 화면과 집계가 어긋나므로 막는다.
-  if (plansOn(key).length) {
-    return msg(choice === 'o'
-      ? '이 날은 등록한 일정이 있어 가능으로 바꿀 수 없습니다. 아래에서 일정을 지워 주세요.'
-      : '일정이 걸려 있어 계속 불가입니다. 아래에서 일정을 지우면 해제됩니다.', 'err');
-  }
   const prevRow = myVote[key];
   const prev = myChoice(key);
   const next = (choice && choice !== prev) ? choice : null;
 
-  // 시간·사유는 비운 채로 시작한다 — 누른 즉시 아래 칸이 열리니 원하면 거기서 채운다
+  // 시간은 비운 채로 시작한다 — 누른 즉시 아래 칸이 열리니 원하면 거기서 채운다
   const nextRow = next ? { c: next, from: null, to: null } : null;
 
   // 낙관적 반영: 숫자를 먼저 움직여 두고, 실패하면 되돌린다
@@ -810,7 +804,7 @@ function renderAgg(key){
       + `</div>`;
   }
   if (reasons.length) {
-    html += `<div class="agg"><div class="agghd">🚫 등록된 일정</div>`
+    html += `<div class="agg"><div class="agghd">📌 등록된 일정</div>`
       + reasons.map(([t, n]) => `<div class="rsn"><span class="t">${esc(t)}</span><span class="n">${n}명</span></div>`).join('')
       + `</div>`;
   }
