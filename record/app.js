@@ -685,7 +685,6 @@ function podiumHtml(rows, rankOf, COLS){
   const nameLink = p => `<a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>`;
   // 단(stand)은 윗면(밝은 띠) + 앞면(금속 그라디언트 · 등수 숫자)으로 나눠 입체감을 준다.
   const step = g => !g ? '' : `<div class="step s${g.rank}">
-      ${g.rank===1 ? '<div class="crown">👑</div>' : ''}
       <div class="who">${g.players.map(nameLink).join('')}</div>
       <div class="val">${cell(g.players[0], col)}</div>
       <div class="stand"><div class="top"></div><div class="face">${g.rank}</div></div>
@@ -739,8 +738,8 @@ function podiumCanvas(rows, rankOf, COLS){
   // 단 위에 올라가는 이름 줄 수 → 포디움 영역이 얼마나 높아야 하는지 결정한다
   const shown = g => Math.min(g.players.length, G.MAXNAMES) + (g.players.length > G.MAXNAMES ? 1 : 0);
   const maxNameLines = groups.length ? Math.max(...groups.map(shown)) : 0;
-  const headH = 150;                                   // 제목 영역
-  const aboveH = 34 + maxNameLines * 30 + 30;          // 왕관 + 이름들 + 값 알약
+  const headH = 192;                                   // 제목 세 줄이 들어가는 영역
+  const aboveH = maxNameLines * 30 + 52;               // 이름들 + 값 알약
   const floorY = headH + aboveH + G.H1;
   const restH = rest.length ? 22 + rest.length * G.ROW : 0;
   const H = Math.round(floorY + 18 + restH + 54);
@@ -785,14 +784,14 @@ function podiumCanvas(rows, rankOf, COLS){
 
   x.fillStyle = C.bg; x.fillRect(0, 0, G.W, H);
 
-  // ── 제목 ──
+  // ── 제목 (세 줄: 앱 이름 / 지표 / 조건). 줄 간격을 넉넉히 벌린다 ──
   const cx = G.W / 2;
-  text('당동 기록실', cx, 58, font(700, 20), C.muted, 'center');
-  text(col.t, cx, 106, font(800, 38), C.text, 'center');
+  text('당동 기록실', cx, 64, font(700, 20), C.muted, 'center');
+  text(col.t, cx, 128, font(800, 38), C.text, 'center');
   const parts = [rankMode === '통합' ? '통산 기준' : rankMode + '전'];
   if (clubOnly) parts.push(EVT_ICON + ' 정기전만');
   parts.push((rankFrom || rankTo) ? `${ddmy(rankFrom) || '처음'} ~ ${ddmy(rankTo) || '오늘'}` : '전체 기간');
-  text(parts.join('  ·  '), cx, 136, font(500, 17), C.muted, 'center');
+  text(parts.join('  ·  '), cx, 172, font(500, 17), C.muted, 'center');
 
   // ── 시상대 ──
   const sw = (G.W - G.PAD*2 - G.GAP*2) / 3;
@@ -838,7 +837,6 @@ function podiumCanvas(rows, rankOf, COLS){
       text(clip(n, font(700, 21), sw - 6), mid, y, font(700, 21), C.text, 'center');
       y -= 30;
     });
-    if (g.rank === 1) text('👑', mid, y - 2, font(400, 26), C.text, 'center');
   });
 
   // 바닥선
