@@ -72,9 +72,10 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .week{position:relative}
 .wrow{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--gap)}
 /* 일정 막대는 칸 위에 얹되 탭은 통과시킨다 (칸을 눌러 날짜 상세가 열려야 하므로) */
-.wbars{position:absolute;left:0;right:0;top:21px;pointer-events:none}
+.wbars{position:absolute;left:0;right:0;top:26px;pointer-events:none}
 .xbar{position:absolute;height:13px;line-height:13px;background:var(--nobg);color:var(--no);
-  font-size:.62rem;font-weight:800;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  font-size:.62rem;font-weight:800;padding:0 4px;text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .xbar.lcap{border-radius:4px 0 0 4px}
 .xbar.rcap{border-radius:0 4px 4px 0}
 .xbar.lcap.rcap{border-radius:4px}
@@ -93,8 +94,8 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
    높이를 박아 둬야 칸마다 세로가 흔들리지 않는다. 막대는 .wbars 가 2번 자리 위에 얹는다. */
 .r1{display:flex;align-items:center;gap:3px;height:17px;overflow:hidden}
 .cell.mine .r1{padding-right:15px}         /* 오른쪽 위 내 표 동그라미와 겹치지 않게 */
-.rbar{flex:0 0 auto}                       /* 둘째 줄 — 막대가 앉을 자리만 비워 둔다 */
-.r3{display:flex;align-items:center;gap:2px;height:17px;margin-top:auto;overflow:hidden;white-space:nowrap}
+.rbar{flex:0 0 auto;margin-top:5px}        /* 둘째 줄 — 막대가 앉을 자리. 위 5px 은 날짜와의 간격 */
+.r3{display:flex;align-items:center;justify-content:center;gap:2px;height:17px;margin-top:auto;overflow:hidden;white-space:nowrap}
 .dnum{font-size:.85rem;font-weight:700;line-height:1.1}
 .dnum.sun{color:var(--no)} .dnum.sat{color:#3b82f6}
 .evchip{font-size:.64rem;font-weight:800;color:#fff;background:var(--accent);
@@ -236,7 +237,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v223</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v224</span>
   </div>
 </div>
 
