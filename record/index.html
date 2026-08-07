@@ -89,8 +89,16 @@ table.rank th.name,table.rank td.name{position:sticky;left:var(--rkw,34px);z-ind
   background:var(--card);box-shadow:1px 0 0 var(--line)}
 table.rank thead th.rk,table.rank thead th.name{z-index:3}
 table.rank tbody tr:hover td.rk,table.rank tbody tr:hover td.name{background:var(--hover)}
-/* 표 위쪽 도구 줄 — 보기 전환·정기전 토글·지표 선택이 한 줄에 흐른다 */
+/* 표 위쪽 도구 줄 — 왼쪽에 보기 전환·지표, 오른쪽 끝에 정기전 토글 */
 .toolrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 0}
+.toolrow .push{margin-left:auto}
+/* 붙어 있는 전환 버튼 (표 | 포디움) */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;flex:0 0 auto}
+.seg button{padding:5px 13px;border:none;background:var(--card);color:var(--muted);
+  font-size:.8rem;line-height:1.4;cursor:pointer;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button:hover{color:var(--accent)}
+.seg button.on{background:var(--accent);color:#fff;font-weight:600}
 /* ══ 포디움 ══
    1·2·3등 칸은 실제 시상대처럼 2등 왼쪽 · 1등 가운데 · 3등 오른쪽으로 세운다.
    공동 등수면 한 칸에 이름이 여러 개 쌓이므로, 칸 바닥을 맞추고(align-items:flex-end)

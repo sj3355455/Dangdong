@@ -99,7 +99,7 @@ function rangeRowHtml(cls, from, to, leftHtml){
 // 등록된 정기전이 없거나 DB에 event_id 컬럼이 없으면 아예 그리지 않는다.
 function eventRowHtml(cls){
   if (!HAS_EVENTS || !RAW_EVENTS.length) return '';
-  return `<button class="mbtn ${cls}-evt ${clubOnly?'on':''}">
+  return `<button class="mbtn push ${cls}-evt ${clubOnly?'on':''}">
       ${clubOnly ? '✓ ' : ''}${EVT_ICON} 정기전만 보기
     </button>`;
 }
@@ -748,12 +748,12 @@ function renderRank(){
   }
   // 지표 선택 — 포디움엔 누를 표 제목이 없으므로 셀렉트로 고른다. 이름은 성적이 아니라 제외.
   const metricSel = rankView!=='podium' ? '' :
-    `<select class="field p-metric" style="flex:1 1 120px; min-width:110px; height:30px; padding:0 24px 0 8px; font-size:0.85rem; border-radius:999px; margin:0;">` +
+    `<select class="field p-metric" style="width:100%; height:32px; padding:0 26px 0 10px; font-size:0.85rem; border-radius:999px; margin:6px 0 0;">` +
     COLS.filter(c=>c.k!=='name').map(c=>`<option value="${c.k}" ${c.k===sortKey?'selected':''}>${esc(c.t)}</option>`).join('') +
     `</select>`;
-  const viewBtns = `<div class="mbtns">
-      <button class="mbtn p-view ${rankView==='table'?'on':''}" data-v="table">표</button>
-      <button class="mbtn p-view ${rankView==='podium'?'on':''}" data-v="podium">🏅 포디움</button>
+  const viewBtns = `<div class="seg">
+      <button class="p-view ${rankView==='table'?'on':''}" data-v="table">표</button>
+      <button class="p-view ${rankView==='podium'?'on':''}" data-v="podium">🏅 포디움</button>
     </div>`;
 
   const sortHint = rankView==='podium' ? '' : '표 제목을 누르면 그 기준으로 정렬됩니다. · ';
@@ -768,7 +768,8 @@ function renderRank(){
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
         ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
-        <div class="toolrow">${viewBtns}${eventRowHtml('p-period')}${metricSel}</div>
+        <div class="toolrow">${viewBtns}${eventRowHtml('p-period')}</div>
+        ${metricSel}
       </div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}${rankNote}</div></div>`);
