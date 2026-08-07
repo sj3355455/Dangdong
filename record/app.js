@@ -867,8 +867,16 @@ function podiumCanvas(rows, rankOf, COLS){
   return cv;
 }
 
-/* 저장 — iOS(특히 홈 화면 앱)에서는 a[download] 가 잘 안 먹는다. 공유 시트를 쓸 수 있으면
-   그쪽으로 보내고(사진에 저장 항목이 있다), 안 되면 내려받기로 떨어진다. */
+/* 저장 — 기기마다 '갤러리에 넣는' 방법이 다르다.
+ *
+ *  안드로이드: 바로 내려받는다. 크롬이 받은 이미지는 미디어 스캔을 타서 갤러리의
+ *    '다운로드' 앨범에 바로 뜬다. 공유 시트를 거치면 앱을 한 번 더 골라야 해서 건너뛴다.
+ *    (웹앱이 DCIM·Pictures 폴더에 직접 쓸 방법은 없다 — 안드로이드 자체 제약이라
+ *     '다운로드' 앨범에 들어가는 것이 웹에서 갈 수 있는 최선이다)
+ *  iOS: 홈 화면 앱에서 a[download] 가 동작하지 않으므로 공유 시트로 보낸다.
+ *    시트의 '이미지 저장'을 누르면 사진 앱에 들어간다.
+ *  그 외(데스크톱 등): 그냥 내려받기.
+ */
 async function savePodiumImage(cv, metricName, msgEl){
   const say = (t, err) => { if (msgEl) { msgEl.textContent = t; msgEl.style.color = err ? '#f44336' : 'var(--muted)'; } };
   const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
@@ -876,16 +884,32 @@ async function savePodiumImage(cv, metricName, msgEl){
   const fname = `당동_${metricName}_${todayYmd()}.png`.replace(/\s+/g, '');
   const file = new File([blob], fname, { type: 'image/png' });
 
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file] }); say(''); return; }
-    catch(e){ if (e && e.name === 'AbortError') { say(''); return; } }   // 사용자가 취소
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+
+  const download = () => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
+  if (isAndroid || !canShare) {
+    try {
+      download();
+      say(isAndroid ? '갤러리에 저장했습니다. (다운로드 앨범)' : '저장했습니다.');
+      return;
+    } catch(e){
+      if (!canShare) { say('저장에 실패했습니다.', true); return; }
+      // 내려받기가 막힌 안드로이드 → 아래 공유 시트로 넘어간다
+    }
   }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = fname;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-  say('저장했습니다.');
+  try { await navigator.share({ files: [file] }); say(''); }
+  catch(e){
+    if (e && e.name === 'AbortError') { say(''); return; }   // 사용자가 취소
+    say('저장에 실패했습니다.', true);
+  }
 }
 
 function renderRank(){
