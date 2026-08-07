@@ -15,6 +15,9 @@
 <style>
 :root{
   --sat: env(safe-area-inset-top,0px); --sab: env(safe-area-inset-bottom,0px);
+  /* 칸 사이 간격 — 일정 막대의 위치 계산(app.js colLeft/colWidth)도 이 값을 그대로 쓴다.
+     한 곳에서만 고치면 되도록 변수로 둔다. */
+  --gap: 3px;
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
   --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
   --ok:#12894a; --no:#c62f38; --okbg:#e8f6ee; --nobg:#fdecec;
@@ -58,14 +61,16 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .mbtn:active{background:var(--hover)}
 
 /* ══ 달력 격자 ══ */
-.dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
+.dow{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--gap);margin-bottom:4px}
 .dow span{text-align:center;font-size:.78rem;color:var(--muted);font-weight:600;padding:2px 0}
 .dow span.sun{color:var(--no)}
 .dow span.sat{color:#3b82f6}
+/* 달을 넘길 때 격자가 좌우로 밀려 나가므로 잘라 준다 (가로 스크롤바가 생기지 않게) */
+.gridclip{overflow:hidden}
 /* touch-action:pan-y — 세로 스크롤은 브라우저에 맡기고 가로 제스처만 달 넘기기로 받는다 */
-.grid{display:flex;flex-direction:column;gap:5px;touch-action:pan-y}
+.grid{display:flex;flex-direction:column;gap:var(--gap);touch-action:pan-y}
 .week{position:relative}
-.wrow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.wrow{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--gap)}
 /* 일정 막대는 칸 위에 얹되 탭은 통과시킨다 (칸을 눌러 날짜 상세가 열려야 하므로) */
 .wbars{position:absolute;left:0;right:0;bottom:4px;pointer-events:none}
 .xbar{position:absolute;height:13px;line-height:13px;background:var(--nobg);color:var(--no);
@@ -74,13 +79,13 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .xbar.rcap{border-radius:0 4px 4px 0}
 .xbar.lcap.rcap{border-radius:4px}
 .cell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;
-  min-height:74px;padding:5px 4px 4px;cursor:pointer;overflow:hidden;
+  min-height:72px;padding:4px 3px 3px;cursor:pointer;overflow:hidden;
   display:flex;flex-direction:column;gap:2px;transition:border-color .15s}
 .cell:active{background:var(--hover)}
 .cell.pad{background:transparent;border-color:transparent;cursor:default}
 .cell.past{background:transparent}
 .cell.past .dnum{opacity:.45}
-.cell.today{border-color:var(--accent);border-width:2px;padding:4px 3px 3px}
+.cell.today{border-color:var(--accent);border-width:2px;padding:3px 2px 2px}
 .cell.mine{box-shadow:inset 0 0 0 2px var(--accent)}
 .dnum{font-size:.85rem;font-weight:700;line-height:1.1}
 .dnum.sun{color:var(--no)} .dnum.sat{color:#3b82f6}
@@ -134,9 +139,22 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .vlab{font-size:.82rem;color:var(--muted);font-weight:700;margin-bottom:8px}
 .hrow{display:flex;align-items:center;gap:8px}
 .tilde{color:var(--muted);font-weight:700}
-.hsel{flex:1 1 0;min-width:0;padding:10px 30px 10px 12px;border-radius:8px;color:var(--text);
-  border:1px solid var(--line);font-size:.95rem;font-family:inherit;-webkit-appearance:none;appearance:none;
-  background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%23888' stroke-width='1.5' d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E") no-repeat right 10px center}
+/* 시간 휠 — 점수판 제한시간 피커(.twheel)와 같은 방식. 세로로 돌려서 고른다.
+   높이 132 = 위 여백 48 + 항목 36 + 아래 여백 48 → 가운데 띠에 딱 맞는다. */
+.hwheels{position:relative;display:flex;align-items:stretch;gap:6px;height:132px}
+.hw{flex:1 1 0;min-width:0;height:132px;overflow-y:scroll;scroll-snap-type:y mandatory;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 30%,#000 70%,transparent);
+  mask-image:linear-gradient(to bottom,transparent,#000 30%,#000 70%,transparent)}
+.hw::-webkit-scrollbar{display:none}
+.hw.off{opacity:.3;pointer-events:none}
+.hw .hi-pad{height:48px}
+.hw .hi{height:36px;scroll-snap-align:center;display:flex;align-items:center;justify-content:center;
+  font-size:1.05rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.hw .hi.sel{color:var(--text);font-weight:800;font-size:1.25rem}
+.hw-sep{align-self:center;color:var(--muted);font-weight:700;flex:0 0 auto}
+.hw-band{position:absolute;left:0;right:0;top:48px;height:36px;border-top:1px solid var(--accent);
+  border-bottom:1px solid var(--accent);pointer-events:none;opacity:.5}
 /* 날짜 입력 — 누르면 기기 기본 달력이 뜬다 */
 .dsel{flex:1 1 0;min-width:0;padding:10px 12px;border-radius:8px;background:var(--card);color:var(--text);
   border:1px solid var(--line);font-size:.95rem;font-family:inherit;-webkit-appearance:none;appearance:none}
@@ -207,7 +225,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v216</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v217</span>
   </div>
 </div>
 
@@ -227,13 +245,14 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
     </div>
     <div class="sub" id="dsPastNote" style="display:none; margin-top:8px;">지난 날짜라 투표할 수 없습니다.</div>
 
-    <!-- O 를 고른 사람에게만 — 몇 시부터 몇 시까지 되는지 -->
+    <!-- O 를 고른 사람에게만 — 몇 시부터 몇 시까지 되는지. 점수판 제한시간과 같은 휠. -->
     <div class="vbox" id="dsWhen" style="display:none;">
       <div class="vlab">🕐 가능한 시간</div>
-      <div class="hrow">
-        <select id="dsFrom" class="hsel"></select>
-        <span class="tilde">~</span>
-        <select id="dsTo" class="hsel"></select>
+      <div class="hwheels">
+        <div class="hw" id="dsFrom"></div>
+        <span class="hw-sep">~</span>
+        <div class="hw" id="dsTo"></div>
+        <div class="hw-band"></div>
       </div>
     </div>
 

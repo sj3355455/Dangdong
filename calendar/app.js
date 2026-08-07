@@ -86,23 +86,23 @@ function updateMonthCache() {
   };
 }
 
-async function loadMonth(force = false){
-  if (!currentTeam) {
-    events = {}; gameCnt = {}; counts = {}; myVote = {}; loadErr = '';
-    return;
-  }
-  const cacheKey = getMonthKey();
-  if (!force && monthCache[cacheKey]) {
-    const cached = monthCache[cacheKey];
-    events = { ...cached.events };
-    gameCnt = { ...cached.gameCnt };
-    counts = { ...cached.counts };
-    myVote = { ...cached.myVote };
-    loadErr = cached.loadErr;
-    return;
-  }
-
+function clearMonth(){
   events = {}; gameCnt = {}; counts = {}; myVote = {}; loadErr = '';
+}
+function applyCache(c){
+  events = { ...c.events };
+  gameCnt = { ...c.gameCnt };
+  counts = { ...c.counts };
+  myVote = { ...c.myVote };
+  loadErr = c.loadErr;
+}
+
+async function loadMonth(force = false){
+  if (!currentTeam) { clearMonth(); return; }
+  const cacheKey = getMonthKey();
+  if (!force && monthCache[cacheKey]) { applyCache(monthCache[cacheKey]); return; }
+
+  clearMonth();
   const [d1, d2] = monthRange();
   const auth = getAuth();
 
@@ -251,7 +251,7 @@ function render(){
       <button class="mbtn" id="nextM" aria-label="다음 달">›</button>
     </div>
     <div class="dow">${DOW.map((w, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</span>`).join('')}</div>
-    <div class="grid" id="grid">${weeks}</div>
+    <div class="gridclip"><div class="grid" id="grid">${weeks}</div></div>
     <div class="sub" style="text-align:center; margin:14px 0 20px;">
       날짜를 눌러 참여 가능 여부를 남기세요. 누가 골랐는지는 공개되지 않습니다.
     </div>
@@ -307,9 +307,13 @@ function bindSwipe(grid){
   const end = () => {
     if (!dragging) return;
     dragging = false;
-    const go = horiz && Math.abs(dx) >= SWIPE_GO;
-    reset();
-    if (go) { swipedAt = Date.now(); moveMonth(dx < 0 ? 1 : -1); }
+    if (horiz && Math.abs(dx) >= SWIPE_GO) {
+      // 제자리로 되돌리지 않는다 — 지금 위치에서 그대로 이어서 밀려 나가야 뚝 끊기지 않는다
+      swipedAt = Date.now();
+      moveMonth(dx < 0 ? 1 : -1);
+    } else {
+      reset();                       // 기준에 못 미치면 제자리로
+    }
   };
   grid.addEventListener('pointerup', end);
   grid.addEventListener('pointercancel', end);
@@ -344,9 +348,9 @@ function topDaysHtml(){
 // 서버는 날짜별로 [사유, 인원] 만 준다. 같은 사유가 연달아 붙어 있는 구간을 여기서 이어 붙여
 // 하나의 일정으로 본다. 이름만 쓰므로 누가 등록했는지는 여전히 드러나지 않는다.
 const BAR_H = 13;                                   // 막대 한 줄 높이(px)
-const GAP = 5;                                      // .grid 의 칸 사이 간격과 같아야 한다
-const colLeft  = i => `calc((100% - ${GAP * 6}px) / 7 * ${i} + ${GAP * i}px)`;
-const colWidth = n => `calc((100% - ${GAP * 6}px) / 7 * ${n} + ${GAP * (n - 1)}px)`;
+// 칸 간격은 CSS 의 --gap 하나만 보고 계산한다 — 여기에 숫자를 박아 두면 CSS 를 고칠 때 막대가 어긋난다.
+const colLeft  = i => `calc((100% - var(--gap) * 6) / 7 * ${i} + var(--gap) * ${i})`;
+const colWidth = n => `calc((100% - var(--gap) * 6) / 7 * ${n} + var(--gap) * ${n - 1})`;
 
 // 이 달에 보이는 모든 일정 구간 → [{ reason, from, to }]  (from/to 는 'YYYY-MM-DD')
 function spansForMonth(){
@@ -405,9 +409,46 @@ function barsForWeek(row, spans){
   return segs;
 }
 
-function moveMonth(delta){
-  cur = new Date(cur.getFullYear(), cur.getMonth() + delta, 1);
-  refresh();
+// 달 넘기기 — 밀려 나가고 반대쪽에서 밀려 들어온다.
+// 네트워크를 기다리면 화면이 멈추므로, 캐시가 있으면 바로 그리고 없으면 빈 달을 먼저 그린 뒤
+// 데이터가 오면 다시 그린다. 애니메이션이 통신 속도에 끌려가지 않게 하는 게 핵심.
+const OUT_MS = 140, IN_MS = 180;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+let sliding = false;
+
+async function moveMonth(delta){
+  if (sliding) return;
+  sliding = true;
+  try {
+    const g = $('#grid');
+    if (g) {
+      // 드래그 중이었다면 지금 손가락이 있던 위치에서 이어서 밀려 나간다 (transform 을 지우지 않는다)
+      g.style.transition = `transform ${OUT_MS}ms ease-in, opacity ${OUT_MS}ms ease-in`;
+      g.style.transform = `translateX(${delta > 0 ? -38 : 38}%)`;
+      g.style.opacity = '0';
+      await wait(OUT_MS);
+    }
+
+    cur = new Date(cur.getFullYear(), cur.getMonth() + delta, 1);
+    const cached = monthCache[getMonthKey()];
+    if (cached) applyCache(cached); else clearMonth();
+    render();
+
+    const n = $('#grid');
+    if (n) {
+      n.style.transition = 'none';
+      n.style.transform = `translateX(${delta > 0 ? 38 : -38}%)`;
+      n.style.opacity = '0';
+      // 두 프레임 뒤에 풀어야 브라우저가 시작 상태를 확정한 뒤 전환을 시작한다
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        n.style.transition = `transform ${IN_MS}ms ease-out, opacity ${IN_MS}ms ease-out`;
+        n.style.transform = '';
+        n.style.opacity = '';
+      }));
+    }
+  } finally { sliding = false; }
+
+  if (!monthCache[getMonthKey()]) await refresh();   // 아직 안 받아온 달이면 이어서 불러온다
 }
 
 async function refresh(force = false){
@@ -466,10 +507,14 @@ function syncVoteUI(){
   $('#dsWhen').style.display = (mv === 'o' && !past) ? '' : 'none';
   $('#dsWhy').style.display  = (mv === 'x' && !past) ? '' : 'none';
   if (mv === 'o') {
-    // 시간을 안 적은 사람은 '시간 무관'. 기본값을 함부로 넣으면 아무 때나 되는 사람이
+    // 시간을 안 적은 사람은 '무관'. 기본값을 함부로 넣으면 아무 때나 되는 사람이
     // 특정 시간대만 되는 것처럼 집계돼서, 비워 두는 쪽을 기본으로 한다.
-    $('#dsFrom').value = meta.from != null ? String(meta.from) : '';
-    $('#dsTo').value   = meta.to   != null ? String(meta.to)   : '';
+    // 시트가 화면에 올라온 뒤에 스크롤을 잡아야 해서 다음 프레임으로 미룬다.
+    requestAnimationFrame(() => {
+      setWheel($('#dsFrom'), FROM_OPTS, meta.from != null ? meta.from : null);
+      setWheel($('#dsTo'), TO_OPTS, meta.to != null ? meta.to : 1);
+      syncToWheelState();
+    });
   }
   if (mv === 'x') {
     $('#dsReason').value = meta.reason || '';
@@ -481,15 +526,50 @@ function syncVoteUI(){
   }
 }
 
-// 시각 드롭다운 채우기 (모바일에서는 네이티브 휠로 뜬다)
+// ══ 시간 휠 (점수판 제한시간 피커와 같은 방식) ══
+// 스크롤 스냅으로 돌리고, 멈춘 뒤에 저장한다. 한 칸 넘어갈 때마다 저장하면 통신이 폭주한다.
 const hourLabel = h => h === 24 ? '자정' : `${h}시`;
-function fillHourSelects(){
-  const opt = h => `<option value="${h}">${hourLabel(h)}</option>`;
-  let from = '<option value="">시간 무관</option>', to = '<option value="">시간 무관</option>';
-  for (let h = 0; h <= 23; h++) from += opt(h);
-  for (let h = 1; h <= 24; h++) to   += opt(h);
-  $('#dsFrom').innerHTML = from;
-  $('#dsTo').innerHTML = to;
+const HW_ITEM_H = 36;                                   // .hw .hi 높이(px)와 일치해야 한다
+const FROM_OPTS = [null];                               // null = 시간 무관
+for (let h = 0; h <= 23; h++) FROM_OPTS.push(h);
+const TO_OPTS = [];
+for (let h = 1; h <= 24; h++) TO_OPTS.push(h);
+
+function buildWheel(el, opts, onSettle){
+  el.innerHTML = '<div class="hi-pad"></div>'
+    + opts.map(v => `<div class="hi">${v == null ? '무관' : hourLabel(v)}</div>`).join('')
+    + '<div class="hi-pad"></div>';
+  el._opts = opts;
+  el._val = opts[0];
+  let raf, settle;
+  // 사람이 직접 만지기 전에는 저장하지 않는다 — 값을 맞추려고 스크롤을 옮길 때도 scroll 이 뜨기 때문
+  el.addEventListener('pointerdown', () => { el._user = true; });
+  el.addEventListener('scroll', () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const i = Math.max(0, Math.min(opts.length - 1, Math.round(el.scrollTop / HW_ITEM_H)));
+      el.querySelectorAll('.hi').forEach((d, k) => d.classList.toggle('sel', k === i));
+      if (el._val !== opts[i]) { el._val = opts[i]; vibTick(); }
+      if (!el._user) return;
+      clearTimeout(settle);
+      settle = setTimeout(onSettle, 400);               // 손을 뗀 뒤 멈추면 그때 저장
+    });
+  });
+}
+
+function setWheel(el, opts, v){
+  const i = Math.max(0, opts.indexOf(v));
+  el._user = false;                                     // 프로그램이 옮긴 것이므로 저장 트리거 금지
+  el._val = opts[i];
+  el.scrollTop = i * HW_ITEM_H;
+  el.querySelectorAll('.hi').forEach((d, k) => d.classList.toggle('sel', k === i));
+}
+
+const vibTick = () => { try { navigator.vibrate && navigator.vibrate(6); } catch(e){} };
+
+// 시작이 '무관'이면 종료 휠은 쓸 일이 없다 → 흐리게 잠근다
+function syncToWheelState(){
+  $('#dsTo').classList.toggle('off', $('#dsFrom')._val == null);
 }
 
 const RANGE_MAX = 90;   // 한 번에 등록할 수 있는 최대 일수 (실수로 몇 년치를 채우는 걸 막는다)
@@ -569,14 +649,13 @@ const upsertVotes = rows => sbFetch('/rest/v1/day_votes?on_conflict=team_id,vote
 async function saveHours(){
   const key = openKey, row = myVote[key];
   if (!row || row.c !== 'o' || isPast(key)) return;
-  const fv = $('#dsFrom').value, tv = $('#dsTo').value;
-  let from = fv === '' ? null : parseInt(fv, 10);
-  let to   = tv === '' ? null : parseInt(tv, 10);
-  // 한쪽만 고르면 나머지를 채워 준다. DB 의 CHECK 가 '둘 다 null 이거나 둘 다 값'만 허용하기 때문.
-  if (from == null && to != null) { from = Math.max(0, to - 1); $('#dsFrom').value = String(from); }
-  if (to == null && from != null) { to = Math.min(24, from + 1); $('#dsTo').value = String(to); }
-  // 끝이 시작보다 빠르면 조용히 고쳐 준다 (저장이 CHECK 에 걸려 실패하는 것보다 낫다)
-  if (from != null && !(from < to)) { to = Math.min(24, from + 1); $('#dsTo').value = String(to); }
+  const fw = $('#dsFrom'), tw = $('#dsTo');
+  let from = fw._val, to = tw._val;
+  // 시작이 '무관'이면 시간 조건 자체가 없다 → 둘 다 비운다 (DB CHECK 가 '둘 다 null' 만 허용)
+  if (from == null) { to = null; }
+  // 끝이 시작보다 빠르면 조용히 밀어 준다 (저장이 CHECK 에 걸려 실패하는 것보다 낫다)
+  else if (!(from < to)) { to = Math.min(24, from + 1); setWheel(tw, TO_OPTS, to); }
+  syncToWheelState();
 
   // 캐시가 myVote 를 얕게 복사해 두므로 기존 객체를 고치면 캐시까지 같이 바뀐다 → 새 객체로 교체한다
   const before = row;
@@ -760,8 +839,6 @@ $('#dsClose').onclick = () => $('#daySheet').classList.remove('on');
 $('#daySheet').onclick = e => { if (e.target.id === 'daySheet') $('#daySheet').classList.remove('on'); };
 $('#dsO').onclick = () => vote('o');
 $('#dsX').onclick = () => vote('x');
-$('#dsFrom').onchange = saveHours;
-$('#dsTo').onchange = saveHours;
 $('#dsRangeSave').onclick = saveRange;
 $('#dsSave').onclick = saveEvent;
 $('#dsDel').onclick = delEvent;
@@ -781,7 +858,8 @@ document.addEventListener('visibilitychange', () => {
 // ══ 시작 ══
 applyTheme(getTheme());
 registerSW();
-fillHourSelects();
+buildWheel($('#dsFrom'), FROM_OPTS, () => { syncToWheelState(); saveHours(); });
+buildWheel($('#dsTo'), TO_OPTS, saveHours);
 (async () => {
   $('#view').innerHTML = '<div class="card"><div class="empty">불러오는 중...</div></div>';
   if (getAuth()) $('#btnLogout').style.display = '';
