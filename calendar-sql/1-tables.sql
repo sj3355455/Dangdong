@@ -73,12 +73,16 @@ create index if not exists day_votes_team_date_idx
   on public.day_votes(team_id, vote_date);
 
 -- 2-1) 표에 붙는 부가 정보 (나중에 추가된 열 — 기존 표는 전부 null 이다)
---   from_hour/to_hour : O 일 때 "몇 시부터 몇 시까지 가능한지"  (to_hour 는 끝 시각, 24 = 자정)
+--   slots             : O 일 때 가능한 시간 토막. 비트합 1=오전(6~12) 2=오후(12~18) 4=저녁(18~24).
+--                       여러 개를 함께 고를 수 있어야 해서 비트로 담는다 (오전+저녁 = 5).
+--                       null 은 예전 기록 — 아래 from_hour/to_hour 로 환산해서 센다.
+--   from_hour/to_hour : slots 이전에 쓰던 "몇 시부터 몇 시까지". 새로 쓰지는 않고 읽기만 한다.
 --   reason            : 예전에 X 사유를 담던 열. 지금은 day_plans 로 옮겨 쓰지 않는다.
 -- 이 값들도 남에게는 개별로 나가지 않는다 — vote_counts 가 이름 없이 집계해서만 돌려준다.
 alter table public.day_votes add column if not exists from_hour smallint;
 alter table public.day_votes add column if not exists to_hour   smallint;
 alter table public.day_votes add column if not exists reason    text;
+alter table public.day_votes add column if not exists slots     smallint;
 
 do $$
 begin
@@ -95,6 +99,14 @@ begin
                     and conrelid = 'public.day_votes'::regclass) then
     alter table public.day_votes add constraint day_votes_reason_chk check (
       reason is null or char_length(reason) <= 20
+    );
+  end if;
+  -- 하나도 안 고른 상태(0)는 없다 — O 를 눌렀으면 최소 한 토막은 가능하다는 뜻이다
+  if not exists (select 1 from pg_constraint
+                  where conname = 'day_votes_slots_chk'
+                    and conrelid = 'public.day_votes'::regclass) then
+    alter table public.day_votes add constraint day_votes_slots_chk check (
+      slots is null or slots between 1 and 7
     );
   end if;
 end $$;

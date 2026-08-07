@@ -90,14 +90,17 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .cell.past .dnum{opacity:.45}
 /* 정기전 날 — 칸 전체를 칠한다. .past 뒤에 둬서 지난 정기전도 색이 남는다. */
 .cell.event{background:var(--accent-bg);border-color:var(--accent-soft)}
-/* 오늘은 안쪽 링으로 표시한다 — 테두리는 아래 '내 표' 색이 쓰므로 둘이 겹치면 안 된다 */
-.cell.today{box-shadow:inset 0 0 0 2px var(--accent)}
+/* 오늘은 칸을 회색으로 채운다. 테두리는 '내 표' 색이 쓰므로 배경으로 구분한다.
+   .event 뒤에 둬서 오늘이 정기전이어도 오늘 쪽이 이긴다 — 하루뿐인 표시가 더 급하다.
+   (그날이 정기전인 건 아랫줄 칩이 그대로 알려 준다) */
+.cell.today{background:var(--line)}
 /* 내가 투표한 날 — 예전엔 오른쪽 위에 O/X 동그라미를 얹었는데, 테두리 색 하나로 충분하다.
    덕분에 칸 안이 비어 날짜를 가운데로 놓을 수 있다. */
 .cell.vo{border-color:var(--ok);border-width:2px;padding:2px}
-.cell.vx{border-color:var(--accent);border-width:2px;padding:2px}
-/* 칸 안 세 줄 — 1) 날짜(+정기전) 2) 일정 막대 자리 3) 인원수 또는 판수.
-   높이를 박아 둬야 칸마다 세로가 흔들리지 않는다. 막대는 .wbars 가 2번 자리 위에 얹는다. */
+.cell.vx{border-color:var(--no);border-width:2px;padding:2px}
+/* 칸 안 세 줄 — 1) 날짜 2) 일정 막대 자리 3) 정기전 칩 · 인원수 · 판수.
+   높이를 박아 둬야 칸마다 세로가 흔들리지 않는다. 막대는 .wbars 가 2번 자리 위에 얹는다.
+   정기전 칩은 날짜와 같은 줄에 두면 날짜가 가운데로 못 가서 아랫줄로 내렸다. */
 .r1{display:flex;align-items:center;justify-content:center;gap:3px;height:17px;overflow:hidden}
 .rbar{flex:0 0 auto;margin-top:5px}        /* 둘째 줄 — 막대가 앉을 자리. 위 5px 은 날짜와의 간격 */
 .r3{display:flex;align-items:center;justify-content:center;gap:2px;height:17px;margin-top:auto;overflow:hidden;white-space:nowrap}
@@ -164,13 +167,14 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .agg{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .agghd{font-size:.82rem;color:var(--muted);font-weight:700;margin-bottom:8px}
 /* 시간대별 가능 인원 — 가로축이 시간인 세로 막대 그래프 */
-.hchart{display:flex;align-items:flex-end;gap:3px;overflow-x:auto;padding-bottom:2px}
-.hcol{flex:1 1 0;min-width:22px;display:flex;flex-direction:column;align-items:center;gap:3px}
+/* 막대는 오전·오후·저녁 세 개뿐이라 가로 스크롤이 필요 없다 */
+.hchart{display:flex;align-items:flex-end;gap:8px;padding-bottom:2px}
+.hcol{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px}
 .hcol .hn{font-size:.7rem;font-weight:800;color:var(--ok);line-height:1;font-variant-numeric:tabular-nums}
 .hcol .hb{width:100%;height:74px;display:flex;align-items:flex-end;
   background:linear-gradient(var(--line),var(--line)) no-repeat bottom/100% 1px}
 .hcol .hb i{display:block;width:100%;background:var(--ok);border-radius:3px 3px 0 0;min-height:2px}
-.hcol .hh{font-size:.66rem;color:var(--muted);line-height:1;font-variant-numeric:tabular-nums}
+.hcol .hh{font-size:.72rem;font-weight:600;color:var(--muted);line-height:1}
 .hcol.best .hn{color:var(--accent)}
 .hcol.best .hb i{background:var(--accent)}
 .rsn{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
@@ -286,12 +290,11 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
     <div class="vbox" id="dsWhen" style="display:none;">
       <div class="vlab">🕐 가능한 시간</div>
       <div class="slots" id="dsSlots">
-        <button type="button" data-s="any">아무때나</button>
-        <button type="button" data-s="am">오전<span>6~12시</span></button>
-        <button type="button" data-s="pm">오후<span>12~18시</span></button>
-        <button type="button" data-s="ev">저녁<span>18~24시</span></button>
+        <button type="button" data-b="1">오전<span>6~12시</span></button>
+        <button type="button" data-b="2">오후<span>12~18시</span></button>
+        <button type="button" data-b="4">저녁<span>18~24시</span></button>
       </div>
-      <div class="sub" id="dsSlotNote" style="margin-top:8px; font-size:.75rem; display:none;"></div>
+      <div class="sub" style="margin-top:8px; font-size:.75rem;">되는 시간대를 여러 개 골라도 됩니다.</div>
     </div>
 
     <!-- 내 일정 — O/X 와 별개로 언제든 등록한다. 같은 날에 몇 개든 쌓을 수 있다.

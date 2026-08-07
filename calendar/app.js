@@ -27,7 +27,8 @@ let cur = new Date(); cur.setDate(1); cur.setHours(0, 0, 0, 0);
 let events = {};    // 날짜 → { id, round_no, note }
 let gameCnt = {};   // 날짜 → 경기 판수
 let counts = {};    // 날짜 → { o, x }
-let myVote = {};    // 날짜 → { c:'o'|'x', from, to } — day_votes 의 내 행 (그냥 누른 O/X)
+let myVote = {};    // 날짜 → { c:'o'|'x', slots, from, to } — day_votes 의 내 행. slots 은 시간대 비트합
+                    // (from/to 는 slots 이전 기록을 환산할 때만 쓴다)
 let planSpans = []; // 이 달에 걸린 일정 막대 [{ name, from, to, cnt }] — 이름·기간·인원수만 (익명)
 let myPlans = [];   // 내가 등록한 일정 [{ id, name, start_date, end_date }] — 지우려면 이게 필요하다
 let loading = false;
@@ -127,7 +128,7 @@ async function loadMonth(force = false){
           + `&played_at=gte.${d1}T00:00:00&played_at=lt.${ymd(nextMonth)}T00:00:00`),
     sbFetch('/rest/v1/rpc/vote_counts', { method: 'POST', body: JSON.stringify({ t: currentTeam, d1, d2 }) }),
     auth && auth.uid
-      ? sbFetch(`/rest/v1/day_votes?select=vote_date,choice,from_hour,to_hour&team_id=eq.${currentTeam}`
+      ? sbFetch(`/rest/v1/day_votes?select=vote_date,choice,slots,from_hour,to_hour&team_id=eq.${currentTeam}`
               + `&vote_date=gte.${d1}&vote_date=lte.${d2}`)
       : Promise.resolve([]),
     sbFetch('/rest/v1/rpc/plan_spans', { method: 'POST', body: JSON.stringify({ t: currentTeam, d1, d2 }) }),
@@ -152,7 +153,7 @@ async function loadMonth(force = false){
   if (cnt.status === 'fulfilled' && Array.isArray(cnt.value))
     for (const c of cnt.value) counts[c.vote_date] = {
       o: c.o_cnt || 0, x: c.x_cnt || 0,
-      hours: Array.isArray(c.hours) ? c.hours : [],       // [[시, 인원], ...]
+      hours: Array.isArray(c.hours) ? c.hours : [],       // [[토막, 인원], ...] 0=오전 1=오후 2=저녁
       reasons: Array.isArray(c.reasons) ? c.reasons : []  // [[사유, 인원], ...]
     };
   else
@@ -161,7 +162,7 @@ async function loadMonth(force = false){
   // day_votes 는 RLS 상 '내 행'만 돌아온다 — 그래서 이게 곧 내 표다
   if (mine.status === 'fulfilled' && Array.isArray(mine.value)) {
     for (const v of mine.value)
-      myVote[v.vote_date] = { c: v.choice, from: v.from_hour, to: v.to_hour };
+      myVote[v.vote_date] = { c: v.choice, slots: v.slots, from: v.from_hour, to: v.to_hour };
   } else if (!loadErr) {
     loadErr = '내 투표를 불러오지 못했습니다: ' + errText(mine.reason);
   }
@@ -255,21 +256,22 @@ function render(){
       const cls = ['cell'];
       if (ev) cls.push('event');
       if (key === today) cls.push('today');
-      // 내 표는 테두리 색으로만 알린다 (초록=가능, 주황=불가). 칸 안에 표시를 얹지 않는다.
+      // 내 표는 테두리 색으로만 알린다 (초록=가능, 빨강=불가). 칸 안에 표시를 얹지 않는다.
       if (mv && !past) cls.push(mv === 'o' ? 'vo' : 'vx');
       if (past) cls.push('past');          // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
       const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
-      // 첫째 줄 = 날짜(+정기전), 둘째 줄 = 일정 막대, 셋째 줄 = 인원수 또는 판수.
+      // 첫째 줄 = 날짜만(가운데), 둘째 줄 = 일정 막대, 셋째 줄 = 정기전 칩 · 인원수 · 판수.
+      // 정기전 칩을 날짜 옆에 두면 날짜가 가운데를 못 잡아 아랫줄로 내렸다. 셋째 줄은
+      // 원래 정기전 날엔 인원수를 안 띄우던 자리라 서로 부딪히지 않는다.
       // .rbar 는 막대가 앉을 자리만 차지하는 빈 칸이다 — 실제 막대는 .wbars 가 그 위에 얹는다.
       // 줄 높이를 고정해 둬야 칸마다 위아래로 흔들리지 않는다.
       cells += `<div class="${cls.join(' ')}" data-d="${key}">
-        <span class="r1"><span class="dnum${dcls}">${d}</span>${
-          ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>` : ''
-        }</span>
+        <span class="r1"><span class="dnum${dcls}">${d}</span></span>
         <span class="rbar" style="height:${barBox}px"></span>
         <span class="r3">${
-          showVotes ? `<b class="vo">${c.o}</b><i class="vsep">/</i><b class="vx">${c.x}</b>`
-          : showGames ? `<span class="gchip">🎱 ${g}판</span>`
+          showGames ? `<span class="gchip">🎱 ${g}판</span>`
+          : ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>`
+          : showVotes ? `<b class="vo">${c.o}</b><i class="vsep">/</i><b class="vx">${c.x}</b>`
           : ''
         }</span>
       </div>`;
@@ -566,33 +568,29 @@ const shortRange = (a, b) => {
 
 // ══ 가능한 시간 ══
 // 예전엔 시(時)를 하나씩 돌려 고르는 휠이었다. 정작 모이는 시간대는 몇 갈래뿐이라
-// 오전/오후/저녁 세 토막으로 줄였다. 저장 형식(from_hour~to_hour)은 그대로라 서버·집계는 안 바뀐다.
-// 끝 시각은 제외 — 18~24 는 18,19,...,23 시에 있다는 뜻이다.
-const SLOTS = [
-  { s:'any', label:'아무때나', from:null, to:null },
-  { s:'am',  label:'오전',     from:6,    to:12 },
-  { s:'pm',  label:'오후',     from:12,   to:18 },
-  { s:'ev',  label:'저녁',     from:18,   to:24 }
-];
-const slotOf = (from, to) =>
-  SLOTS.find(v => v.from === (from == null ? null : from) && v.to === (to == null ? null : to)) || null;
+// 오전/오후/저녁 세 토막으로 줄이고, 여러 개를 함께 고를 수 있게 비트합으로 담는다.
+// 오전+저녁처럼 떨어진 조합도 있어서 from~to 한 쌍으로는 표현할 수 없기 때문이다.
+const SLOT_AM = 1, SLOT_PM = 2, SLOT_EV = 4, SLOT_ALL = 7;
+const SLOT_NAME = { 1:'오전', 2:'오후', 4:'저녁' };
+const slotText = n => [1,2,4].filter(b => n & b).map(b => SLOT_NAME[b]).join('·');
+// 예전 기록(slots 없음)은 from_hour~to_hour 와 겹치는 토막으로 환산한다. 서버 vote_counts 도
+// 똑같이 환산하므로 화면과 집계가 어긋나지 않는다. 시간을 안 적었던 표는 '무관' → 세 토막 전부.
+function slotsOf(meta){
+  if (meta.slots != null) return meta.slots;
+  if (meta.from == null) return SLOT_ALL;
+  return (meta.from < 12 && meta.to >  6 ? SLOT_AM : 0)
+       + (meta.from < 18 && meta.to > 12 ? SLOT_PM : 0)
+       + (meta.from < 24 && meta.to > 18 ? SLOT_EV : 0);
+}
 const vibTick = () => { try { navigator.vibrate && navigator.vibrate(6); } catch(e){} };
 
-// 저장된 값에 맞춰 버튼을 켠다. 휠 시절에 저장한 19~22 같은 값은 세 토막 어디에도 안 맞으므로
-// 아무 버튼도 켜지 않고 그 값을 문구로 알려 준다 (아무거나 골라 덮어쓰면 된다).
 function syncSlots(meta){
-  const cur = slotOf(meta.from, meta.to);
+  const n = slotsOf(meta);
   $('#dsSlots').querySelectorAll('button').forEach(b => {
-    b.classList.toggle('on', !!cur && b.dataset.s === cur.s);
-    b.setAttribute('aria-pressed', !!cur && b.dataset.s === cur.s);
+    const on = !!(n & Number(b.dataset.b));
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on);
   });
-  const note = $('#dsSlotNote');
-  if (!cur && meta.from != null) {
-    note.textContent = `예전에 저장한 시간: ${meta.from}시~${meta.to}시 — 위에서 다시 골라 주세요.`;
-    note.style.display = '';
-  } else {
-    note.style.display = 'none';
-  }
 }
 
 const RANGE_MAX = 90;   // 한 번에 등록할 수 있는 최대 일수 (실수로 몇 년치를 채우는 걸 막는다)
@@ -613,8 +611,8 @@ async function vote(choice){
   const prev = myChoice(key);
   const next = (choice && choice !== prev) ? choice : null;
 
-  // 시간은 비운 채로 시작한다 — 누른 즉시 아래 칸이 열리니 원하면 거기서 채운다
-  const nextRow = next ? { c: next, from: null, to: null } : null;
+  // 가능(O)은 세 시간대 전부 켠 상태로 시작한다 — 안 되는 때만 꺼 주면 된다
+  const nextRow = next ? { c: next, slots: next === 'o' ? SLOT_ALL : null, from: null, to: null } : null;
 
   // 낙관적 반영: 숫자를 먼저 움직여 두고, 실패하면 되돌린다
   const c = counts[key] || (counts[key] = { o: 0, x: 0, hours: [], reasons: [] });
@@ -655,8 +653,9 @@ function rowFor(key, row){
   const auth = getAuth();
   return {
     team_id: currentTeam, vote_date: key, user_id: auth.uid, choice: row.c,
-    from_hour: row.c === 'o' ? row.from : null,
-    to_hour:   row.c === 'o' ? row.to   : null,
+    slots:     row.c === 'o' ? slotsOf(row) : null,
+    from_hour: null,          // 시간은 slots 로 옮겼다 — 이 두 열은 예전 기록을 읽을 때만 쓴다
+    to_hour:   null,
     reason:    null,          // 일정은 day_plans 로 옮겼다 — 이 열은 더 쓰지 않는다
     updated_at: new Date().toISOString()
   };
@@ -668,22 +667,24 @@ const upsertVotes = rows => sbFetch('/rest/v1/day_votes?on_conflict=team_id,vote
   body: JSON.stringify(rows)
 });
 
-// 가능 시간 변경 — 이미 O 를 고른 상태에서만 불린다
-async function saveHours(slotKey){
+// 가능 시간 토글 — 이미 O 를 고른 상태에서만 불린다. 여러 토막을 함께 켤 수 있다.
+async function saveHours(bit){
   const key = openKey, row = myVote[key];
   if (!row || row.c !== 'o' || isPast(key)) return;
-  const sl = SLOTS.find(v => v.s === slotKey);
-  if (!sl) return;
+  const cur = slotsOf(row);
+  const next = cur ^ bit;
+  // 전부 끄면 "언제 되는지 모름"이 되어 O 를 누른 뜻이 사라진다 → 마지막 하나는 못 끄게 막는다
+  if (!next) return msg('최소 한 시간대는 골라야 합니다.', 'err');
   vibTick();
 
   // 캐시가 myVote 를 얕게 복사해 두므로 기존 객체를 고치면 캐시까지 같이 바뀐다 → 새 객체로 교체한다
   const before = row;
-  myVote[key] = { ...row, from: sl.from, to: sl.to };
+  myVote[key] = { ...row, slots: next, from: null, to: null };
   syncSlots(myVote[key]);              // 통신을 기다리지 않고 버튼부터 켠다
   msg('저장 중...');
   try {
     await upsertVotes([rowFor(key, myVote[key])]);
-    msg(sl.from == null ? '아무때나 가능으로 저장했습니다.' : `${sl.label} 가능으로 저장했습니다.`, 'ok');
+    msg(`${slotText(next)} 가능으로 저장했습니다.`, 'ok');
     updateMonthCache();
     await reloadAgg();
   } catch(e){
@@ -755,23 +756,20 @@ function renderAgg(key){
   let html = '';
 
   if (hours.length) {
-    // 가로축은 시간. 사람이 있는 구간만 그리되 중간에 빈 시간이 있으면 0 으로 채워 축이 끊기지 않게 한다.
-    const lo = Math.min(...hours.map(h => h[0]));
-    const hi = Math.max(...hours.map(h => h[0]));
+    // 서버가 [토막, 인원] 으로 준다 (0=오전 1=오후 2=저녁). 셋을 항상 다 그린다 —
+    // 0명인 토막을 빼면 "아무도 없는 시간"이 안 보여서 정작 알고 싶은 게 안 보인다.
     const at = Object.fromEntries(hours);
     const max = Math.max(...hours.map(h => h[1]));
-    let cols = '';
-    for (let h = lo; h <= hi; h++) {
-      const n = at[h] || 0;
-      cols += `<div class="hcol${n === max ? ' best' : ''}">
+    const cols = ['오전','오후','저녁'].map((lb, i) => {
+      const n = at[i] || 0;
+      return `<div class="hcol${n && n === max ? ' best' : ''}">
         <span class="hn">${n || ''}</span>
         <span class="hb"><i style="height:${max ? (n / max) * 100 : 0}%"></i></span>
-        <span class="hh">${h}</span>
+        <span class="hh">${lb}</span>
       </div>`;
-    }
+    }).join('');
     html += `<div class="agg"><div class="agghd">🕐 시간대별 가능 인원</div>`
       + `<div class="hchart">${cols}</div>`
-      + `<div class="sub" style="text-align:right; margin-top:4px; font-size:.72rem;">시(時)</div>`
       + `</div>`;
   }
   if (reasons.length) {
@@ -921,7 +919,7 @@ document.addEventListener('visibilitychange', () => {
 // ══ 시작 ══
 applyTheme(getTheme());
 registerSW();
-$('#dsSlots').querySelectorAll('button').forEach(b => { b.onclick = () => saveHours(b.dataset.s); });
+$('#dsSlots').querySelectorAll('button').forEach(b => { b.onclick = () => saveHours(Number(b.dataset.b)); });
 (async () => {
   $('#view').innerHTML = '<div class="card"><div class="empty">불러오는 중...</div></div>';
   if (getAuth()) $('#btnLogout').style.display = '';

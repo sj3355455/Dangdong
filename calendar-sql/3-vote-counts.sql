@@ -9,7 +9,9 @@
 --    시간과 일정 이름을 공개해도 누가 썼는지는 여전히 알 수 없다.
 --    SECURITY DEFINER 라 RLS를 우회하므로, 팀원인지는 함수 안에서 직접 확인한다.
 --
---    hours   : [[19,4],[20,5]]        → 19시에 4명, 20시에 5명 가능
+--    hours   : [[0,4],[1,5],[2,2]]    → 오전 4명, 오후 5명, 저녁 2명 가능
+--                                        (0=오전 1=오후 2=저녁. 예전엔 시(時)별이었는데
+--                                         앱이 세 토막으로 바뀌면서 같이 토막 단위가 됐다)
 --    reasons : [["시험기간",3],...]   → 그 날 이 일정이 걸린 사람이 3명 (불가 표와는 무관)
 --
 --    반환 타입이 바뀌면 CREATE OR REPLACE 가 막히므로 먼저 지운다.
@@ -47,21 +49,29 @@ as $$
       and (select ok from mem)
   ),
   -- 가능/불가 인원은 오직 표(day_votes)로만 센다.
+  -- slots 이 없는 예전 기록은 from_hour~to_hour 와 겹치는 토막으로 환산한다. 시간을 아예
+  -- 안 적었던 표('무관')는 아무 때나 된다는 뜻이었으므로 세 토막 전부(7)로 본다.
   mine as (
-    select v.vote_date, v.choice, v.from_hour, v.to_hour, v.user_id
+    select v.vote_date, v.choice, v.user_id,
+           coalesce(v.slots,
+             case when v.from_hour is null then 7
+                  else (case when v.from_hour < 12 and v.to_hour >  6 then 1 else 0 end)
+                     + (case when v.from_hour < 18 and v.to_hour > 12 then 2 else 0 end)
+                     + (case when v.from_hour < 24 and v.to_hour > 18 then 4 else 0 end)
+             end) as slots
     from public.day_votes v
     where v.team_id = t
       and v.vote_date >= d1
       and v.vote_date <= d2
       and (select ok from mem)
   ),
-  -- 시작~종료를 시(hour) 단위로 펼쳐서 센다. 끝 시각은 제외 — 19~22 는 19,20,21 시에 있다는 뜻.
+  -- 토막별 가능 인원. 한 사람이 여러 토막을 고르면 고른 토막마다 한 번씩 센다.
   hrs as (
-    select m.vote_date, g.h, count(*)::int as cnt
+    select m.vote_date, s.i as h, count(distinct m.user_id)::int as cnt
     from mine m
-         cross join lateral generate_series(m.from_hour::int, (m.to_hour - 1)::int) as g(h)
-    where m.choice = 'o' and m.from_hour is not null and m.to_hour is not null
-    group by m.vote_date, g.h
+         cross join (values (0, 1), (1, 2), (2, 4)) as s(i, bit)
+    where m.choice = 'o' and (m.slots & s.bit) <> 0
+    group by m.vote_date, s.i
   ),
   -- 그 날 걸려 있는 일정 이름별 인원수 (이름만 나가고 누구인지는 나가지 않는다)
   rsn as (
