@@ -72,37 +72,40 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .week{position:relative}
 .wrow{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--gap)}
 /* 일정 막대는 칸 위에 얹되 탭은 통과시킨다 (칸을 눌러 날짜 상세가 열려야 하므로) */
-.wbars{position:absolute;left:0;right:0;bottom:4px;pointer-events:none}
+.wbars{position:absolute;left:0;right:0;bottom:3px;pointer-events:none}
 .xbar{position:absolute;height:13px;line-height:13px;background:var(--nobg);color:var(--no);
   font-size:.62rem;font-weight:800;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .xbar.lcap{border-radius:4px 0 0 4px}
 .xbar.rcap{border-radius:0 4px 4px 0}
 .xbar.lcap.rcap{border-radius:4px}
 .cell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;
-  min-height:72px;padding:4px 3px 3px;cursor:pointer;overflow:hidden;
-  display:flex;flex-direction:column;gap:2px;transition:border-color .15s}
+  min-height:64px;padding:3px 3px 3px;cursor:pointer;overflow:hidden;
+  display:flex;flex-direction:column;gap:0;transition:border-color .15s}
 .cell:active{background:var(--hover)}
 .cell.pad{background:transparent;border-color:transparent;cursor:default}
 .cell.past{background:transparent}
 .cell.past .dnum{opacity:.45}
 /* 정기전 날 — 칸 전체를 칠한다. .past 뒤에 둬서 지난 정기전도 색이 남는다. */
 .cell.event{background:var(--accent-bg);border-color:var(--accent-soft)}
-.cell.today{border-color:var(--accent);border-width:2px;padding:3px 2px 2px}
+.cell.today{border-color:var(--accent);border-width:2px;padding:2px 2px 2px}
 .cell.mine{box-shadow:inset 0 0 0 1.5px var(--accent-soft)}
+/* 칸 안은 높이가 고정된 두 줄 — 첫째 줄 날짜(+판수), 둘째 줄 인원수 또는 정기전.
+   셋째 줄(일정 막대)은 .wbars 가 칸 아래 여백 위에 얹힌다. 높이를 박아 둬야 세로가 안 흔들린다. */
+.r1{display:flex;align-items:center;gap:3px;height:17px;overflow:hidden}
+.r2{display:flex;align-items:center;gap:2px;height:17px;overflow:hidden;white-space:nowrap}
 .dnum{font-size:.85rem;font-weight:700;line-height:1.1}
 .dnum.sun{color:var(--no)} .dnum.sat{color:#3b82f6}
-.evchip{font-size:.66rem;font-weight:800;color:#fff;background:var(--accent);
-  border-radius:5px;padding:1px 4px;align-self:flex-start;line-height:1.35;white-space:nowrap;
+.evchip{font-size:.64rem;font-weight:800;color:#fff;background:var(--accent);
+  border-radius:5px;padding:1px 4px;line-height:1.3;white-space:nowrap;
   max-width:100%;overflow:hidden;text-overflow:ellipsis}
 /* 칸이 이미 주황이니 칩까지 채우면 답답하다 — 글자만 남긴다 */
-.cell.event .evchip{background:none;color:var(--accent);padding:1px 0}
-.gchip{font-size:.66rem;color:var(--muted);line-height:1.3;white-space:nowrap}
+.cell.event .evchip{background:none;color:var(--accent);padding:0}
+.gchip{font-size:.62rem;color:var(--muted);line-height:1.2;white-space:nowrap;margin-left:auto}
 /* 가능/불가 인원 — 좁은 칸에 두 줄로 넘치지 않게 "5 / 2" 한 줄로 */
-.votes{margin-top:auto;display:flex;align-items:baseline;gap:2px;white-space:nowrap;line-height:1.3}
-.votes b{font-size:.74rem;font-weight:800;font-variant-numeric:tabular-nums}
-.votes .vo{color:var(--ok)}
-.votes .vx{color:var(--no)}
-.votes .vsep{font-style:normal;font-size:.66rem;color:var(--muted)}
+.r2 b{font-size:.74rem;font-weight:800;font-variant-numeric:tabular-nums}
+.r2 .vo{color:var(--ok)}
+.r2 .vx{color:var(--no)}
+.r2 .vsep{font-style:normal;font-size:.66rem;color:var(--muted)}
 .mymark{position:absolute;top:4px;right:4px;font-size:.62rem;font-weight:900;
   width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff}
 .mymark.o{background:var(--ok)} .mymark.x{background:var(--no)}
@@ -231,7 +234,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v221</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v222</span>
   </div>
 </div>
 

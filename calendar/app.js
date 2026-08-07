@@ -199,16 +199,22 @@ function render(){
   for (let d = 1; d <= daysInMonth; d++) slots.push(`${y}-${pad(m + 1)}-${pad(d)}`);
   while (slots.length % 7) slots.push(null);
 
-  const lanesOf = spansForMonth();                     // 이 달의 일정 막대 (사유별로 이어 붙인 것)
+  const spans = spansForMonth();                       // 이 달의 일정 (사유별로 이어 붙인 구간)
+  const isEvent = k => !!events[k];                    // 정기전 칸에서는 막대를 끊는다
 
-  let weeks = '';
+  // 주마다 막대를 먼저 계산해서 '이 달에서 가장 많이 쌓인 줄 수'를 구한다.
+  // 주마다 다른 높이를 쓰면 인원수와 막대의 세로 위치가 주마다 달라져 눈이 어지럽다.
+  const laid = [];
   for (let w = 0; w * 7 < slots.length; w++) {
     const row = slots.slice(w * 7, w * 7 + 7);
-    const bars = barsForWeek(row, lanesOf);
-    const laneCount = bars.reduce((n, b) => Math.max(n, b.lane + 1), 0);
-    // 막대가 놓일 만큼 칸 아래를 비워 둔다 — 그래야 O/X 알약과 겹치지 않는다
-    const padBottom = 4 + laneCount * (BAR_H + 2);
+    laid.push({ row, bars: barsForWeek(row, spans, isEvent) });
+  }
+  const monthLanes = laid.reduce((n, wk) =>
+    Math.max(n, wk.bars.reduce((m, b) => Math.max(m, b.lane + 1), 0)), 0);
+  const barBox = monthLanes * (BAR_H + 2);             // 막대가 놓일 셋째 줄의 높이 (달 전체 공통)
 
+  let weeks = '';
+  for (const { row, bars } of laid) {
     let cells = '';
     for (const key of row) {
       if (!key) { cells += '<div class="cell pad"></div>'; continue; }
@@ -226,16 +232,20 @@ function render(){
       if (mv && !past) cls.push('mine');
       if (past) cls.push('past');          // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
       const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
-      cells += `<div class="${cls.join(' ')}" data-d="${key}" style="padding-bottom:${padBottom}px">
+      // 첫째 줄 = 날짜(+판수), 둘째 줄 = 인원수 또는 정기전, 셋째 줄 = 일정 막대.
+      // 각 줄의 높이를 고정해 두어야 칸마다 위아래로 흔들리지 않는다.
+      cells += `<div class="${cls.join(' ')}" data-d="${key}" style="padding-bottom:${3 + barBox}px">
         ${mv && !past ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
-        <span class="dnum${dcls}">${d}</span>
-        ${ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>` : ''}
-        ${g ? `<span class="gchip">🎱 ${g}판</span>` : ''}
-        ${showVotes ? `<span class="votes"><b class="vo">${c.o}</b><i class="vsep">/</i><b class="vx">${c.x}</b></span>` : ''}
+        <span class="r1"><span class="dnum${dcls}">${d}</span>${g ? `<span class="gchip">🎱${g}</span>` : ''}</span>
+        <span class="r2">${
+          ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>`
+          : showVotes ? `<b class="vo">${c.o}</b><i class="vsep">/</i><b class="vx">${c.x}</b>`
+          : ''
+        }</span>
       </div>`;
     }
     weeks += `<div class="week"><div class="wrow">${cells}</div>`
-           + `<div class="wbars" style="height:${laneCount * (BAR_H + 2)}px">`
+           + `<div class="wbars" style="height:${barBox}px">`
            + bars.map(b => `<span class="xbar${b.lcap ? ' lcap' : ''}${b.rcap ? ' rcap' : ''}"
                  style="left:${colLeft(b.col)}; width:${colWidth(b.len)}; top:${b.lane * (BAR_H + 2)}px"
                  title="${esc(b.reason)}">${b.lcap ? esc(b.reason) : ''}</span>`).join('')
@@ -386,21 +396,29 @@ const addDays = (key, n) => {
   return ymd(new Date(y, m - 1, d + n));
 };
 
-// 한 주(7칸)에 걸치는 막대 조각들 → 겹치지 않게 위아래 줄(lane)을 배정한다
-function barsForWeek(row, spans){
+// 한 주(7칸)에 걸치는 막대 조각들 → 겹치지 않게 위아래 줄(lane)을 배정한다.
+// 정기전 칸(skip)에서는 막대를 끊는다 — 그 칸은 색칠로 이미 꽉 차 있어 침범하면 안 된다.
+function barsForWeek(row, spans, skip = () => false){
   const segs = [];
   for (const s of spans) {
     let col = -1, len = 0;
+    const flush = () => {
+      if (col < 0) return;
+      segs.push({
+        reason: s.reason, col, len,
+        // 주 안에서 끊긴 자리는 실제로 보이는 끝이므로 둥글게 만다.
+        // 주 가장자리에 딱 붙었는데 일정이 더 이어질 때만 각지게 남겨 다음 주와 이어 보이게 한다.
+        lcap: col > 0 || row[0] === s.from,
+        rcap: col + len < 7 || row[6] === s.to
+      });
+      col = -1; len = 0;
+    };
     for (let i = 0; i < 7; i++) {
       const k = row[i];
-      if (k && k >= s.from && k <= s.to) { if (col < 0) col = i; len++; }
+      if (k && k >= s.from && k <= s.to && !skip(k)) { if (col < 0) col = i; len++; }
+      else flush();
     }
-    if (col < 0) continue;
-    segs.push({
-      reason: s.reason, col, len,
-      lcap: row[col] === s.from,              // 일정이 여기서 시작하면 왼쪽을 둥글게
-      rcap: row[col + len - 1] === s.to       // 여기서 끝나면 오른쪽을 둥글게
-    });
+    flush();
   }
   // 시작이 빠른 것부터, 빈 줄 중 가장 위에 넣는다
   segs.sort((a, b) => a.col - b.col || b.len - a.len);
