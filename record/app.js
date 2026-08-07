@@ -665,8 +665,8 @@ function rankRows(mode){
 /* 포디움 — 1·2·3등은 시상대에, 나머지는 아래 목록에.
    등수는 표와 똑같이 rankOf(공동 등수)를 그대로 쓴다. 공동 1등이 둘이면 한 칸에 둘 다
    올라가고 2등 칸은 비는 게 아니라 아예 없다(다음이 3등이므로). */
-function podiumHtml(rows, rankOf, COLS){
-  const col = COLS.find(c => c.k === sortKey) || COLS[0];
+// 1~3등을 등수별로 묶는다(공동 등수면 한 묶음). 화면과 저장 이미지가 같은 결과를 쓰도록 공용.
+function podiumGroups(rows, rankOf){
   const groups = [];
   rows.forEach((p, i) => {
     const r = rankOf[i];
@@ -674,6 +674,14 @@ function podiumHtml(rows, rankOf, COLS){
     const g = groups.find(x => x.rank === r);
     if (g) g.players.push(p); else groups.push({ rank: r, players: [p] });
   });
+  return groups;
+}
+const podiumRest = (rows, rankOf) =>
+  rows.map((p, i) => ({ rank: rankOf[i], p })).filter(x => x.rank > 3);
+
+function podiumHtml(rows, rankOf, COLS){
+  const col = COLS.find(c => c.k === sortKey) || COLS[0];
+  const groups = podiumGroups(rows, rankOf);
   const nameLink = p => `<a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>`;
   // 단(stand)은 윗면(밝은 띠) + 앞면(금속 그라디언트 · 등수 숫자)으로 나눠 입체감을 준다.
   const step = g => !g ? '' : `<div class="step s${g.rank}">
@@ -687,13 +695,197 @@ function podiumHtml(rows, rankOf, COLS){
   const pod = `<div class="pod">${[byRank(2), byRank(1), byRank(3)].map(step).join('')}</div>
     <div class="podfloor"></div>`;
 
-  const rest = rows.map((p, i) => ({ rank: rankOf[i], p })).filter(x => x.rank > 3);
+  const rest = podiumRest(rows, rankOf);
   const restHtml = !rest.length ? '' : `<div class="podrest">${rest.map(x => `
       <div class="pdrow"><span class="pd-rk">${x.rank}</span>
         <span class="pd-nm">${nameLink(x.p)}</span>
         <span class="pd-vl">${cell(x.p, col)}</span></div>`).join('')}</div>`;
 
-  return `<div class="podhead">${esc(col.t)}</div>${pod}${restHtml}`;
+  const saveBtn = `<div style="text-align:center;margin-top:18px">
+      <button class="mbtn p-save">📷 이미지로 저장</button>
+      <div class="sub p-save-msg" style="margin:8px 0 0;min-height:1.2em"></div>
+    </div>`;
+  return `<div class="podhead">${esc(col.t)}</div>${pod}${restHtml}${saveBtn}`;
+}
+
+/* ══ 포디움을 이미지로 ══
+   DOM 캡처 라이브러리(html2canvas 등)를 쓰지 않고 캔버스에 직접 그린다. 외부 의존성이
+   없어야 하고(오프라인·CSP), 화면 그대로가 아니라 제목·기간을 넣은 공유용 카드가 낫기 때문.
+   색은 지금 테마의 CSS 변수를 그대로 읽어 와 화면과 같은 톤으로 맞춘다. */
+const PODIUM_IMG = {
+  W: 720, PAD: 40, GAP: 16,
+  H1: 168, H2: 122, H3: 92,     // 1·2·3등 단 높이
+  TOPBAR: 10,                   // 단 윗면 밝은 띠
+  ROW: 46,                      // 4등 이하 한 줄
+  MAXNAMES: 4                   // 한 단에 이름 최대 4명, 넘으면 '외 N명'
+};
+function podiumCanvas(rows, rankOf, COLS){
+  const G = PODIUM_IMG;
+  const col = COLS.find(c => c.k === sortKey) || COLS[0];
+  const groups = podiumGroups(rows, rankOf);
+  const rest = podiumRest(rows, rankOf);
+
+  const rootCS = getComputedStyle(document.documentElement);
+  const v = (n, d) => (rootCS.getPropertyValue(n) || '').trim() || d;
+  const C = { bg:v('--card','#ffffff'), text:v('--text','#1a1d21'), muted:v('--muted','#6b7280'),
+              line:v('--line','#e5e7eb'), chip:v('--bg','#f6f7f9') };
+  // 금·은·동은 테마와 무관하게 고정 (화면 CSS 와 같은 값)
+  const METAL = [ {top:'#ffeaa6', a:'#ffd75f', b:'#e0a112', num:'#8a5c00'},
+                  {top:'#f0f3f6', a:'#dde2e8', b:'#aab2bd', num:'#525a65'},
+                  {top:'#f6dcc4', a:'#e9bb92', b:'#c1854f', num:'#6d4520'} ];
+  const FF = '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+  const font = (w, s) => `${w} ${s}px ${FF}`;
+
+  // 단 위에 올라가는 이름 줄 수 → 포디움 영역이 얼마나 높아야 하는지 결정한다
+  const shown = g => Math.min(g.players.length, G.MAXNAMES) + (g.players.length > G.MAXNAMES ? 1 : 0);
+  const maxNameLines = groups.length ? Math.max(...groups.map(shown)) : 0;
+  const headH = 150;                                   // 제목 영역
+  const aboveH = 34 + maxNameLines * 30 + 30;          // 왕관 + 이름들 + 값 알약
+  const floorY = headH + aboveH + G.H1;
+  const restH = rest.length ? 22 + rest.length * G.ROW : 0;
+  const H = Math.round(floorY + 18 + restH + 54);
+
+  const S = 2;                                         // 2배로 그려서 선명하게
+  const cv = document.createElement('canvas');
+  cv.width = G.W * S; cv.height = H * S;
+  const x = cv.getContext('2d');
+  x.scale(S, S);
+  x.textBaseline = 'alphabetic';
+
+  const roundRect = (px, py, w, h, r) => {
+    x.beginPath();
+    if (x.roundRect) x.roundRect(px, py, w, h, r);
+    else {  // roundRect 미지원 브라우저 대비
+      x.moveTo(px+r, py); x.arcTo(px+w, py, px+w, py+h, r); x.arcTo(px+w, py+h, px, py+h, r);
+      x.arcTo(px, py+h, px, py, r); x.arcTo(px, py, px+w, py, r); x.closePath();
+    }
+  };
+  // 단은 윗모서리만 둥글다. 아래까지 둥글리면 바닥선에서 떠 보인다(화면 CSS 와 동일).
+  const roundTopRect = (px, py, w, h, r) => {
+    x.beginPath();
+    x.moveTo(px, py + h);
+    x.lineTo(px, py + r);
+    x.quadraticCurveTo(px, py, px + r, py);
+    x.lineTo(px + w - r, py);
+    x.quadraticCurveTo(px + w, py, px + w, py + r);
+    x.lineTo(px + w, py + h);
+    x.closePath();
+  };
+  const text = (s, px, py, f, color, align) => {
+    x.font = f; x.fillStyle = color; x.textAlign = align || 'left'; x.fillText(s, px, py);
+  };
+  // 길면 … 로 자른다 (이름이 길어도 칸을 넘지 않게)
+  const clip = (s, f, max) => {
+    x.font = f;
+    if (x.measureText(s).width <= max) return s;
+    let t = s;
+    while (t.length > 1 && x.measureText(t + '…').width > max) t = t.slice(0, -1);
+    return t + '…';
+  };
+
+  x.fillStyle = C.bg; x.fillRect(0, 0, G.W, H);
+
+  // ── 제목 ──
+  const cx = G.W / 2;
+  text('당동 기록실', cx, 58, font(700, 20), C.muted, 'center');
+  text(col.t, cx, 106, font(800, 38), C.text, 'center');
+  const parts = [rankMode === '통합' ? '통산 기준' : rankMode + '전'];
+  if (clubOnly) parts.push(EVT_ICON + ' 정기전만');
+  parts.push((rankFrom || rankTo) ? `${ddmy(rankFrom) || '처음'} ~ ${ddmy(rankTo) || '오늘'}` : '전체 기간');
+  text(parts.join('  ·  '), cx, 136, font(500, 17), C.muted, 'center');
+
+  // ── 시상대 ──
+  const sw = (G.W - G.PAD*2 - G.GAP*2) / 3;
+  const slot = [groups.find(g=>g.rank===2), groups.find(g=>g.rank===1), groups.find(g=>g.rank===3)];
+  const single = slot.filter(Boolean).length === 1;
+  slot.forEach((g, i) => {
+    if (!g) return;
+    const sx = single ? cx - sw/2 : G.PAD + i * (sw + G.GAP);
+    const h = [G.H2, G.H1, G.H3][i];
+    const m = METAL[g.rank - 1];
+
+    // 단 (윗면 밝은 띠 + 앞면 그라디언트), 위쪽 모서리만 둥글게
+    x.save();
+    roundTopRect(sx, floorY - h, sw, h, 10); x.clip();
+    x.fillStyle = m.top; x.fillRect(sx, floorY - h, sw, G.TOPBAR);
+    const gr = x.createLinearGradient(0, floorY - h + G.TOPBAR, 0, floorY);
+    gr.addColorStop(0, m.a); gr.addColorStop(1, m.b);
+    x.fillStyle = gr; x.fillRect(sx, floorY - h + G.TOPBAR, sw, h - G.TOPBAR);
+    x.restore();
+    // 등수 숫자 (흰 그림자로 음각 느낌)
+    x.save();
+    x.fillStyle = 'rgba(255,255,255,.5)';
+    x.font = font(800, 40); x.textAlign = 'center';
+    x.fillText(String(g.rank), sx + sw/2, floorY - h + G.TOPBAR + 47);
+    x.fillStyle = m.num;
+    x.fillText(String(g.rank), sx + sw/2, floorY - h + G.TOPBAR + 46);
+    x.restore();
+
+    // 단 위: 값 알약 → 이름들 → 왕관
+    const mid = sx + sw/2;
+    let y = floorY - h - 18;
+    const val = String(cell(g.players[0], col));
+    x.font = font(700, 17);
+    const vw = x.measureText(val).width + 22;
+    x.fillStyle = C.chip; roundRect(mid - vw/2, y - 20, vw, 27, 14); x.fill();
+    x.strokeStyle = C.line; x.lineWidth = 1; x.stroke();
+    text(val, mid, y, font(700, 17), C.text, 'center');
+
+    y -= 30;
+    const names = g.players.slice(0, G.MAXNAMES).map(p => p.name);
+    if (g.players.length > G.MAXNAMES) names.push(`외 ${g.players.length - G.MAXNAMES}명`);
+    names.slice().reverse().forEach(n => {
+      text(clip(n, font(700, 21), sw - 6), mid, y, font(700, 21), C.text, 'center');
+      y -= 30;
+    });
+    if (g.rank === 1) text('👑', mid, y - 2, font(400, 26), C.text, 'center');
+  });
+
+  // 바닥선
+  const fg = x.createLinearGradient(G.PAD, 0, G.W - G.PAD, 0);
+  fg.addColorStop(0, 'rgba(0,0,0,0)'); fg.addColorStop(.12, C.line);
+  fg.addColorStop(.88, C.line); fg.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = fg; roundRect(G.PAD, floorY, G.W - G.PAD*2, 4, 2); x.fill();
+
+  // ── 4등 이하 ──
+  let ry = floorY + 22;
+  rest.forEach(item => {
+    const cyc = ry + G.ROW/2;
+    x.fillStyle = C.chip; x.beginPath(); x.arc(G.PAD + 16, cyc, 16, 0, Math.PI*2); x.fill();
+    x.strokeStyle = C.line; x.lineWidth = 1; x.stroke();
+    text(String(item.rank), G.PAD + 16, cyc + 6, font(700, 16), C.muted, 'center');
+    const vs = String(cell(item.p, col));
+    x.font = font(700, 19);
+    const vw = x.measureText(vs).width;
+    text(clip(item.p.name, font(600, 19), G.W - G.PAD*2 - 60 - vw - 20), G.PAD + 44, cyc + 7, font(600, 19), C.text);
+    text(vs, G.W - G.PAD, cyc + 7, font(700, 19), C.text, 'right');
+    x.fillStyle = C.line; x.fillRect(G.PAD, ry + G.ROW - 1, G.W - G.PAD*2, 1);
+    ry += G.ROW;
+  });
+
+  text(todayYmd().replace(/-/g, '.') + ' 기준', cx, H - 26, font(500, 15), C.muted, 'center');
+  return cv;
+}
+
+/* 저장 — iOS(특히 홈 화면 앱)에서는 a[download] 가 잘 안 먹는다. 공유 시트를 쓸 수 있으면
+   그쪽으로 보내고(사진에 저장 항목이 있다), 안 되면 내려받기로 떨어진다. */
+async function savePodiumImage(cv, metricName, msgEl){
+  const say = (t, err) => { if (msgEl) { msgEl.textContent = t; msgEl.style.color = err ? '#f44336' : 'var(--muted)'; } };
+  const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+  if (!blob) { say('이미지를 만들지 못했습니다.', true); return; }
+  const fname = `당동_${metricName}_${todayYmd()}.png`.replace(/\s+/g, '');
+  const file = new File([blob], fname, { type: 'image/png' });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); say(''); return; }
+    catch(e){ if (e && e.name === 'AbortError') { say(''); return; } }   // 사용자가 취소
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  say('저장했습니다.');
 }
 
 function renderRank(){
@@ -806,6 +998,19 @@ function renderRank(){
     rankView = b.dataset.v;
     show('rank');
   });
+  const saveEl = el.querySelector('.p-save');
+  if (saveEl) saveEl.onclick = async () => {
+    const msg = el.querySelector('.p-save-msg');
+    saveEl.disabled = true;
+    if (msg) { msg.textContent = '이미지 만드는 중...'; msg.style.color = 'var(--muted)'; }
+    try {
+      const col = COLS.find(c => c.k === sortKey) || COLS[0];
+      await savePodiumImage(podiumCanvas(rows, rankOf, COLS), col.t, msg);
+    } catch(err){
+      if (msg) { msg.textContent = '저장 실패: ' + err.message; msg.style.color = '#f44336'; }
+    }
+    saveEl.disabled = false;
+  };
   const metricEl = el.querySelector('.p-metric');
   if (metricEl) metricEl.onchange = () => {
     sortKey = metricEl.value;
