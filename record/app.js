@@ -602,15 +602,17 @@ function renderRank(){
   if(rows.length===0){
     inner = `<div class="empty">아직 ${rankMode==='통합'?'':rankMode+'전 '}기록이 없습니다</div>`;
   } else {
+    // 이름순 정렬은 성적 순위가 아니므로 메달을 붙이지 않는다(그냥 줄 번호)
+    const ranked = sortKey !== 'name';
     const body = rows.map((p,i)=>{
-      const medal = ['🥇','🥈','🥉'][i] || (i+1);
+      const medal = (ranked && ['🥇','🥈','🥉'][i]) || (i+1);
       const tds = COLS.map(c=>{
         if(c.k==='name') return `<td class="name"><a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a></td>`;
         return `<td>${cell(p, c)}</td>`;
       }).join('');
       return `<tr><td class="rk">${medal}</td>${tds}</tr>`;
     }).join('');
-    inner = `<div class="scroll"><table><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    inner = `<div class="scroll"><table class="rank"><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
   const note = rankMode==='통합'
     ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준). · <b>파울률</b>은 전체 타격 중 파울의 비율이며, 낮을수록 좋습니다 (타격수 = 파울 차감 전 득점 + 알 이닝). 평균 타수·파울률은 파울이 기록되기 시작한 이후 경기만 집계합니다.'
@@ -654,6 +656,17 @@ function renderRank(){
   el.querySelectorAll('a.pl').forEach(a=>a.onclick=()=>showPlayer(a.dataset.p));
   return el;
 }
+
+/* 순위표 이름 열을 왼쪽에 고정할 때 쓸 오프셋 — 순위 칸의 실제 폭을 재서 --rkw 로 넘긴다.
+   메달 이모지 폭이 기기·폰트마다 달라(34px 아님) CSS 상수로 두면 열이 어긋난다.
+   DOM 에 붙은 뒤라야 잴 수 있으므로 show() 끝과 창 크기 변경 때 호출한다. */
+function syncRankSticky(){
+  document.querySelectorAll('table.rank').forEach(tb=>{
+    const rk = tb.querySelector('thead th.rk');
+    if(rk) tb.style.setProperty('--rkw', rk.getBoundingClientRect().width + 'px');
+  });
+}
+window.addEventListener('resize', syncRankSticky);
 
 function chart(vals, labels, opt){
   opt = opt || {};
@@ -1509,6 +1522,7 @@ function show(v){
   if(v==='rank') node = renderRank();
   else if(v==='games') node = renderGames();
   document.getElementById('view').replaceChildren(node);
+  syncRankSticky();
 }
 document.querySelectorAll('.tab').forEach(t=>{ if(t.id!=='btnSettings') t.onclick=()=>show(t.dataset.v); });
 

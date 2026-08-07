@@ -81,6 +81,14 @@ th.on{color:var(--accent)} th.on .ar{opacity:1}
 td.name,th.name{text-align:left}
 tbody tr:hover{background:var(--hover)}
 .rk{width:34px;color:var(--muted)}
+/* ══ 순위표: 가로로 밀어도 순위·이름 칸은 왼쪽에 고정 ══
+   border-collapse:collapse 는 sticky 셀에서 테두리가 같이 안 움직인다 → separate 로 전환 */
+table.rank{border-collapse:separate;border-spacing:0}
+table.rank th.rk,table.rank td.rk{position:sticky;left:0;z-index:2;background:var(--card)}
+table.rank th.name,table.rank td.name{position:sticky;left:var(--rkw,34px);z-index:2;
+  background:var(--card);box-shadow:1px 0 0 var(--line)}
+table.rank thead th.rk,table.rank thead th.name{z-index:3}
+table.rank tbody tr:hover td.rk,table.rank tbody tr:hover td.name{background:var(--hover)}
 a.pl{color:var(--text);text-decoration:none;font-weight:600;border-bottom:1px dashed var(--muted);cursor:pointer}
 a.pl:hover{color:var(--accent);border-color:var(--accent)}
 .win{color:var(--accent);font-weight:600}
