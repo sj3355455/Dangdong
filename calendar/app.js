@@ -512,6 +512,19 @@ function openDay(key){
   $('#dsCntX').textContent = c.x;
   renderAgg(key);
 
+  // 일정은 O/X 와 별개다 — 표를 뭘 눌렀든, 안 눌렀든 언제나 등록할 수 있다.
+  // 시트를 열 때 한 번만 초기화한다(투표할 때마다 하면 적던 내용이 날아간다).
+  const canPlan = !past && !!getAuth();
+  $('#dsPlan').style.display = canPlan ? '' : 'none';
+  if (canPlan) {
+    $('#dsPlanName').value = '';
+    // 기본 기간은 연 날짜 하루. 지난 날짜는 못 고르게 min 을 오늘로 묶는다.
+    const s = $('#dsStart'), e = $('#dsEnd');
+    s.min = e.min = todayStr();
+    s.value = e.value = key;
+    renderMyPlans();
+  }
+
   const adm = $('#dsAdm');
   adm.style.display = isTeamLeader ? 'block' : 'none';
   if (isTeamLeader) {
@@ -531,11 +544,10 @@ function syncVoteUI(){
   o.setAttribute('aria-pressed', mv === 'o');
   x.setAttribute('aria-pressed', mv === 'x');
 
-  // O 를 골랐으면 시간 칸, X 를 골랐으면 사유 칸. 지난 날짜엔 둘 다 닫는다.
+  // O 를 골랐으면 가능 시간 칸. 지난 날짜엔 닫는다. (일정 칸은 표와 무관하므로 openDay 가 맡는다)
   const past = isPast(openKey);
   const meta = myVote[openKey] || {};
   $('#dsWhen').style.display = (mv === 'o' && !past) ? '' : 'none';
-  $('#dsWhy').style.display  = (mv === 'x' && !past) ? '' : 'none';
   if (mv === 'o') {
     // 시간을 안 적은 사람은 '무관'. 기본값을 함부로 넣으면 아무 때나 되는 사람이
     // 특정 시간대만 되는 것처럼 집계돼서, 비워 두는 쪽을 기본으로 한다.
@@ -545,15 +557,6 @@ function syncVoteUI(){
       setWheel($('#dsTo'), TO_OPTS, meta.to != null ? meta.to : 1);
       syncToWheelState();
     });
-  }
-  if (mv === 'x') {
-    $('#dsReason').value = '';
-    // 기본 기간은 연 날짜 하루. 지난 날짜는 못 고르게 min 을 오늘로 묶는다.
-    const s = $('#dsStart'), e = $('#dsEnd');
-    s.min = e.min = todayStr();
-    s.value = openKey;
-    e.value = openKey;
-    renderMyPlans();
   }
 }
 
@@ -734,7 +737,7 @@ async function saveRange(){
   const key = openKey;
   const auth = getAuth();
   if (!auth || !currentTeam || isPast(key)) return;
-  const name = $('#dsReason').value.trim();
+  const name = $('#dsPlanName').value.trim();
   const start = $('#dsStart').value, end = $('#dsEnd').value;
   if (!name) return msg('일정 이름을 적어 주세요.', 'err');
   if (!start || !end) return msg('시작일과 종료일을 골라 주세요.', 'err');
@@ -887,21 +890,35 @@ const { open: openTeamModal } = initTeamModal({
   afterChange: async () => { renderTeamBar(); await refresh(); }
 });
 
+// 점수 음성은 세 화면이 같은 값을 쓴다 (점수판에서만 실제로 소리가 나지만 설정은 어디서든 바꿀 수 있게)
+const LS_VOICE = 'dangScoreVoice';
+const getVoice = () => { try { const v = localStorage.getItem(LS_VOICE); return v == null ? true : JSON.parse(v); } catch(e){ return true; } };
+const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b)); } catch(e){} };
+
 (function initSettings(){
-  const modal = $('#setModal');
+  const modal = $('#setModal'); if (!modal) return;
+  const vbtn = $('#setVoice');
   const themeBtns = modal.querySelectorAll('#setTheme button');
   const sync = () => {
-    const t = getTheme();
-    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t));
+    vbtn.classList.toggle('on', getVoice());
+    const cur = getTheme();
+    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === cur));
   };
-  $('#btnSettings').onclick = () => { sync(); modal.classList.add('on'); };
-  $('#setClose').onclick = () => modal.classList.remove('on');
-  modal.onclick = e => { if (e.target === modal) modal.classList.remove('on'); };
+  const open = () => { sync(); modal.classList.add('on'); };
+  const close = () => modal.classList.remove('on');
+  $('#btnSettings').onclick = open;
+  $('#setClose').onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
+  // 로그인 전에는 팀을 고를 수 없다 → 로그인이 있는 내 정보 화면으로 (기록실과 같은 처리)
+  $('#setTeam').onclick = () => { close(); if (getAuth()) openTeamModal(); else location.href = '../record/?tab=me'; };
+  $('#setMe').onclick = () => { location.href = '../record/?tab=me'; };   // 내 정보 화면은 기록실에만 있다
+  vbtn.onclick = () => { const nv = !getVoice(); setVoice(nv); vbtn.classList.toggle('on', nv); };
   themeBtns.forEach(b => b.onclick = () => {
-    try { localStorage.setItem(LS_THEME, b.dataset.t); } catch(e){}
-    applyTheme(b.dataset.t); sync();
+    const t = b.dataset.t;
+    // '시스템'은 값을 지워서 표현한다 — 문자열로 저장하면 다른 화면이 못 알아본다
+    try { if (t === 'system') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, t); } catch(e){}
+    applyTheme(t); sync();
   });
-  $('#setTeam').onclick = () => { modal.classList.remove('on'); openTeamModal(); };
 })();
 
 $('#dsClose').onclick = () => $('#daySheet').classList.remove('on');

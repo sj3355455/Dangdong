@@ -208,18 +208,23 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .msg{font-size:.85rem;margin-top:12px;min-height:1.2em}
 .msg.err{color:var(--no)} .msg.ok{color:var(--ok)}
 
-/* ══ 설정 모달 (기록실과 동일) ══ */
-.setmask{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
+/* ══ 설정 모달 (점수판·기록실과 동일) ══ */
+.setmask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:1100;padding:20px}
 .setmask.on{display:flex}
-.setcard{width:100%;max-width:340px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
-.sethd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.setcard{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;color:var(--text);max-height:88vh;overflow-y:auto}
+.sethd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.sethd b{font-size:1.15rem}
 .setx{background:none;border:none;color:var(--muted);font-size:1.5rem;line-height:1;cursor:pointer;padding:0 4px}
-.setlink{width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);color:var(--text);
-  border-radius:10px;padding:12px 14px;font-size:.95rem;cursor:pointer;margin-bottom:10px}
-.setrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px}
-.setrow .lb{font-size:.95rem}
-.setseg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
-.setseg button{flex:1;padding:8px 0;border:none;background:none;color:var(--muted);font-size:.88rem;font-weight:600;border-radius:8px;cursor:pointer}
+.setlink{width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:13px 14px;font-size:.98rem;font-weight:600;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.setlink:hover{border-color:var(--accent)}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 2px;border-top:1px solid var(--line)}
+.setrow .lb{font-size:.98rem;font-weight:600}
+.sw{position:relative;width:48px;height:28px;flex:0 0 auto;border-radius:999px;background:var(--line);transition:background .2s;cursor:pointer;border:none;padding:0}
+.sw.on{background:var(--accent)}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s}
+.sw.on::after{transform:translateX(20px)}
+.setseg{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
+.setseg button{flex:1;padding:8px 4px;border:none;background:none;color:var(--muted);font-size:.85rem;font-weight:600;border-radius:7px;cursor:pointer}
 .setseg button.on{background:var(--accent);color:#fff}
 </style>
 </head>
@@ -276,17 +281,18 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
       </div>
     </div>
 
-    <!-- 내 일정 — 같은 날에 몇 개든 등록할 수 있다 -->
-    <div class="vbox" id="dsWhy" style="display:none;">
-      <div class="vlab">🚫 내 일정</div>
+    <!-- 내 일정 — O/X 와 별개로 언제든 등록한다. 같은 날에 몇 개든 쌓을 수 있다 -->
+    <div class="vbox" id="dsPlan" style="display:none;">
+      <div class="vlab">📌 일정 등록</div>
       <div id="dsMyPlans"></div>
-      <input id="dsReason" class="inp" maxlength="20" placeholder="일정 이름 (예: 시험기간)">
+      <input id="dsPlanName" class="inp" maxlength="20" placeholder="일정 이름 (예: 시험기간)">
       <div class="hrow" style="margin-top:8px;">
         <input id="dsStart" class="dsel" type="date">
         <span class="tilde">~</span>
         <input id="dsEnd" class="dsel" type="date">
       </div>
-      <button id="dsRangeSave" class="sbtn" style="width:100%; margin-top:8px;">일정 추가</button>
+      <button id="dsRangeSave" class="sbtn" style="width:100%; margin-top:8px;">＋ 일정 등록</button>
+      <div class="sub" style="margin-top:8px; font-size:.75rem;">등록한 기간은 ❌ 불가로 함께 집계됩니다.</div>
     </div>
 
     <!-- 모두에게 보이는 집계 — 이름 없이 인원수만 -->
@@ -310,7 +316,9 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 <div id="setModal" class="setmask">
   <div class="setcard">
     <div class="sethd"><b>⚙️ 설정</b><button class="setx" id="setClose">&times;</button></div>
-    <button class="setlink" id="setTeam">🏷️ 팀 설정</button>
+    <button class="setlink" id="setTeam">👥 팀 설정</button>
+    <button class="setlink" id="setMe">👤 내 정보 설정</button>
+    <div class="setrow"><span class="lb">🔊 점수 음성</span><button class="sw" id="setVoice" aria-label="점수 음성"></button></div>
     <div class="setrow" style="flex-direction:column; align-items:stretch; gap:10px;">
       <span class="lb">🎨 화면 테마</span>
       <div class="setseg" id="setTheme">

@@ -191,7 +191,10 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 .caltitle{flex:1 1 auto;height:34px;border-radius:9px;border:1px solid var(--line);
   background:var(--bg);color:var(--text);font-weight:700;font-size:.98rem;cursor:pointer}
 .caltitle:hover{border-color:var(--accent);color:var(--accent)}
-.calhint{font-size:.72rem;color:var(--muted);text-align:center;margin:8px 0}
+/* 안내 문구는 고르는 단계에 따라 바뀐다 — 높이를 잡아 두어 달력이 위아래로 흔들리지 않게 */
+.calhint{font-size:.72rem;color:var(--muted);text-align:center;margin:8px 0;min-height:2.2em;
+  display:flex;align-items:center;justify-content:center}
+.calhint b{color:var(--accent)}
 .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .caldow{text-align:center;font-size:.72rem;color:var(--muted);font-weight:600;padding:2px 0 4px}
 .calday{height:38px;border:none;background:none;color:var(--text);border-radius:9px;
@@ -250,7 +253,7 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 <div id="setModal" class="setmask">
   <div class="setcard">
     <div class="sethd"><b>⚙️ 설정</b><button class="setx" id="setClose">&times;</button></div>
-    <button class="setlink" id="setTeam">🏷️ 팀 설정</button>
+    <button class="setlink" id="setTeam">👥 팀 설정</button>
     <button class="setlink" id="setMe">👤 내 정보 설정</button>
     <div class="setrow"><span class="lb">🔊 점수 음성</span><button class="sw" id="setVoice" aria-label="점수 음성"></button></div>
     <div class="setrow" style="flex-direction:column; align-items:stretch; gap:10px;">
