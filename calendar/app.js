@@ -255,14 +255,14 @@ function render(){
       const cls = ['cell'];
       if (ev) cls.push('event');
       if (key === today) cls.push('today');
-      if (mv && !past) cls.push('mine');
+      // 내 표는 테두리 색으로만 알린다 (초록=가능, 주황=불가). 칸 안에 표시를 얹지 않는다.
+      if (mv && !past) cls.push(mv === 'o' ? 'vo' : 'vx');
       if (past) cls.push('past');          // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
       const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
       // 첫째 줄 = 날짜(+정기전), 둘째 줄 = 일정 막대, 셋째 줄 = 인원수 또는 판수.
       // .rbar 는 막대가 앉을 자리만 차지하는 빈 칸이다 — 실제 막대는 .wbars 가 그 위에 얹는다.
       // 줄 높이를 고정해 둬야 칸마다 위아래로 흔들리지 않는다.
       cells += `<div class="${cls.join(' ')}" data-d="${key}">
-        ${mv && !past ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
         <span class="r1"><span class="dnum${dcls}">${d}</span>${
           ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>` : ''
         }</span>
@@ -554,16 +554,9 @@ function syncVoteUI(){
   const past = isPast(openKey);
   const meta = myVote[openKey] || {};
   $('#dsWhen').style.display = (mv === 'o' && !past) ? '' : 'none';
-  if (mv === 'o') {
-    // 시간을 안 적은 사람은 '무관'. 기본값을 함부로 넣으면 아무 때나 되는 사람이
-    // 특정 시간대만 되는 것처럼 집계돼서, 비워 두는 쪽을 기본으로 한다.
-    // 시트가 화면에 올라온 뒤에 스크롤을 잡아야 해서 다음 프레임으로 미룬다.
-    requestAnimationFrame(() => {
-      setWheel($('#dsFrom'), FROM_OPTS, meta.from != null ? meta.from : null);
-      setWheel($('#dsTo'), TO_OPTS, meta.to != null ? meta.to : 1);
-      syncToWheelState();
-    });
-  }
+  // 시간을 안 고른 사람은 '아무때나'. 기본값을 함부로 넣으면 아무 때나 되는 사람이
+  // 특정 시간대만 되는 것처럼 집계되므로, 비워 두는 쪽(=아무때나)이 기본이다.
+  if (mv === 'o') syncSlots(meta);
 }
 
 const shortRange = (a, b) => {
@@ -571,50 +564,35 @@ const shortRange = (a, b) => {
   return a === b ? f(a) : `${f(a)} ~ ${f(b)}`;
 };
 
-// ══ 시간 휠 (점수판 제한시간 피커와 같은 방식) ══
-// 스크롤 스냅으로 돌리고, 멈춘 뒤에 저장한다. 한 칸 넘어갈 때마다 저장하면 통신이 폭주한다.
-const hourLabel = h => h === 24 ? '자정' : `${h}시`;
-const HW_ITEM_H = 36;                                   // .hw .hi 높이(px)와 일치해야 한다
-const FROM_OPTS = [null];                               // null = 시간 무관
-for (let h = 0; h <= 23; h++) FROM_OPTS.push(h);
-const TO_OPTS = [];
-for (let h = 1; h <= 24; h++) TO_OPTS.push(h);
-
-function buildWheel(el, opts, onSettle){
-  el.innerHTML = '<div class="hi-pad"></div>'
-    + opts.map(v => `<div class="hi">${v == null ? '무관' : hourLabel(v)}</div>`).join('')
-    + '<div class="hi-pad"></div>';
-  el._opts = opts;
-  el._val = opts[0];
-  let raf, settle;
-  // 사람이 직접 만지기 전에는 저장하지 않는다 — 값을 맞추려고 스크롤을 옮길 때도 scroll 이 뜨기 때문
-  el.addEventListener('pointerdown', () => { el._user = true; });
-  el.addEventListener('scroll', () => {
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => {
-      const i = Math.max(0, Math.min(opts.length - 1, Math.round(el.scrollTop / HW_ITEM_H)));
-      el.querySelectorAll('.hi').forEach((d, k) => d.classList.toggle('sel', k === i));
-      if (el._val !== opts[i]) { el._val = opts[i]; vibTick(); }
-      if (!el._user) return;
-      clearTimeout(settle);
-      settle = setTimeout(onSettle, 400);               // 손을 뗀 뒤 멈추면 그때 저장
-    });
-  });
-}
-
-function setWheel(el, opts, v){
-  const i = Math.max(0, opts.indexOf(v));
-  el._user = false;                                     // 프로그램이 옮긴 것이므로 저장 트리거 금지
-  el._val = opts[i];
-  el.scrollTop = i * HW_ITEM_H;
-  el.querySelectorAll('.hi').forEach((d, k) => d.classList.toggle('sel', k === i));
-}
-
+// ══ 가능한 시간 ══
+// 예전엔 시(時)를 하나씩 돌려 고르는 휠이었다. 정작 모이는 시간대는 몇 갈래뿐이라
+// 오전/오후/저녁 세 토막으로 줄였다. 저장 형식(from_hour~to_hour)은 그대로라 서버·집계는 안 바뀐다.
+// 끝 시각은 제외 — 18~24 는 18,19,...,23 시에 있다는 뜻이다.
+const SLOTS = [
+  { s:'any', label:'아무때나', from:null, to:null },
+  { s:'am',  label:'오전',     from:6,    to:12 },
+  { s:'pm',  label:'오후',     from:12,   to:18 },
+  { s:'ev',  label:'저녁',     from:18,   to:24 }
+];
+const slotOf = (from, to) =>
+  SLOTS.find(v => v.from === (from == null ? null : from) && v.to === (to == null ? null : to)) || null;
 const vibTick = () => { try { navigator.vibrate && navigator.vibrate(6); } catch(e){} };
 
-// 시작이 '무관'이면 종료 휠은 쓸 일이 없다 → 흐리게 잠근다
-function syncToWheelState(){
-  $('#dsTo').classList.toggle('off', $('#dsFrom')._val == null);
+// 저장된 값에 맞춰 버튼을 켠다. 휠 시절에 저장한 19~22 같은 값은 세 토막 어디에도 안 맞으므로
+// 아무 버튼도 켜지 않고 그 값을 문구로 알려 준다 (아무거나 골라 덮어쓰면 된다).
+function syncSlots(meta){
+  const cur = slotOf(meta.from, meta.to);
+  $('#dsSlots').querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', !!cur && b.dataset.s === cur.s);
+    b.setAttribute('aria-pressed', !!cur && b.dataset.s === cur.s);
+  });
+  const note = $('#dsSlotNote');
+  if (!cur && meta.from != null) {
+    note.textContent = `예전에 저장한 시간: ${meta.from}시~${meta.to}시 — 위에서 다시 골라 주세요.`;
+    note.style.display = '';
+  } else {
+    note.style.display = 'none';
+  }
 }
 
 const RANGE_MAX = 90;   // 한 번에 등록할 수 있는 최대 일수 (실수로 몇 년치를 채우는 걸 막는다)
@@ -691,30 +669,27 @@ const upsertVotes = rows => sbFetch('/rest/v1/day_votes?on_conflict=team_id,vote
 });
 
 // 가능 시간 변경 — 이미 O 를 고른 상태에서만 불린다
-async function saveHours(){
+async function saveHours(slotKey){
   const key = openKey, row = myVote[key];
   if (!row || row.c !== 'o' || isPast(key)) return;
-  const fw = $('#dsFrom'), tw = $('#dsTo');
-  let from = fw._val, to = tw._val;
-  // 시작이 '무관'이면 시간 조건 자체가 없다 → 둘 다 비운다 (DB CHECK 가 '둘 다 null' 만 허용)
-  if (from == null) { to = null; }
-  // 끝이 시작보다 빠르면 조용히 밀어 준다 (저장이 CHECK 에 걸려 실패하는 것보다 낫다)
-  else if (!(from < to)) { to = Math.min(24, from + 1); setWheel(tw, TO_OPTS, to); }
-  syncToWheelState();
+  const sl = SLOTS.find(v => v.s === slotKey);
+  if (!sl) return;
+  vibTick();
 
   // 캐시가 myVote 를 얕게 복사해 두므로 기존 객체를 고치면 캐시까지 같이 바뀐다 → 새 객체로 교체한다
   const before = row;
-  myVote[key] = { ...row, from, to };
+  myVote[key] = { ...row, from: sl.from, to: sl.to };
+  syncSlots(myVote[key]);              // 통신을 기다리지 않고 버튼부터 켠다
   msg('저장 중...');
   try {
     await upsertVotes([rowFor(key, myVote[key])]);
-    msg(from == null ? '시간 무관으로 저장했습니다.' : `${hourLabel(from)}~${hourLabel(to)} 가능으로 저장했습니다.`, 'ok');
+    msg(sl.from == null ? '아무때나 가능으로 저장했습니다.' : `${sl.label} 가능으로 저장했습니다.`, 'ok');
     updateMonthCache();
     await reloadAgg();
   } catch(e){
     myVote[key] = before;
     updateMonthCache();
-    syncVoteUI();
+    syncSlots(before);
     msg('저장하지 못했습니다: ' + (e.message || '알 수 없는 오류'), 'err');
   }
 }
@@ -946,8 +921,7 @@ document.addEventListener('visibilitychange', () => {
 // ══ 시작 ══
 applyTheme(getTheme());
 registerSW();
-buildWheel($('#dsFrom'), FROM_OPTS, () => { syncToWheelState(); saveHours(); });
-buildWheel($('#dsTo'), TO_OPTS, saveHours);
+$('#dsSlots').querySelectorAll('button').forEach(b => { b.onclick = () => saveHours(b.dataset.s); });
 (async () => {
   $('#view').innerHTML = '<div class="card"><div class="empty">불러오는 중...</div></div>';
   if (getAuth()) $('#btnLogout').style.display = '';
