@@ -26,7 +26,7 @@ let cur = new Date(); cur.setDate(1); cur.setHours(0, 0, 0, 0);
 let events = {};    // 날짜 → { id, round_no, note }
 let gameCnt = {};   // 날짜 → 경기 판수
 let counts = {};    // 날짜 → { o, x }
-let myVote = {};    // 날짜 → 'o' | 'x'
+let myVote = {};    // 날짜 → { c:'o'|'x', from, to, reason } — day_votes 의 내 행 그대로
 let loading = false;
 let loadErr = '';   // 이번 달 데이터를 못 불러온 이유 (화면에 그대로 띄운다)
 
@@ -38,6 +38,8 @@ const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 // 지난 날짜엔 투표할 수 없다 (이미 지나간 날의 참여 여부를 받을 이유가 없다).
 // 키가 'YYYY-MM-DD' 라 문자열 비교로 충분하다.
 const isPast = key => key < todayStr();
+// 그 날 내가 고른 값 ('o' | 'x' | null). myVote 는 시간·사유까지 담은 객체라 한 겹 벗겨서 쓴다.
+const myChoice = key => (myVote[key] && myVote[key].c) || null;
 const label = key => {
   const [y, m, dd] = key.split('-').map(Number);
   const d = new Date(y, m - 1, dd);
@@ -114,7 +116,7 @@ async function loadMonth(force = false){
           + `&played_at=gte.${d1}T00:00:00&played_at=lt.${ymd(nextMonth)}T00:00:00`),
     sbFetch('/rest/v1/rpc/vote_counts', { method: 'POST', body: JSON.stringify({ t: currentTeam, d1, d2 }) }),
     auth && auth.uid
-      ? sbFetch(`/rest/v1/day_votes?select=vote_date,choice&team_id=eq.${currentTeam}`
+      ? sbFetch(`/rest/v1/day_votes?select=vote_date,choice,from_hour,to_hour,reason&team_id=eq.${currentTeam}`
               + `&vote_date=gte.${d1}&vote_date=lte.${d2}`)
       : Promise.resolve([])
   ]);
@@ -130,14 +132,20 @@ async function loadMonth(force = false){
 
   // 남의 표는 RLS 로 막혀 있어 이 집계 함수 말고는 인원수를 알 방법이 없다.
   // 그래서 여기서 실패하면 '나만 보이고 남은 안 보이는' 상태가 된다 → 조용히 넘기지 않고 드러낸다.
+  // hours/reasons 는 vote_counts 를 새로 배포하기 전이면 안 온다 → 빈 배열로 두고 나머지는 그대로 굴린다
   if (cnt.status === 'fulfilled' && Array.isArray(cnt.value))
-    for (const c of cnt.value) counts[c.vote_date] = { o: c.o_cnt || 0, x: c.x_cnt || 0 };
+    for (const c of cnt.value) counts[c.vote_date] = {
+      o: c.o_cnt || 0, x: c.x_cnt || 0,
+      hours: Array.isArray(c.hours) ? c.hours : [],       // [[시, 인원], ...]
+      reasons: Array.isArray(c.reasons) ? c.reasons : []  // [[사유, 인원], ...]
+    };
   else
     loadErr = describeCountErr(cnt.reason);
 
   // day_votes 는 RLS 상 '내 행'만 돌아온다 — 그래서 이게 곧 내 표다
   if (mine.status === 'fulfilled' && Array.isArray(mine.value))
-    for (const v of mine.value) myVote[v.vote_date] = v.choice;
+    for (const v of mine.value)
+      myVote[v.vote_date] = { c: v.choice, from: v.from_hour, to: v.to_hour, reason: v.reason };
   else if (!loadErr)
     loadErr = '내 투표를 불러오지 못했습니다: ' + errText(mine.reason);
 
@@ -189,7 +197,7 @@ function render(){
   for (let d = 1; d <= daysInMonth; d++) {
     const key = `${y}-${pad(m + 1)}-${pad(d)}`;
     const dow = new Date(y, m, d).getDay();
-    const ev = events[key], g = gameCnt[key], c = counts[key] || { o: 0, x: 0 }, mv = myVote[key];
+    const ev = events[key], g = gameCnt[key], c = counts[key] || { o: 0, x: 0 }, mv = myChoice(key);
     const cls = ['cell'];
     if (key === today) cls.push('today');
     if (mv) cls.push('mine');
@@ -229,8 +237,59 @@ function render(){
   $('#prevM').onclick = () => moveMonth(-1);
   $('#nextM').onclick = () => moveMonth(1);
   document.querySelectorAll('#grid .cell[data-d]').forEach(el => {
-    el.onclick = () => openDay(el.dataset.d);
+    el.onclick = () => { if (!swallowClick()) openDay(el.dataset.d); };
   });
+  bindSwipe($('#grid'));
+}
+
+// ══ 좌우 드래그로 달 넘기기 ══
+// 격자는 CSS 의 touch-action:pan-y 로 가로 제스처만 넘겨받는다 — 세로 스크롤은 브라우저가 그대로 처리.
+// 포인터 이벤트라 손가락과 마우스가 같은 코드를 탄다.
+const SWIPE_GO = 60;    // 이만큼 끌면 달이 넘어간다
+const SWIPE_SLOP = 12;  // 이 전에는 가로/세로 방향을 판단하지 않는다
+let swipedAt = 0;       // 스와이프 직후 따라오는 click 을 한 번 무시하기 위한 표시
+
+// 드래그로 달을 넘긴 직후의 click 이면 삼킨다 (날짜 상세가 열리지 않도록)
+const swallowClick = () => Date.now() - swipedAt < 400;
+
+function bindSwipe(grid){
+  if (!grid) return;
+  let x0 = 0, y0 = 0, dx = 0, dragging = false, decided = false, horiz = false;
+
+  const reset = () => { grid.style.transition = 'transform .18s, opacity .18s'; grid.style.transform = ''; grid.style.opacity = ''; };
+
+  grid.addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return;
+    x0 = e.clientX; y0 = e.clientY;
+    dx = 0; dragging = true; decided = false; horiz = false;
+    grid.style.transition = '';
+  });
+
+  grid.addEventListener('pointermove', e => {
+    if (!dragging || !e.isPrimary) return;
+    dx = e.clientX - x0;
+    const dy = e.clientY - y0;
+    if (!decided) {
+      if (Math.abs(dx) < SWIPE_SLOP && Math.abs(dy) < SWIPE_SLOP) return;
+      decided = true;
+      horiz = Math.abs(dx) > Math.abs(dy);
+      if (!horiz) { dragging = false; reset(); return; }   // 세로 제스처면 손을 뗀다
+    }
+    // 손가락보다 덜 따라가게 해서 고무줄처럼 끌리는 느낌을 준다
+    grid.style.transform = `translateX(${dx * 0.55}px)`;
+    grid.style.opacity = String(Math.max(.45, 1 - Math.abs(dx) / 420));
+  });
+
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    const go = horiz && Math.abs(dx) >= SWIPE_GO;
+    reset();
+    if (go) { swipedAt = Date.now(); moveMonth(dx < 0 ? 1 : -1); }
+  };
+  grid.addEventListener('pointerup', end);
+  grid.addEventListener('pointercancel', end);
+  grid.addEventListener('pointerleave', end);
 }
 
 // 이번 달에서 모이기 좋은 날 — 가능 인원이 많고 불가 인원이 적은 순.
@@ -291,6 +350,7 @@ function openDay(key){
   syncVoteUI();
   $('#dsCntO').textContent = c.o;
   $('#dsCntX').textContent = c.x;
+  renderAgg(key);
 
   const adm = $('#dsAdm');
   adm.style.display = isTeamLeader ? 'block' : 'none';
@@ -304,12 +364,52 @@ function openDay(key){
 }
 
 function syncVoteUI(){
-  const mv = myVote[openKey];
+  const mv = myChoice(openKey);
   const o = $('#dsO'), x = $('#dsX');
   o.classList.toggle('on', mv === 'o');
   x.classList.toggle('on', mv === 'x');
   o.setAttribute('aria-pressed', mv === 'o');
   x.setAttribute('aria-pressed', mv === 'x');
+
+  // O 를 골랐으면 시간 칸, X 를 골랐으면 사유 칸. 지난 날짜엔 둘 다 닫는다.
+  const past = isPast(openKey);
+  const meta = myVote[openKey] || {};
+  $('#dsWhen').style.display = (mv === 'o' && !past) ? '' : 'none';
+  $('#dsWhy').style.display  = (mv === 'x' && !past) ? '' : 'none';
+  if (mv === 'o') {
+    // 시간을 안 적은 사람은 '시간 무관'. 기본값을 함부로 넣으면 아무 때나 되는 사람이
+    // 특정 시간대만 되는 것처럼 집계돼서, 비워 두는 쪽을 기본으로 한다.
+    $('#dsFrom').value = meta.from != null ? String(meta.from) : '';
+    $('#dsTo').value   = meta.to   != null ? String(meta.to)   : '';
+  }
+  if (mv === 'x') {
+    $('#dsReason').value = meta.reason || '';
+    fillUntil(openKey);
+  }
+}
+
+// 시각 드롭다운 채우기 (모바일에서는 네이티브 휠로 뜬다)
+const hourLabel = h => h === 24 ? '자정' : `${h}시`;
+function fillHourSelects(){
+  const opt = h => `<option value="${h}">${hourLabel(h)}</option>`;
+  let from = '<option value="">시간 무관</option>', to = '<option value="">시간 무관</option>';
+  for (let h = 0; h <= 23; h++) from += opt(h);
+  for (let h = 1; h <= 24; h++) to   += opt(h);
+  $('#dsFrom').innerHTML = from;
+  $('#dsTo').innerHTML = to;
+}
+
+// '이 날부터 며칠까지' — 연 날짜부터 최대 60일치를 고른다
+const RANGE_MAX = 60;
+function fillUntil(key){
+  const [y, m, d] = key.split('-').map(Number);
+  const sel = $('#dsUntil');
+  let html = '';
+  for (let i = 0; i < RANGE_MAX; i++) {
+    const dt = new Date(y, m - 1, d + i);
+    html += `<option value="${ymd(dt)}">${label(ymd(dt))}${i === 0 ? ' (이 날만)' : ''}</option>`;
+  }
+  sel.innerHTML = html;
 }
 
 function msg(t, kind){
@@ -324,26 +424,26 @@ async function vote(choice){
   if (!auth || !currentTeam) return;
   const key = openKey;
   if (isPast(key)) return;   // 지난 날짜는 투표 대상이 아니다 (UI도 가려져 있지만 이중으로 막는다)
-  const prev = myVote[key];
+  const prevRow = myVote[key];
+  const prev = myChoice(key);
   const next = (choice && choice !== prev) ? choice : null;
 
+  // 시간·사유는 비운 채로 시작한다 — 누른 즉시 아래 칸이 열리니 원하면 거기서 채운다
+  const nextRow = next ? { c: next, from: null, to: null, reason: null } : null;
+
   // 낙관적 반영: 숫자를 먼저 움직여 두고, 실패하면 되돌린다
-  const c = counts[key] || (counts[key] = { o: 0, x: 0 });
+  const c = counts[key] || (counts[key] = { o: 0, x: 0, hours: [], reasons: [] });
   if (prev) c[prev] = Math.max(0, c[prev] - 1);
   if (next) c[next] = (c[next] || 0) + 1;
-  if (next) myVote[key] = next; else delete myVote[key];
+  if (nextRow) myVote[key] = nextRow; else delete myVote[key];
   syncVoteUI();
   $('#dsCntO').textContent = c.o;
   $('#dsCntX').textContent = c.x;
   msg('저장 중...');
 
   try {
-    if (next) {
-      await sbFetch('/rest/v1/day_votes?on_conflict=team_id,vote_date,user_id', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates' },
-        body: JSON.stringify({ team_id: currentTeam, vote_date: key, user_id: auth.uid, choice: next, updated_at: new Date().toISOString() })
-      });
+    if (nextRow) {
+      await upsertVotes([rowFor(key, nextRow)]);
     } else {
       await sbFetch(`/rest/v1/day_votes?team_id=eq.${currentTeam}&vote_date=eq.${key}&user_id=eq.${auth.uid}`,
         { method: 'DELETE' });
@@ -351,17 +451,124 @@ async function vote(choice){
     msg(next ? (next === 'o' ? '가능으로 저장했습니다.' : '불가로 저장했습니다.') : '표를 취소했습니다.', 'ok');
     updateMonthCache();
     render();
+    await reloadAgg();
   } catch(e){
     // 되돌리기
     if (next) c[next] = Math.max(0, c[next] - 1);
     if (prev) c[prev] = (c[prev] || 0) + 1;
-    if (prev) myVote[key] = prev; else delete myVote[key];
+    if (prevRow) myVote[key] = prevRow; else delete myVote[key];
     syncVoteUI();
     $('#dsCntO').textContent = c.o;
     $('#dsCntX').textContent = c.x;
     updateMonthCache();
     msg('저장하지 못했습니다: ' + (e.message || '알 수 없는 오류'), 'err');
   }
+}
+
+// day_votes 한 행으로 만든다. 안 쓰는 열은 명시적으로 null 을 넣어야 예전 값이 남지 않는다.
+function rowFor(key, row){
+  const auth = getAuth();
+  return {
+    team_id: currentTeam, vote_date: key, user_id: auth.uid, choice: row.c,
+    from_hour: row.c === 'o' ? row.from : null,
+    to_hour:   row.c === 'o' ? row.to   : null,
+    reason:    row.c === 'x' ? (row.reason || null) : null,
+    updated_at: new Date().toISOString()
+  };
+}
+
+const upsertVotes = rows => sbFetch('/rest/v1/day_votes?on_conflict=team_id,vote_date,user_id', {
+  method: 'POST',
+  headers: { Prefer: 'resolution=merge-duplicates' },
+  body: JSON.stringify(rows)
+});
+
+// 가능 시간 변경 — 이미 O 를 고른 상태에서만 불린다
+async function saveHours(){
+  const key = openKey, row = myVote[key];
+  if (!row || row.c !== 'o' || isPast(key)) return;
+  const fv = $('#dsFrom').value, tv = $('#dsTo').value;
+  let from = fv === '' ? null : parseInt(fv, 10);
+  let to   = tv === '' ? null : parseInt(tv, 10);
+  // 한쪽만 고르면 나머지를 채워 준다. DB 의 CHECK 가 '둘 다 null 이거나 둘 다 값'만 허용하기 때문.
+  if (from == null && to != null) { from = Math.max(0, to - 1); $('#dsFrom').value = String(from); }
+  if (to == null && from != null) { to = Math.min(24, from + 1); $('#dsTo').value = String(to); }
+  // 끝이 시작보다 빠르면 조용히 고쳐 준다 (저장이 CHECK 에 걸려 실패하는 것보다 낫다)
+  if (from != null && !(from < to)) { to = Math.min(24, from + 1); $('#dsTo').value = String(to); }
+
+  // 캐시가 myVote 를 얕게 복사해 두므로 기존 객체를 고치면 캐시까지 같이 바뀐다 → 새 객체로 교체한다
+  const before = row;
+  myVote[key] = { ...row, from, to };
+  msg('저장 중...');
+  try {
+    await upsertVotes([rowFor(key, myVote[key])]);
+    msg(from == null ? '시간 무관으로 저장했습니다.' : `${hourLabel(from)}~${hourLabel(to)} 가능으로 저장했습니다.`, 'ok');
+    updateMonthCache();
+    await reloadAgg();
+  } catch(e){
+    myVote[key] = before;
+    updateMonthCache();
+    syncVoteUI();
+    msg('저장하지 못했습니다: ' + (e.message || '알 수 없는 오류'), 'err');
+  }
+}
+
+// 불가 사유 + 기간 — 연 날짜부터 고른 날짜까지 전부 X 로 채운다
+async function saveRange(){
+  const key = openKey, row = myVote[key];
+  const auth = getAuth();
+  if (!auth || !row || row.c !== 'x' || isPast(key)) return;
+  const reason = $('#dsReason').value.trim() || null;
+  const until = $('#dsUntil').value;
+
+  // 연 날짜부터 고른 날짜까지 하루씩. 오늘 이전은 투표 대상이 아니므로 건너뛴다.
+  const [y, m, d0] = key.split('-').map(Number);
+  const dates = [];
+  for (const d = new Date(y, m - 1, d0); ymd(d) <= until; d.setDate(d.getDate() + 1)) {
+    if (!isPast(ymd(d))) dates.push(ymd(d));
+  }
+  if (!dates.length) return msg('저장할 날짜가 없습니다.', 'err');
+
+  msg(`${dates.length}일 저장 중...`);
+  try {
+    await upsertVotes(dates.map(k => rowFor(k, { c:'x', reason })));
+    // 성공한 뒤에 서버 값을 다시 읽어 화면을 맞춘다 (여러 날이 한꺼번에 바뀌므로 낙관적 반영은 하지 않는다)
+    await refresh(true);
+    openDay(key);
+    msg(dates.length === 1 ? '불가로 저장했습니다.' : `${label(dates[0])}부터 ${dates.length}일을 불가로 저장했습니다.`, 'ok');
+  } catch(e){
+    msg('저장하지 못했습니다: ' + (e.message || '알 수 없는 오류'), 'err');
+  }
+}
+
+// 표를 바꾼 뒤 집계(시간대·사유)를 다시 읽어 시트에 반영한다
+async function reloadAgg(){
+  await refresh(true);
+  if ($('#daySheet').classList.contains('on')) renderAgg(openKey);
+}
+
+// 익명 집계 — 시간대별 가능 인원 막대 + 불가 사유별 인원. 이름은 서버에서부터 나오지 않는다.
+function renderAgg(key){
+  const c = counts[key] || {};
+  const hours = c.hours || [], reasons = c.reasons || [];
+  let html = '';
+
+  if (hours.length) {
+    const max = Math.max(...hours.map(h => h[1]));
+    html += `<div class="agg"><div class="agghd">🕐 시간대별 가능 인원</div>`
+      + hours.map(([h, n]) => `<div class="hbar${n === max ? ' best' : ''}">
+          <span class="hh">${hourLabel(h)}</span>
+          <span class="hb"><i style="width:${(n / max) * 100}%"></i></span>
+          <span class="hn">${n}</span>
+        </div>`).join('')
+      + `</div>`;
+  }
+  if (reasons.length) {
+    html += `<div class="agg"><div class="agghd">🚫 불가 사유</div>`
+      + reasons.map(([t, n]) => `<div class="rsn"><span class="t">${esc(t)}</span><span class="n">${n}명</span></div>`).join('')
+      + `</div>`;
+  }
+  $('#dsAgg').innerHTML = html;
 }
 
 // 정기전 등록/수정 (팀장 — 사이트 전체 관리자와는 다른 권한이다)
@@ -458,6 +665,9 @@ $('#dsClose').onclick = () => $('#daySheet').classList.remove('on');
 $('#daySheet').onclick = e => { if (e.target.id === 'daySheet') $('#daySheet').classList.remove('on'); };
 $('#dsO').onclick = () => vote('o');
 $('#dsX').onclick = () => vote('x');
+$('#dsFrom').onchange = saveHours;
+$('#dsTo').onchange = saveHours;
+$('#dsRangeSave').onclick = saveRange;
 $('#dsSave').onclick = saveEvent;
 $('#dsDel').onclick = delEvent;
 
@@ -476,6 +686,7 @@ document.addEventListener('visibilitychange', () => {
 // ══ 시작 ══
 applyTheme(getTheme());
 registerSW();
+fillHourSelects();
 (async () => {
   $('#view').innerHTML = '<div class="card"><div class="empty">불러오는 중...</div></div>';
   if (getAuth()) $('#btnLogout').style.display = '';

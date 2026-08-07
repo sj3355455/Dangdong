@@ -62,7 +62,8 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .dow span{text-align:center;font-size:.78rem;color:var(--muted);font-weight:600;padding:2px 0}
 .dow span.sun{color:var(--no)}
 .dow span.sat{color:#3b82f6}
-.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+/* touch-action:pan-y — 세로 스크롤은 브라우저에 맡기고 가로 제스처만 달 넘기기로 받는다 */
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;touch-action:pan-y}
 .cell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;
   min-height:74px;padding:5px 4px 4px;cursor:pointer;overflow:hidden;
   display:flex;flex-direction:column;gap:2px;transition:border-color .15s}
@@ -119,6 +120,29 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .tally button.on span::after{content:' ✓'}
 .tally button:disabled{cursor:default;opacity:.55}
 .tally button:disabled:active{transform:none}
+/* ── 표에 붙는 부가 입력 (가능 시간 / 불가 사유) ── */
+.vbox{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.vlab{font-size:.82rem;color:var(--muted);font-weight:700;margin-bottom:8px}
+.hrow{display:flex;align-items:center;gap:8px}
+.tilde{color:var(--muted);font-weight:700}
+.hsel{flex:1 1 0;min-width:0;padding:10px 30px 10px 12px;border-radius:8px;color:var(--text);
+  border:1px solid var(--line);font-size:.95rem;font-family:inherit;-webkit-appearance:none;appearance:none;
+  background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%23888' stroke-width='1.5' d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E") no-repeat right 10px center}
+
+/* ── 익명 집계 (가능 시간대 막대 / 불가 사유) ── */
+.agg{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.agghd{font-size:.82rem;color:var(--muted);font-weight:700;margin-bottom:8px}
+.hbar{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.hbar .hh{font-size:.78rem;color:var(--muted);width:3.2em;text-align:right;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.hbar .hb{flex:1 1 auto;height:9px;background:var(--line);border-radius:999px;overflow:hidden}
+.hbar .hb i{display:block;height:100%;background:var(--ok)}
+.hbar .hn{font-size:.78rem;font-weight:700;color:var(--ok);width:2.2em;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.hbar.best .hb i{background:var(--accent)}
+.hbar.best .hn{color:var(--accent)}
+.rsn{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
+.rsn:last-child{border-bottom:none}
+.rsn .t{font-size:.9rem;word-break:break-all}
+.rsn .n{font-size:.82rem;font-weight:700;color:var(--no);white-space:nowrap;flex:0 0 auto}
 .admbox{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .admrow{display:flex;gap:8px;align-items:center}
 .inp{flex:1 1 auto;min-width:0;padding:10px 12px;border-radius:8px;background:var(--bg);color:var(--text);
@@ -167,7 +191,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v206</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v215</span>
   </div>
 </div>
 
@@ -186,6 +210,30 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
       <button type="button" id="dsX" class="x"><b id="dsCntX">0</b><span>❌ 불가</span></button>
     </div>
     <div class="sub" id="dsPastNote" style="display:none; margin-top:8px;">지난 날짜라 투표할 수 없습니다.</div>
+
+    <!-- O 를 고른 사람에게만 — 몇 시부터 몇 시까지 되는지 -->
+    <div class="vbox" id="dsWhen" style="display:none;">
+      <div class="vlab">🕐 가능한 시간</div>
+      <div class="hrow">
+        <select id="dsFrom" class="hsel"></select>
+        <span class="tilde">~</span>
+        <select id="dsTo" class="hsel"></select>
+      </div>
+    </div>
+
+    <!-- X 를 고른 사람에게만 — 왜 안 되는지, 며칠까지 안 되는지 -->
+    <div class="vbox" id="dsWhy" style="display:none;">
+      <div class="vlab">🚫 안 되는 이유</div>
+      <input id="dsReason" class="inp" maxlength="20" placeholder="일정 이름 (예: 시험기간)">
+      <div class="hrow" style="margin-top:8px;">
+        <span class="sub" style="white-space:nowrap;">이 날부터</span>
+        <select id="dsUntil" class="hsel" style="flex:1 1 auto;"></select>
+      </div>
+      <button id="dsRangeSave" class="sbtn" style="width:100%; margin-top:8px;">이 기간 전체를 불가로 저장</button>
+    </div>
+
+    <!-- 모두에게 보이는 집계 — 이름 없이 인원수만 -->
+    <div id="dsAgg"></div>
 
     <div class="admbox" id="dsAdm" style="display:none;">
       <div style="font-size:.82rem; color:var(--muted); margin-bottom:8px; font-weight:600;">👑 정기전 설정 (팀장)</div>

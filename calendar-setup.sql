@@ -7,6 +7,7 @@
 -- 익명성을 어떻게 지키는가:
 --   day_votes 는 "내 표만 SELECT" 정책이라, 클라이언트는 남의 표를 아예 읽을 수 없다.
 --   화면에 보이는 O/X 인원수는 집계 함수(vote_counts)가 서버에서 세어 숫자만 돌려준다.
+--   가능 시간대·불가 사유도 마찬가지로 '몇 명'까지만 집계되어 나간다.
 --   즉 누가 무엇을 골랐는지는 앱 어디에서도 조회할 방법이 없다.
 --   (표를 지우거나 바꾸는 것도 본인 것만 가능)
 -- ═══════════════════════════════════════════════════════════════
@@ -76,6 +77,33 @@ create table if not exists public.day_votes (
 create index if not exists day_votes_team_date_idx
   on public.day_votes(team_id, vote_date);
 
+-- 2-1) 표에 붙는 부가 정보 (나중에 추가된 열 — 기존 표는 전부 null 이다)
+--   from_hour/to_hour : O 일 때 "몇 시부터 몇 시까지 가능한지"  (to_hour 는 끝 시각, 24 = 자정)
+--   reason            : X 일 때 "왜 안 되는지" (예: 시험기간). 20자까지.
+-- 이 값들도 남에게는 개별로 나가지 않는다 — vote_counts 가 이름 없이 집계해서만 돌려준다.
+alter table public.day_votes add column if not exists from_hour smallint;
+alter table public.day_votes add column if not exists to_hour   smallint;
+alter table public.day_votes add column if not exists reason    text;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint
+                  where conname = 'day_votes_hours_chk'
+                    and conrelid = 'public.day_votes'::regclass) then
+    alter table public.day_votes add constraint day_votes_hours_chk check (
+      (from_hour is null and to_hour is null)
+      or (from_hour between 0 and 23 and to_hour between 1 and 24 and from_hour < to_hour)
+    );
+  end if;
+  if not exists (select 1 from pg_constraint
+                  where conname = 'day_votes_reason_chk'
+                    and conrelid = 'public.day_votes'::regclass) then
+    alter table public.day_votes add constraint day_votes_reason_chk check (
+      reason is null or char_length(reason) <= 20
+    );
+  end if;
+end $$;
+
 -- ─────────────────────────────────────────────────────────────
 -- 3) 권한 + RLS
 -- ─────────────────────────────────────────────────────────────
@@ -118,25 +146,58 @@ create policy "drop own vote" on public.day_votes
   for delete using (user_id = auth.uid());
 
 -- ─────────────────────────────────────────────────────────────
--- 4) 집계 — 날짜별 O/X 인원수만 돌려준다 (누가 골랐는지는 나가지 않는다)
+-- 4) 집계 — 날짜별 O/X 인원수 + 시간대별 인원수 + 불가 사유별 인원수.
+--    전부 '몇 명'까지만 나간다. user_id 는 이 함수 밖으로 절대 나가지 않으므로
+--    시간과 사유를 공개해도 누가 썼는지는 여전히 알 수 없다.
 --    SECURITY DEFINER 라 RLS를 우회하므로, 팀원인지는 함수 안에서 직접 확인한다.
+--
+--    hours   : [[19,4],[20,5]]        → 19시에 4명, 20시에 5명 가능
+--    reasons : [["시험기간",3],...]   → 그 사유로 불가인 사람이 3명
+--
+--    반환 열이 늘어난 것뿐이라 옛 앱(o_cnt/x_cnt 만 읽는)도 그대로 동작한다.
+--    다만 반환 타입이 바뀌면 CREATE OR REPLACE 가 막히므로 먼저 지운다.
 -- ─────────────────────────────────────────────────────────────
+drop function if exists public.vote_counts(uuid, date, date);
+
 create or replace function public.vote_counts(t uuid, d1 date, d2 date)
-returns table(vote_date date, o_cnt integer, x_cnt integer)
+returns table(vote_date date, o_cnt integer, x_cnt integer, hours jsonb, reasons jsonb)
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select v.vote_date,
-         (count(*) filter (where v.choice = 'o'))::integer,
-         (count(*) filter (where v.choice = 'x'))::integer
-  from public.day_votes v
-  where v.team_id = t
-    and v.vote_date >= d1
-    and v.vote_date <= d2
-    and public.is_member_of(t)     -- 팀원이 아니면 빈 결과
-  group by v.vote_date
+  with mine as (
+    select v.vote_date, v.choice, v.from_hour, v.to_hour,
+           nullif(btrim(v.reason), '') as reason
+    from public.day_votes v
+    where v.team_id = t
+      and v.vote_date >= d1
+      and v.vote_date <= d2
+      and public.is_member_of(t)     -- 팀원이 아니면 빈 결과
+  ),
+  -- 시작~종료를 시(hour) 단위로 펼쳐서 센다. 끝 시각은 제외 — 19~22 는 19,20,21 시에 있다는 뜻.
+  hrs as (
+    select m.vote_date, g.h, count(*)::int as cnt
+    from mine m
+         cross join lateral generate_series(m.from_hour::int, (m.to_hour - 1)::int) as g(h)
+    where m.choice = 'o' and m.from_hour is not null and m.to_hour is not null
+    group by m.vote_date, g.h
+  ),
+  rsn as (
+    select m.vote_date, m.reason, count(*)::int as cnt
+    from mine m
+    where m.choice = 'x' and m.reason is not null
+    group by m.vote_date, m.reason
+  )
+  select c.vote_date,
+         (count(*) filter (where c.choice = 'o'))::integer,
+         (count(*) filter (where c.choice = 'x'))::integer,
+         coalesce((select jsonb_agg(jsonb_build_array(h.h, h.cnt) order by h.h)
+                     from hrs h where h.vote_date = c.vote_date), '[]'::jsonb),
+         coalesce((select jsonb_agg(jsonb_build_array(r.reason, r.cnt) order by r.cnt desc, r.reason)
+                     from rsn r where r.vote_date = c.vote_date), '[]'::jsonb)
+  from mine c
+  group by c.vote_date
 $$;
 grant execute on function public.vote_counts(uuid, date, date) to authenticated;
 
