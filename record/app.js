@@ -648,6 +648,10 @@ const cell = (p, c) => p[c.k]==null ? '—' : (c.fmt ? c.fmt(p[c.k]) : p[c.k]);
 // 값이 낮을수록 잘한 지표. 표에서 제목을 처음 눌렀을 때와 포디움의 1등이 여기에 달려 있다.
 // (기복 = 경기별 에버리지 변동폭이라 낮을수록 안정적이다)
 const bestIsLow = k => k==='avgRank' || k==='foulRate' || k==='volatility';
+// 포디움에 올릴 지표 — 승률·에버리지·평균 타수·득점률·하이런만. 표(COLS)의 순서를 따라간다.
+// 승률은 모드마다 열 키가 다르다(통합 adjRate / 나머지 winRate).
+const PODIUM_KEYS = ['adjRate','winRate','avgAvg','streakAvg','hitRate','bestHr'];
+const podiumCols = COLS => COLS.filter(c => PODIUM_KEYS.includes(c.k));
 let rankMode='통합', sortKey='avgAvg', sortAsc=false;
 let rankView='table';   // 'table' | 'podium' — 순위 탭 안에서 표/포디움 전환
 
@@ -671,14 +675,17 @@ function podiumHtml(rows, rankOf, COLS){
     if (g) g.players.push(p); else groups.push({ rank: r, players: [p] });
   });
   const nameLink = p => `<a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>`;
-  const step = g => !g ? '' : `<div class="step">
+  // 단(stand)은 윗면(밝은 띠) + 앞면(금속 그라디언트 · 등수 숫자)으로 나눠 입체감을 준다.
+  const step = g => !g ? '' : `<div class="step s${g.rank}">
+      ${g.rank===1 ? '<div class="crown">👑</div>' : ''}
       <div class="who">${g.players.map(nameLink).join('')}</div>
       <div class="val">${cell(g.players[0], col)}</div>
-      <div class="block b${g.rank}">${['🥇','🥈','🥉'][g.rank-1]}</div>
+      <div class="stand"><div class="top"></div><div class="face">${g.rank}</div></div>
     </div>`;
   const byRank = r => groups.find(g => g.rank === r);
   // 2등 왼쪽 · 1등 가운데 · 3등 오른쪽
-  const pod = `<div class="pod">${[byRank(2), byRank(1), byRank(3)].map(step).join('')}</div>`;
+  const pod = `<div class="pod">${[byRank(2), byRank(1), byRank(3)].map(step).join('')}</div>
+    <div class="podfloor"></div>`;
 
   const rest = rows.map((p, i) => ({ rank: rankOf[i], p })).filter(x => x.rank > 3);
   const restHtml = !rest.length ? '' : `<div class="podrest">${rest.map(x => `
@@ -686,14 +693,15 @@ function podiumHtml(rows, rankOf, COLS){
         <span class="pd-nm">${nameLink(x.p)}</span>
         <span class="pd-vl">${cell(x.p, col)}</span></div>`).join('')}</div>`;
 
-  return `<div class="sub" style="text-align:center;margin:0">${esc(col.t)} 기준</div>${pod}${restHtml}`;
+  return `<div class="podhead">${esc(col.t)}</div>${pod}${restHtml}`;
 }
 
 function renderRank(){
   const COLS = colsFor(rankMode);
   if(!COLS.some(c=>c.k===sortKey)) sortKey = defSort(rankMode);
-  // 포디움은 성적으로 세우는 화면이라 이름순이 의미가 없다 → 기본 지표로 되돌린다
-  if(rankView==='podium' && sortKey==='name'){ sortKey = defSort(rankMode); sortAsc = bestIsLow(sortKey); }
+  // 포디움은 올릴 수 있는 지표가 정해져 있다. 표에서 다른 열로 정렬해 둔 채 넘어왔으면
+  // (이름순 포함) 그 모드의 기본 지표로 되돌린다.
+  if(rankView==='podium' && !PODIUM_KEYS.includes(sortKey)){ sortKey = defSort(rankMode); sortAsc = bestIsLow(sortKey); }
   const rows = rankRows(rankMode).sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey], r;
     if(x==null && y==null) r = 0;
@@ -746,22 +754,23 @@ function renderRank(){
     }).join('');
     inner = `<div class="scroll"><table class="rank"><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
-  // 지표 선택 — 포디움엔 누를 표 제목이 없으므로 셀렉트로 고른다. 이름은 성적이 아니라 제외.
+  // 지표 선택 — 포디움엔 누를 표 제목이 없으므로 셀렉트로 고른다.
   const metricSel = rankView!=='podium' ? '' :
     `<select class="field p-metric" style="width:100%; height:32px; padding:0 26px 0 10px; font-size:0.85rem; border-radius:999px; margin:6px 0 0;">` +
-    COLS.filter(c=>c.k!=='name').map(c=>`<option value="${c.k}" ${c.k===sortKey?'selected':''}>${esc(c.t)}</option>`).join('') +
+    podiumCols(COLS).map(c=>`<option value="${c.k}" ${c.k===sortKey?'selected':''}>${esc(c.t)}</option>`).join('') +
     `</select>`;
   const viewBtns = `<div class="seg">
       <button class="p-view ${rankView==='table'?'on':''}" data-v="table">표</button>
-      <button class="p-view ${rankView==='podium'?'on':''}" data-v="podium">🏅 포디움</button>
+      <button class="p-view ${rankView==='podium'?'on':''}" data-v="podium">포디움</button>
     </div>`;
 
-  const sortHint = rankView==='podium' ? '' : '표 제목을 누르면 그 기준으로 정렬됩니다. · ';
-  const note = rankMode==='통합'
-    ? sortHint + '<b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준). · <b>파울률</b>은 전체 타격 중 파울의 비율이며, 낮을수록 좋습니다 (타격수 = 파울 차감 전 득점 + 알 이닝). 평균 타수·파울률은 파울이 기록되기 시작한 이후 경기만 집계합니다.'
-    : (rankMode==='3인'||rankMode==='4인')
-      ? sortHint + '<b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
-      : (sortHint || '지표를 고르면 그 기준으로 세웁니다.');
+  // 지표 설명은 표에서만. 포디움은 지표 하나만 보는 화면이라 긴 설명이 오히려 방해된다.
+  const note = rankView==='podium' ? '지표를 고르면 그 기준으로 세웁니다.'
+    : rankMode==='통합'
+      ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준). · <b>파울률</b>은 전체 타격 중 파울의 비율이며, 낮을수록 좋습니다 (타격수 = 파울 차감 전 득점 + 알 이닝). 평균 타수·파울률은 파울이 기록되기 시작한 이후 경기만 집계합니다.'
+      : (rankMode==='3인'||rankMode==='4인')
+        ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
+        : '표 제목을 누르면 그 기준으로 정렬됩니다.';
   // 공동 등수 안내는 어느 모드에서나 필요하다 (이름순은 등수가 아니라 줄 번호라 제외)
   const rankNote = sortKey === 'name' ? '' :
     ' · 정렬 기준 값이 같으면 <b>공동 등수</b>입니다 (공동 2등이 둘이면 다음은 4등).';

@@ -103,21 +103,42 @@ table.rank tbody tr:hover td.rk,table.rank tbody tr:hover td.name{background:var
    1·2·3등 칸은 실제 시상대처럼 2등 왼쪽 · 1등 가운데 · 3등 오른쪽으로 세운다.
    공동 등수면 한 칸에 이름이 여러 개 쌓이므로, 칸 바닥을 맞추고(align-items:flex-end)
    이름은 단 위로 자라게 둔다. */
-.pod{display:flex;align-items:flex-end;justify-content:center;gap:8px;margin:18px 0 4px}
-.pod .step{flex:1 1 0;min-width:0;max-width:33.33%;display:flex;flex-direction:column;align-items:center;gap:5px}
-.pod .who{display:flex;flex-direction:column;gap:2px;align-items:center;text-align:center;
-  font-weight:700;font-size:.95rem;line-height:1.3;word-break:keep-all}
-.pod .val{font-size:.8rem;color:var(--muted);white-space:nowrap}
-.pod .block{width:100%;border-radius:10px 10px 0 0;display:flex;align-items:center;
-  justify-content:center;font-size:1.6rem}
-.pod .b1{height:104px;background:linear-gradient(180deg,#ffdc7a,#f0b429)}
-.pod .b2{height:76px;background:linear-gradient(180deg,#e3e7ec,#b6bec8)}
-.pod .b3{height:56px;background:linear-gradient(180deg,#eab68c,#cb8f61)}
+.podhead{text-align:center;font-size:.8rem;font-weight:700;letter-spacing:.04em;
+  color:var(--muted);margin:2px 0 0}
+.pod{display:flex;align-items:flex-end;justify-content:center;gap:10px;margin:14px 0 0}
+.pod .step{flex:1 1 0;min-width:0;max-width:33.33%;display:flex;flex-direction:column;align-items:center}
+.pod .crown{font-size:1.15rem;line-height:1;margin-bottom:3px;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
+.pod .who{display:flex;flex-direction:column;gap:1px;align-items:center;text-align:center;
+  font-weight:700;font-size:.95rem;line-height:1.3;word-break:keep-all;margin-bottom:4px}
+.pod .val{font-size:.76rem;font-weight:700;padding:2px 9px;border-radius:999px;
+  background:var(--bg);border:1px solid var(--line);color:var(--text);
+  white-space:nowrap;margin-bottom:8px}
+/* 단: 윗면(밝은 띠) + 앞면(금속 그라디언트). 위쪽 모서리만 둥글고 바닥은 바닥선에 붙는다. */
+.pod .stand{width:100%;border-radius:9px 9px 0 0;overflow:hidden;
+  box-shadow:0 6px 14px -8px rgba(0,0,0,.45)}
+.pod .top{height:8px}
+.pod .face{display:flex;align-items:flex-start;justify-content:center;padding-top:8px;
+  font-size:1.7rem;font-weight:800;font-style:italic;letter-spacing:-.02em;
+  text-shadow:0 1px 0 rgba(255,255,255,.45)}
+.pod .s1 .face{height:96px} .pod .s2 .face{height:70px} .pod .s3 .face{height:52px}
+.pod .s1 .top {background:#ffeaa6}
+.pod .s1 .face{background:linear-gradient(180deg,#ffd75f 0%,#f5be2e 45%,#e0a112 100%);color:#8a5c00}
+.pod .s2 .top {background:#f0f3f6}
+.pod .s2 .face{background:linear-gradient(180deg,#dde2e8 0%,#c3cad3 45%,#aab2bd 100%);color:#525a65}
+.pod .s3 .top {background:#f6dcc4}
+.pod .s3 .face{background:linear-gradient(180deg,#e9bb92 0%,#d79c69 45%,#c1854f 100%);color:#6d4520}
+/* 바닥선 — 단들이 떠 보이지 않게 잡아 준다 */
+.podfloor{height:3px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--line) 12%,var(--line) 88%,transparent)}
 /* 4등 이하 */
-.podrest{margin-top:16px;border-top:1px solid var(--line)}
-.pdrow{display:flex;align-items:center;gap:10px;padding:9px 4px;
+.podrest{margin-top:18px}
+.pdrow{display:flex;align-items:center;gap:10px;padding:8px 2px;
   border-bottom:1px solid var(--line);font-size:.9rem}
-.pdrow .pd-rk{flex:0 0 30px;text-align:center;color:var(--muted)}
+.pdrow:last-child{border-bottom:none}
+.pdrow .pd-rk{flex:0 0 26px;height:26px;line-height:26px;text-align:center;border-radius:50%;
+  background:var(--bg);border:1px solid var(--line);color:var(--muted);
+  font-size:.76rem;font-weight:700}
 .pdrow .pd-nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pdrow .pd-vl{flex:0 0 auto;font-weight:600}
 a.pl{color:var(--text);text-decoration:none;font-weight:600;border-bottom:1px dashed var(--muted);cursor:pointer}
