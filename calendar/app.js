@@ -192,27 +192,51 @@ function render(){
   const lead = first.getDay();               // 1일 앞의 빈 칸 수
   const today = todayStr();
 
-  let cells = '';
-  for (let i = 0; i < lead; i++) cells += '<div class="cell pad"></div>';
-  for (let d = 1; d <= daysInMonth; d++) {
-    const key = `${y}-${pad(m + 1)}-${pad(d)}`;
-    const dow = new Date(y, m, d).getDay();
-    const ev = events[key], g = gameCnt[key], c = counts[key] || { o: 0, x: 0 }, mv = myChoice(key);
-    const cls = ['cell'];
-    if (key === today) cls.push('today');
-    if (mv) cls.push('mine');
-    if (key < today) cls.push('past');   // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
-    const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
-    cells += `<div class="${cls.join(' ')}" data-d="${key}">
-      ${mv ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
-      <span class="dnum${dcls}">${d}</span>
-      ${ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>` : ''}
-      ${g ? `<span class="gchip">🎱 ${g}판</span>` : ''}
-      <span class="votes">
-        ${c.o ? `<span class="vpill o">O ${c.o}</span>` : ''}
-        ${c.x ? `<span class="vpill x">X ${c.x}</span>` : ''}
-      </span>
-    </div>`;
+  // 달력을 '주' 단위로 쌓는다. 여러 날짜에 걸친 일정 막대를 한 줄로 이으려면
+  // 그 주 안에서 몇 번째 칸부터 몇 칸인지를 알아야 하기 때문이다.
+  const slots = [];                                    // 42칸 안팎의 격자 — 앞뒤 빈 칸은 null
+  for (let i = 0; i < lead; i++) slots.push(null);
+  for (let d = 1; d <= daysInMonth; d++) slots.push(`${y}-${pad(m + 1)}-${pad(d)}`);
+  while (slots.length % 7) slots.push(null);
+
+  const lanesOf = spansForMonth();                     // 이 달의 일정 막대 (사유별로 이어 붙인 것)
+
+  let weeks = '';
+  for (let w = 0; w * 7 < slots.length; w++) {
+    const row = slots.slice(w * 7, w * 7 + 7);
+    const bars = barsForWeek(row, lanesOf);
+    const laneCount = bars.reduce((n, b) => Math.max(n, b.lane + 1), 0);
+    // 막대가 놓일 만큼 칸 아래를 비워 둔다 — 그래야 O/X 알약과 겹치지 않는다
+    const padBottom = 4 + laneCount * (BAR_H + 2);
+
+    let cells = '';
+    for (const key of row) {
+      if (!key) { cells += '<div class="cell pad"></div>'; continue; }
+      const d = Number(key.slice(8));
+      const dow = new Date(y, m, d).getDay();
+      const ev = events[key], g = gameCnt[key], c = counts[key] || { o: 0, x: 0 }, mv = myChoice(key);
+      const cls = ['cell'];
+      if (key === today) cls.push('today');
+      if (mv) cls.push('mine');
+      if (key < today) cls.push('past');   // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
+      const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
+      cells += `<div class="${cls.join(' ')}" data-d="${key}" style="padding-bottom:${padBottom}px">
+        ${mv ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
+        <span class="dnum${dcls}">${d}</span>
+        ${ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>` : ''}
+        ${g ? `<span class="gchip">🎱 ${g}판</span>` : ''}
+        <span class="votes">
+          ${c.o ? `<span class="vpill o">O ${c.o}</span>` : ''}
+          ${c.x ? `<span class="vpill x">X ${c.x}</span>` : ''}
+        </span>
+      </div>`;
+    }
+    weeks += `<div class="week"><div class="wrow">${cells}</div>`
+           + `<div class="wbars" style="height:${laneCount * (BAR_H + 2)}px">`
+           + bars.map(b => `<span class="xbar${b.lcap ? ' lcap' : ''}${b.rcap ? ' rcap' : ''}"
+                 style="left:${colLeft(b.col)}; width:${colWidth(b.len)}; top:${b.lane * (BAR_H + 2)}px"
+                 title="${esc(b.reason)}">${b.lcap ? esc(b.reason) : ''}</span>`).join('')
+           + `</div></div>`;
   }
 
   view.innerHTML = `
@@ -227,7 +251,7 @@ function render(){
       <button class="mbtn" id="nextM" aria-label="다음 달">›</button>
     </div>
     <div class="dow">${DOW.map((w, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</span>`).join('')}</div>
-    <div class="grid" id="grid">${cells}</div>
+    <div class="grid" id="grid">${weeks}</div>
     <div class="sub" style="text-align:center; margin:14px 0 20px;">
       날짜를 눌러 참여 가능 여부를 남기세요. 누가 골랐는지는 공개되지 않습니다.
     </div>
@@ -316,6 +340,71 @@ function topDaysHtml(){
   </div>`;
 }
 
+// ══ 여러 날에 걸친 일정 막대 ══
+// 서버는 날짜별로 [사유, 인원] 만 준다. 같은 사유가 연달아 붙어 있는 구간을 여기서 이어 붙여
+// 하나의 일정으로 본다. 이름만 쓰므로 누가 등록했는지는 여전히 드러나지 않는다.
+const BAR_H = 13;                                   // 막대 한 줄 높이(px)
+const GAP = 5;                                      // .grid 의 칸 사이 간격과 같아야 한다
+const colLeft  = i => `calc((100% - ${GAP * 6}px) / 7 * ${i} + ${GAP * i}px)`;
+const colWidth = n => `calc((100% - ${GAP * 6}px) / 7 * ${n} + ${GAP * (n - 1)}px)`;
+
+// 이 달에 보이는 모든 일정 구간 → [{ reason, from, to }]  (from/to 는 'YYYY-MM-DD')
+function spansForMonth(){
+  const byReason = {};                              // 사유 → 날짜 집합
+  for (const k in counts) {
+    for (const [reason] of (counts[k].reasons || [])) {
+      (byReason[reason] || (byReason[reason] = [])).push(k);
+    }
+  }
+  const spans = [];
+  for (const reason in byReason) {
+    const days = byReason[reason].sort();
+    let from = days[0], prev = days[0];
+    for (let i = 1; i <= days.length; i++) {
+      const d = days[i];
+      // 하루라도 끊기면 거기서 구간을 자른다
+      if (d && addDays(prev, 1) === d) { prev = d; continue; }
+      spans.push({ reason, from, to: prev });
+      from = prev = d;
+    }
+  }
+  // 2일 이상만 막대로 그린다. 하루짜리는 칸 안의 X 알약으로 이미 보인다.
+  return spans.filter(s => s.from !== s.to);
+}
+
+const addDays = (key, n) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return ymd(new Date(y, m - 1, d + n));
+};
+
+// 한 주(7칸)에 걸치는 막대 조각들 → 겹치지 않게 위아래 줄(lane)을 배정한다
+function barsForWeek(row, spans){
+  const segs = [];
+  for (const s of spans) {
+    let col = -1, len = 0;
+    for (let i = 0; i < 7; i++) {
+      const k = row[i];
+      if (k && k >= s.from && k <= s.to) { if (col < 0) col = i; len++; }
+    }
+    if (col < 0) continue;
+    segs.push({
+      reason: s.reason, col, len,
+      lcap: row[col] === s.from,              // 일정이 여기서 시작하면 왼쪽을 둥글게
+      rcap: row[col + len - 1] === s.to       // 여기서 끝나면 오른쪽을 둥글게
+    });
+  }
+  // 시작이 빠른 것부터, 빈 줄 중 가장 위에 넣는다
+  segs.sort((a, b) => a.col - b.col || b.len - a.len);
+  const lanes = [];
+  for (const s of segs) {
+    let L = 0;
+    while (lanes[L] && lanes[L] > s.col) L++;      // 그 줄의 마지막 끝보다 뒤면 같은 줄에 놓을 수 있다
+    s.lane = L;
+    lanes[L] = s.col + s.len;
+  }
+  return segs;
+}
+
 function moveMonth(delta){
   cur = new Date(cur.getFullYear(), cur.getMonth() + delta, 1);
   refresh();
@@ -384,7 +473,11 @@ function syncVoteUI(){
   }
   if (mv === 'x') {
     $('#dsReason').value = meta.reason || '';
-    fillUntil(openKey);
+    // 기본 기간은 연 날짜 하루. 지난 날짜는 못 고르게 min 을 오늘로 묶는다.
+    const s = $('#dsStart'), e = $('#dsEnd');
+    s.min = e.min = todayStr();
+    s.value = openKey;
+    e.value = openKey;
   }
 }
 
@@ -399,18 +492,7 @@ function fillHourSelects(){
   $('#dsTo').innerHTML = to;
 }
 
-// '이 날부터 며칠까지' — 연 날짜부터 최대 60일치를 고른다
-const RANGE_MAX = 60;
-function fillUntil(key){
-  const [y, m, d] = key.split('-').map(Number);
-  const sel = $('#dsUntil');
-  let html = '';
-  for (let i = 0; i < RANGE_MAX; i++) {
-    const dt = new Date(y, m - 1, d + i);
-    html += `<option value="${ymd(dt)}">${label(ymd(dt))}${i === 0 ? ' (이 날만)' : ''}</option>`;
-  }
-  sel.innerHTML = html;
-}
+const RANGE_MAX = 90;   // 한 번에 등록할 수 있는 최대 일수 (실수로 몇 년치를 채우는 걸 막는다)
 
 function msg(t, kind){
   const el = $('#dsMsg');
@@ -519,13 +601,16 @@ async function saveRange(){
   const auth = getAuth();
   if (!auth || !row || row.c !== 'x' || isPast(key)) return;
   const reason = $('#dsReason').value.trim() || null;
-  const until = $('#dsUntil').value;
+  const start = $('#dsStart').value, end = $('#dsEnd').value;
+  if (!start || !end) return msg('시작일과 종료일을 골라 주세요.', 'err');
+  if (end < start) return msg('종료일이 시작일보다 빠릅니다.', 'err');
 
-  // 연 날짜부터 고른 날짜까지 하루씩. 오늘 이전은 투표 대상이 아니므로 건너뛴다.
-  const [y, m, d0] = key.split('-').map(Number);
+  // 시작일부터 종료일까지 하루씩. 오늘 이전은 투표 대상이 아니므로 건너뛴다.
+  const [y, m, d0] = start.split('-').map(Number);
   const dates = [];
-  for (const d = new Date(y, m - 1, d0); ymd(d) <= until; d.setDate(d.getDate() + 1)) {
+  for (const d = new Date(y, m - 1, d0); ymd(d) <= end; d.setDate(d.getDate() + 1)) {
     if (!isPast(ymd(d))) dates.push(ymd(d));
+    if (dates.length > RANGE_MAX) return msg(`한 번에 ${RANGE_MAX}일까지만 등록할 수 있습니다.`, 'err');
   }
   if (!dates.length) return msg('저장할 날짜가 없습니다.', 'err');
 
@@ -554,17 +639,27 @@ function renderAgg(key){
   let html = '';
 
   if (hours.length) {
+    // 가로축은 시간. 사람이 있는 구간만 그리되 중간에 빈 시간이 있으면 0 으로 채워 축이 끊기지 않게 한다.
+    const lo = Math.min(...hours.map(h => h[0]));
+    const hi = Math.max(...hours.map(h => h[0]));
+    const at = Object.fromEntries(hours);
     const max = Math.max(...hours.map(h => h[1]));
+    let cols = '';
+    for (let h = lo; h <= hi; h++) {
+      const n = at[h] || 0;
+      cols += `<div class="hcol${n === max ? ' best' : ''}">
+        <span class="hn">${n || ''}</span>
+        <span class="hb"><i style="height:${max ? (n / max) * 100 : 0}%"></i></span>
+        <span class="hh">${h}</span>
+      </div>`;
+    }
     html += `<div class="agg"><div class="agghd">🕐 시간대별 가능 인원</div>`
-      + hours.map(([h, n]) => `<div class="hbar${n === max ? ' best' : ''}">
-          <span class="hh">${hourLabel(h)}</span>
-          <span class="hb"><i style="width:${(n / max) * 100}%"></i></span>
-          <span class="hn">${n}</span>
-        </div>`).join('')
+      + `<div class="hchart">${cols}</div>`
+      + `<div class="sub" style="text-align:right; margin-top:4px; font-size:.72rem;">시(時)</div>`
       + `</div>`;
   }
   if (reasons.length) {
-    html += `<div class="agg"><div class="agghd">🚫 불가 사유</div>`
+    html += `<div class="agg"><div class="agghd">🚫 등록된 일정</div>`
       + reasons.map(([t, n]) => `<div class="rsn"><span class="t">${esc(t)}</span><span class="n">${n}명</span></div>`).join('')
       + `</div>`;
   }
