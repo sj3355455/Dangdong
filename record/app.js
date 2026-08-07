@@ -7,6 +7,8 @@ let RAW_MEMBERS = [];
 let rankFrom = '';   // 조회 시작일 (YYYY-MM-DD, ''=제한 없음)
 let rankTo = '';     // 조회 종료일 (둘 다 ''이면 통산)
 let gamesMode = '통합';
+const GAMES_PAGE = 20;   // 경기 탭에서 한 번에 그리는 경기 수 (아래로 내리면 이만큼씩 더)
+let gamesIO = null;      // 경기 목록 무한 스크롤 관찰자 (화면을 벗어나면 끊는다)
 
 // ── 정기전 필터 ──
 // 경기는 날짜가 아니라 정기전(club_events)에 붙어 있다. 날짜 범위로는 "정기전 날에 낀
@@ -79,11 +81,13 @@ function missOf(p, bInn){
 }
 // 2026-07-01 → 26/07/01 (표시용 축약)
 function ddmy(v){ return v ? v.slice(2).replace(/-/g, '/') : ''; }
-// 네이티브 date 입력을 투명하게 덮고 그 위에 26/07/01 형식 칸을 표시 (달력은 그대로 열림)
+// 26/07/01 형식 칸 + 값을 담아 두는 숨은 입력.
+// 네이티브 date 입력 대신 자체 달력(openCalendar)을 띄운다 — 월 전체 선택을 지원해야 하는데
+// 네이티브 달력에는 그런 조작이 없기 때문. 값·change 이벤트 규약은 그대로라 호출부는 안 바뀐다.
 function dateFieldHtml(cls, role, val, ph){
   return `<div style="position:relative; flex:1 1 0; min-width:0;">
-      <div class="${cls}-${role}-disp" style="height:34px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:${val?'var(--text)':'var(--muted)'}; font-size:0.9rem; white-space:nowrap; overflow:hidden;">${val ? ddmy(val) : ph}</div>
-      <input type="date" class="${cls}-${role}" value="${val||''}" max="${todayYmd()}" aria-label="${ph}" style="position:absolute; inset:0; width:100%; height:100%; opacity:0; margin:0; padding:0; border:0;">
+      <div class="${cls}-${role}-disp" role="button" tabindex="0" aria-label="${ph}" style="height:34px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:${val?'var(--text)':'var(--muted)'}; font-size:0.9rem; white-space:nowrap; overflow:hidden; cursor:pointer;">${val ? ddmy(val) : ph}</div>
+      <input type="hidden" class="${cls}-${role}" value="${val||''}">
     </div>`;
 }
 // 같은 줄: [leftHtml(모드)] [시작] ~ [종료]. 둘 다 비우면 통산(전체).
@@ -108,11 +112,94 @@ function bindEventSel(el, cls, onChange){
   const btn = el.querySelector('.'+cls+'-evt');
   if (btn) btn.onclick = () => { clubOnly = !clubOnly; onChange(); };
 }
-// 데스크톱에서도 클릭 시 달력이 열리도록 showPicker 연결
+// ── 자체 달력 ──
+// 날짜 하나를 고르면 그 칸(시작/종료)만 채우고, 위쪽 "2026년 7월"을 누르면 그 달 1일~말일이
+// 시작·종료에 한 번에 들어간다. 값은 숨은 입력에 넣고 change 를 쏴서 기존 핸들러가 받게 한다.
+const DOW_KO = ['일','월','화','수','목','금','토'];
+function openCalendar(opt){
+  const today = todayYmd();
+  const seed = opt.value || (opt.role === 'to' ? (opt.to || opt.from) : (opt.from || opt.to)) || today;
+  let cur = new Date(Number(seed.slice(0,4)), Number(seed.slice(5,7)) - 1, 1);
+
+  const mask = document.createElement('div');
+  mask.className = 'calmask';
+  mask.innerHTML = `<div class="calcard">
+      <div class="calhd">
+        <button class="calnav cal-prev" aria-label="이전 달">‹</button>
+        <button class="caltitle cal-title"></button>
+        <button class="calnav cal-next" aria-label="다음 달">›</button>
+      </div>
+      <div class="calhint">위 <b>연·월</b>을 누르면 그 달 전체가 기간이 됩니다</div>
+      <div class="calgrid cal-dow">${DOW_KO.map((d,i)=>`<div class="caldow"${i===0?' style="color:#e5484d"':''}>${d}</div>`).join('')}</div>
+      <div class="calgrid cal-days"></div>
+      <div class="calft"><button class="cal-clear">지우기</button><button class="cal-close">닫기</button></div>
+    </div>`;
+  const close = () => { mask.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  mask.onclick = e => { if (e.target === mask) close(); };
+  document.addEventListener('keydown', onKey);
+
+  const q = s => mask.querySelector(s);
+  function draw(){
+    const y = cur.getFullYear(), m = cur.getMonth();
+    const first = new Date(y, m, 1), lastD = new Date(y, m + 1, 0).getDate();
+    q('.cal-title').textContent = y + '년 ' + (m + 1) + '월';
+    q('.cal-next').disabled = ymd(new Date(y, m + 1, 1)) > today;
+    // 범위 하이라이트는 뒤집혀 입력돼도 자연스럽게 보이도록 정렬해서 쓴다
+    let lo = opt.from, hi = opt.to;
+    if (lo && hi && lo > hi) { const t = lo; lo = hi; hi = t; }
+    let cells = '';
+    for (let i = 0; i < first.getDay(); i++) cells += '<div></div>';
+    for (let d = 1; d <= lastD; d++){
+      const s = ymd(new Date(y, m, d));
+      const dis = s > today;
+      const sel = s === opt.from || s === opt.to;
+      const inr = !sel && lo && hi && s > lo && s < hi;
+      const sun = new Date(y, m, d).getDay() === 0;
+      const cl = 'calday' + (sel ? ' sel' : '') + (inr ? ' inr' : '') + (s === today ? ' today' : '');
+      const st = (!sel && !dis && sun) ? ' style="color:#e5484d"' : '';
+      cells += `<button class="${cl}" data-d="${s}"${dis?' disabled':''}${st}>${d}</button>`;
+    }
+    q('.cal-days').innerHTML = cells;
+    q('.cal-days').querySelectorAll('.calday').forEach(b => {
+      b.onclick = () => { close(); opt.onPick(b.dataset.d); };
+    });
+  }
+  q('.cal-prev').onclick = () => { cur.setMonth(cur.getMonth() - 1); draw(); };
+  q('.cal-next').onclick = () => { cur.setMonth(cur.getMonth() + 1); draw(); };
+  q('.cal-title').onclick = () => {
+    const y = cur.getFullYear(), m = cur.getMonth();
+    const a = ymd(new Date(y, m, 1));
+    let b = ymd(new Date(y, m + 1, 0));
+    if (b > today) b = today;         // 이번 달이면 오늘까지만
+    if (a > today) return;            // 통째로 미래인 달은 고를 게 없다
+    close();
+    opt.onMonth(a, b);
+  };
+  q('.cal-clear').onclick = () => { close(); opt.onClear(); };
+  q('.cal-close').onclick = close;
+  draw();
+  document.body.appendChild(mask);
+}
+// 표시 칸을 누르면 자체 달력을 연다
 function bindRangePicker(el, cls){
+  const fromInp = el.querySelector('.'+cls+'-from');
+  const toInp = el.querySelector('.'+cls+'-to');
+  if (!fromInp || !toInp) return;
+  // 두 칸의 onchange 는 어차피 같은 함수라(from/to 를 함께 읽는다) 한 번만 쏘면 된다
+  const fire = () => toInp.dispatchEvent(new Event('change', { bubbles: true }));
   ['from','to'].forEach(role => {
     const inp = el.querySelector('.'+cls+'-'+role);
-    if (inp) inp.onclick = () => { if (inp.showPicker) { try { inp.showPicker(); } catch(_){} } };
+    const disp = el.querySelector('.'+cls+'-'+role+'-disp');
+    if (!inp || !disp) return;
+    const open = () => openCalendar({
+      role, value: inp.value, from: fromInp.value, to: toInp.value,
+      onPick : s => { inp.value = s; fire(); },
+      onMonth: (a, b) => { fromInp.value = a; toInp.value = b; fire(); },
+      onClear: () => { inp.value = ''; fire(); }
+    });
+    disp.onclick = open;
+    disp.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
   });
 }
 // 입력값을 26/07/01 표시 칸에 반영 (툴바를 다시 그리지 않는 화면용)
@@ -1757,18 +1844,21 @@ function renderGames(){
     ? DATA.games 
     : DATA.games.filter(g => g.type === gamesMode);
 
-  const rows = [...filteredGames].sort((a,b)=>b.datetime.localeCompare(a.datetime)).map(g=>{
+  // 기록이 쌓이면 한 번에 다 그리기엔 무겁다 → 20경기씩. 아래로 내려 감시 지점이 보이면 다음 20경기.
+  const sorted = [...filteredGames].sort((a,b)=>b.datetime.localeCompare(a.datetime));
+  const rowHtml = g => {
     const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
     const all = g.players.map(p=>p.name).join(', ');
     return `<tr onclick="showGame('${g.id}')" style="cursor:pointer">
       <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}${g.eventId ? ' ' + EVT_ICON : ''}</td>
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
-  }).join('');
-  
-  const inner = rows ? `<table>
+  };
+
+  const inner = sorted.length ? `<table>
     <thead><tr><th class="name">날짜</th><th class="name">경기</th>
       <th class="name">참가자</th><th class="name">우승</th></tr></thead>
-    <tbody>${rows}</tbody></table>` : `<div class="empty">기록이 없습니다</div>`;
+    <tbody>${sorted.slice(0, GAMES_PAGE).map(rowHtml).join('')}</tbody></table>`
+    : `<div class="empty">기록이 없습니다</div>`;
 
   const el = $(`<div class="card">
     <div style="margin-bottom:14px;">
@@ -1776,9 +1866,33 @@ function renderGames(){
       ${eventRowHtml('pg-period') ? `<div class="toolrow">${eventRowHtml('pg-period')}</div>` : ''}
     </div>
     <div class="scroll">${inner}</div>
+    <button class="pg-more mbtn" style="display:none; width:100%; margin-top:10px"></button>
     <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div>
   </div>`);
   bindRangePicker(el, 'pg-period');
+
+  const tbody = el.querySelector('tbody');
+  const more = el.querySelector('.pg-more');
+  let shown = Math.min(GAMES_PAGE, sorted.length);
+  const syncMore = () => {
+    const rest = sorted.length - shown;
+    more.style.display = rest > 0 ? '' : 'none';
+    more.textContent = rest > 0 ? `${rest}경기 더 보기` : '';
+  };
+  const loadMore = () => {
+    if (!tbody || shown >= sorted.length) return;
+    tbody.insertAdjacentHTML('beforeend', sorted.slice(shown, shown + GAMES_PAGE).map(rowHtml).join(''));
+    shown = Math.min(shown + GAMES_PAGE, sorted.length);
+    syncMore();
+  };
+  syncMore();
+  more.onclick = loadMore;   // 관찰자가 없거나 놓쳤을 때의 대비책
+  if (tbody && 'IntersectionObserver' in window) {
+    // 200px 앞에서 미리 채워 스크롤이 끊기지 않게. 화면을 바꿀 때 show() 가 끊는다.
+    gamesIO = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) loadMore(); },
+                                       { rootMargin: '200px 0px' });
+    gamesIO.observe(more);
+  }
 
   const refreshGamesSub = () => {
     const sub = document.getElementById('sub');
@@ -1806,6 +1920,7 @@ function renderGames(){
 function showGame(id){
   const g = DATA.games.find(v=>v.id===id);
   if(!g) return;
+  if(gamesIO){ gamesIO.disconnect(); gamesIO = null; }   // 목록을 떠나므로 더 불러올 일이 없다
   // 표준 경쟁 순위: 앞선 인원 + 1 (공동 1등이 2명이면 다음은 3등). 동순위면 "공동 N등"
   const rankLabel = p => {
     const less = g.players.filter(x => x.rank < p.rank).length;
@@ -1886,6 +2001,7 @@ let chartRO = null;
 function show(v){
   if(v==='me'){ openMeModal(); return; }   // 내 정보는 팝업 모달로 (기본 화면 유지)
   if(chartRO){ chartRO.disconnect(); chartRO = null; }
+  if(gamesIO){ gamesIO.disconnect(); gamesIO = null; }
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.v===v));
   
   const auth = getAuth();
