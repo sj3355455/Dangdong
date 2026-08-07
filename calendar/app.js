@@ -26,7 +26,9 @@ let cur = new Date(); cur.setDate(1); cur.setHours(0, 0, 0, 0);
 let events = {};    // 날짜 → { id, round_no, note }
 let gameCnt = {};   // 날짜 → 경기 판수
 let counts = {};    // 날짜 → { o, x }
-let myVote = {};    // 날짜 → { c:'o'|'x', from, to, reason } — day_votes 의 내 행 그대로
+let myVote = {};    // 날짜 → { c:'o'|'x', from, to } — day_votes 의 내 행 (그냥 누른 O/X)
+let planSpans = []; // 이 달에 걸린 일정 막대 [{ name, from, to, cnt }] — 이름·기간·인원수만 (익명)
+let myPlans = [];   // 내가 등록한 일정 [{ id, name, start_date, end_date }] — 지우려면 이게 필요하다
 let loading = false;
 let loadErr = '';   // 이번 달 데이터를 못 불러온 이유 (화면에 그대로 띄운다)
 
@@ -39,7 +41,10 @@ const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 // 키가 'YYYY-MM-DD' 라 문자열 비교로 충분하다.
 const isPast = key => key < todayStr();
 // 그 날 내가 고른 값 ('o' | 'x' | null). myVote 는 시간·사유까지 담은 객체라 한 겹 벗겨서 쓴다.
-const myChoice = key => (myVote[key] && myVote[key].c) || null;
+// 그 날 내가 등록해 둔 일정들
+const plansOn = key => myPlans.filter(p => p.start_date <= key && key <= p.end_date);
+// 그 날 내 선택 ('o' | 'x' | null). 일정이 걸려 있으면 그 자체가 '불가'다 — 서버 집계도 그렇게 센다.
+const myChoice = key => (myVote[key] && myVote[key].c) || (plansOn(key).length ? 'x' : null);
 const label = key => {
   const [y, m, dd] = key.split('-').map(Number);
   const d = new Date(y, m - 1, dd);
@@ -82,18 +87,23 @@ function updateMonthCache() {
     gameCnt: { ...gameCnt },
     counts: { ...counts },
     myVote: { ...myVote },
+    planSpans: [...planSpans],
+    myPlans: [...myPlans],
     loadErr
   };
 }
 
 function clearMonth(){
-  events = {}; gameCnt = {}; counts = {}; myVote = {}; loadErr = '';
+  events = {}; gameCnt = {}; counts = {}; myVote = {};
+  planSpans = []; myPlans = []; loadErr = '';
 }
 function applyCache(c){
   events = { ...c.events };
   gameCnt = { ...c.gameCnt };
   counts = { ...c.counts };
   myVote = { ...c.myVote };
+  planSpans = [...(c.planSpans || [])];
+  myPlans = [...(c.myPlans || [])];
   loadErr = c.loadErr;
 }
 
@@ -109,15 +119,20 @@ async function loadMonth(force = false){
   // 다음 달 1일 00:00 (경기 조회 상한 — played_at 은 timestamptz 라 날짜 비교가 아니라 범위로 자른다)
   const nextMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
 
-  const [ev, games, cnt, mine] = await Promise.allSettled([
+  const [ev, games, cnt, mine, spans, plans] = await Promise.allSettled([
     sbFetch(`/rest/v1/club_events?select=id,event_date,round_no,note&team_id=eq.${currentTeam}`
           + `&event_date=gte.${d1}&event_date=lte.${d2}`),
     sbFetch(`/rest/v1/games?select=played_at&team_id=eq.${currentTeam}`
           + `&played_at=gte.${d1}T00:00:00&played_at=lt.${ymd(nextMonth)}T00:00:00`),
     sbFetch('/rest/v1/rpc/vote_counts', { method: 'POST', body: JSON.stringify({ t: currentTeam, d1, d2 }) }),
     auth && auth.uid
-      ? sbFetch(`/rest/v1/day_votes?select=vote_date,choice,from_hour,to_hour,reason&team_id=eq.${currentTeam}`
+      ? sbFetch(`/rest/v1/day_votes?select=vote_date,choice,from_hour,to_hour&team_id=eq.${currentTeam}`
               + `&vote_date=gte.${d1}&vote_date=lte.${d2}`)
+      : Promise.resolve([]),
+    sbFetch('/rest/v1/rpc/plan_spans', { method: 'POST', body: JSON.stringify({ t: currentTeam, d1, d2 }) }),
+    auth && auth.uid
+      ? sbFetch(`/rest/v1/day_plans?select=id,name,start_date,end_date&team_id=eq.${currentTeam}`
+              + `&start_date=lte.${d2}&end_date=gte.${d1}`)
       : Promise.resolve([])
   ]);
 
@@ -143,11 +158,19 @@ async function loadMonth(force = false){
     loadErr = describeCountErr(cnt.reason);
 
   // day_votes 는 RLS 상 '내 행'만 돌아온다 — 그래서 이게 곧 내 표다
-  if (mine.status === 'fulfilled' && Array.isArray(mine.value))
+  if (mine.status === 'fulfilled' && Array.isArray(mine.value)) {
     for (const v of mine.value)
-      myVote[v.vote_date] = { c: v.choice, from: v.from_hour, to: v.to_hour, reason: v.reason };
-  else if (!loadErr)
+      myVote[v.vote_date] = { c: v.choice, from: v.from_hour, to: v.to_hour };
+  } else if (!loadErr) {
     loadErr = '내 투표를 불러오지 못했습니다: ' + errText(mine.reason);
+  }
+
+  // 일정 기능은 나중에 붙었다. calendar-setup.sql 을 아직 안 돌린 서버라면 여기서 404 가 난다.
+  // 막대가 안 보일 뿐 달력은 그대로 쓸 수 있으므로 조용히 비워 두고 넘어간다.
+  planSpans = (spans.status === 'fulfilled' && Array.isArray(spans.value))
+    ? spans.value.map(r => ({ name: r.name, from: r.start_date, to: r.end_date, cnt: r.cnt }))
+    : [];
+  myPlans = (plans.status === 'fulfilled' && Array.isArray(plans.value)) ? plans.value : [];
 
   updateMonthCache();
 }
@@ -374,33 +397,11 @@ const colLeft  = i => `calc((100% - var(--gap) * 6) / 7 * ${i} + var(--gap) * ${
 const colWidth = n => `calc((100% - var(--gap) * 6) / 7 * ${n} + var(--gap) * ${n - 1} - ${BAR_INSET * 2}px)`;
 
 // 이 달에 보이는 모든 일정 구간 → [{ reason, from, to }]  (from/to 는 'YYYY-MM-DD')
+// 서버가 '이름 + 기간' 그대로 돌려주므로 날짜별 사유를 이어 붙이던 추측이 필요 없다.
+// 덕분에 이름이 같아도 기간이 다르면 각각 다른 막대로 그려진다.
 function spansForMonth(){
-  const byReason = {};                              // 사유 → 날짜 집합
-  for (const k in counts) {
-    for (const [reason] of (counts[k].reasons || [])) {
-      (byReason[reason] || (byReason[reason] = [])).push(k);
-    }
-  }
-  const spans = [];
-  for (const reason in byReason) {
-    const days = byReason[reason].sort();
-    let from = days[0], prev = days[0];
-    for (let i = 1; i <= days.length; i++) {
-      const d = days[i];
-      // 하루라도 끊기면 거기서 구간을 자른다
-      if (d && addDays(prev, 1) === d) { prev = d; continue; }
-      spans.push({ reason, from, to: prev });
-      from = prev = d;
-    }
-  }
-  // 2일 이상만 막대로 그린다. 하루짜리는 칸 안의 X 알약으로 이미 보인다.
-  return spans.filter(s => s.from !== s.to);
+  return planSpans.map(s => ({ reason: s.name, from: s.from, to: s.to }));
 }
-
-const addDays = (key, n) => {
-  const [y, m, d] = key.split('-').map(Number);
-  return ymd(new Date(y, m - 1, d + n));
-};
 
 // 한 주(7칸)에 걸치는 막대 조각들 → 겹치지 않게 위아래 줄(lane)을 배정한다.
 // 정기전 칸(skip)에서는 막대를 끊는다 — 그 칸은 색칠로 이미 꽉 차 있어 침범하면 안 된다.
@@ -546,14 +547,33 @@ function syncVoteUI(){
     });
   }
   if (mv === 'x') {
-    $('#dsReason').value = meta.reason || '';
+    $('#dsReason').value = '';
     // 기본 기간은 연 날짜 하루. 지난 날짜는 못 고르게 min 을 오늘로 묶는다.
     const s = $('#dsStart'), e = $('#dsEnd');
     s.min = e.min = todayStr();
     s.value = openKey;
     e.value = openKey;
+    renderMyPlans();
   }
 }
+
+// 그 날 내가 걸어 둔 일정 목록. 같은 날에 여러 개가 있을 수 있다.
+function renderMyPlans(){
+  const rows = plansOn(openKey);
+  $('#dsMyPlans').innerHTML = rows.map(p => `<div class="pln">
+    <span class="nm">${esc(p.name)}</span>
+    <span class="rg">${shortRange(p.start_date, p.end_date)}</span>
+    <button class="del" data-id="${esc(p.id)}" aria-label="일정 삭제">&times;</button>
+  </div>`).join('');
+  $('#dsMyPlans').querySelectorAll('.del').forEach(b => {
+    b.onclick = () => delPlan(b.dataset.id);
+  });
+}
+
+const shortRange = (a, b) => {
+  const f = k => k.slice(5).replace('-', '/');   // '2026-08-12' → '08/12'
+  return a === b ? f(a) : `${f(a)} ~ ${f(b)}`;
+};
 
 // ══ 시간 휠 (점수판 제한시간 피커와 같은 방식) ══
 // 스크롤 스냅으로 돌리고, 멈춘 뒤에 저장한다. 한 칸 넘어갈 때마다 저장하면 통신이 폭주한다.
@@ -615,12 +635,18 @@ async function vote(choice){
   if (!auth || !currentTeam) return;
   const key = openKey;
   if (isPast(key)) return;   // 지난 날짜는 투표 대상이 아니다 (UI도 가려져 있지만 이중으로 막는다)
+  // 일정이 걸린 날은 서버가 무조건 '불가'로 센다. 버튼으로 뒤집으면 화면과 집계가 어긋나므로 막는다.
+  if (plansOn(key).length) {
+    return msg(choice === 'o'
+      ? '이 날은 등록한 일정이 있어 가능으로 바꿀 수 없습니다. 아래에서 일정을 지워 주세요.'
+      : '일정이 걸려 있어 계속 불가입니다. 아래에서 일정을 지우면 해제됩니다.', 'err');
+  }
   const prevRow = myVote[key];
   const prev = myChoice(key);
   const next = (choice && choice !== prev) ? choice : null;
 
   // 시간·사유는 비운 채로 시작한다 — 누른 즉시 아래 칸이 열리니 원하면 거기서 채운다
-  const nextRow = next ? { c: next, from: null, to: null, reason: null } : null;
+  const nextRow = next ? { c: next, from: null, to: null } : null;
 
   // 낙관적 반영: 숫자를 먼저 움직여 두고, 실패하면 되돌린다
   const c = counts[key] || (counts[key] = { o: 0, x: 0, hours: [], reasons: [] });
@@ -663,7 +689,7 @@ function rowFor(key, row){
     team_id: currentTeam, vote_date: key, user_id: auth.uid, choice: row.c,
     from_hour: row.c === 'o' ? row.from : null,
     to_hour:   row.c === 'o' ? row.to   : null,
-    reason:    row.c === 'x' ? (row.reason || null) : null,
+    reason:    null,          // 일정은 day_plans 로 옮겼다 — 이 열은 더 쓰지 않는다
     updated_at: new Date().toISOString()
   };
 }
@@ -703,36 +729,50 @@ async function saveHours(){
   }
 }
 
-// 불가 사유 + 기간 — 연 날짜부터 고른 날짜까지 전부 X 로 채운다
+// 일정 등록 — 이름 + 기간 한 행. 같은 날에 몇 개든 쌓을 수 있다.
 async function saveRange(){
-  const key = openKey, row = myVote[key];
+  const key = openKey;
   const auth = getAuth();
-  if (!auth || !row || row.c !== 'x' || isPast(key)) return;
-  const reason = $('#dsReason').value.trim() || null;
+  if (!auth || !currentTeam || isPast(key)) return;
+  const name = $('#dsReason').value.trim();
   const start = $('#dsStart').value, end = $('#dsEnd').value;
+  if (!name) return msg('일정 이름을 적어 주세요.', 'err');
   if (!start || !end) return msg('시작일과 종료일을 골라 주세요.', 'err');
   if (end < start) return msg('종료일이 시작일보다 빠릅니다.', 'err');
+  if (daysBetween(start, end) > RANGE_MAX)
+    return msg(`한 번에 ${RANGE_MAX}일까지만 등록할 수 있습니다.`, 'err');
 
-  // 시작일부터 종료일까지 하루씩. 오늘 이전은 투표 대상이 아니므로 건너뛴다.
-  const [y, m, d0] = start.split('-').map(Number);
-  const dates = [];
-  for (const d = new Date(y, m - 1, d0); ymd(d) <= end; d.setDate(d.getDate() + 1)) {
-    if (!isPast(ymd(d))) dates.push(ymd(d));
-    if (dates.length > RANGE_MAX) return msg(`한 번에 ${RANGE_MAX}일까지만 등록할 수 있습니다.`, 'err');
-  }
-  if (!dates.length) return msg('저장할 날짜가 없습니다.', 'err');
-
-  msg(`${dates.length}일 저장 중...`);
+  msg('저장 중...');
   try {
-    await upsertVotes(dates.map(k => rowFor(k, { c:'x', reason })));
-    // 성공한 뒤에 서버 값을 다시 읽어 화면을 맞춘다 (여러 날이 한꺼번에 바뀌므로 낙관적 반영은 하지 않는다)
+    await sbFetch('/rest/v1/day_plans', {
+      method: 'POST',
+      body: JSON.stringify({ team_id: currentTeam, user_id: auth.uid, name, start_date: start, end_date: end })
+    });
+    // 여러 날이 한꺼번에 바뀌므로 낙관적 반영 없이 서버 값을 다시 읽는다
     await refresh(true);
     openDay(key);
-    msg(dates.length === 1 ? '불가로 저장했습니다.' : `${label(dates[0])}부터 ${dates.length}일을 불가로 저장했습니다.`, 'ok');
+    msg(`'${name}' 일정을 등록했습니다.`, 'ok');
   } catch(e){
-    msg('저장하지 못했습니다: ' + (e.message || '알 수 없는 오류'), 'err');
+    msg('저장하지 못했습니다: ' + errText(e), 'err');
   }
 }
+
+async function delPlan(id){
+  const p = myPlans.find(x => x.id === id);
+  if (!p || !confirm(`'${p.name}' 일정을 지울까요?`)) return;
+  msg('삭제 중...');
+  try {
+    await sbFetch(`/rest/v1/day_plans?id=eq.${id}`, { method: 'DELETE' });
+    const key = openKey;
+    await refresh(true);
+    openDay(key);
+    msg('일정을 지웠습니다.', 'ok');
+  } catch(e){
+    msg('지우지 못했습니다: ' + errText(e), 'err');
+  }
+}
+
+const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000) + 1;
 
 // 표를 바꾼 뒤 집계(시간대·사유)를 다시 읽어 시트에 반영한다
 async function reloadAgg(){

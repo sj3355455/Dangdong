@@ -105,13 +105,53 @@ begin
 end $$;
 
 -- ─────────────────────────────────────────────────────────────
+-- 2-2) 개인 일정 — "12~14일은 시험기간이라 안 된다"
+--   day_votes 에 사유를 달아 두던 방식은 기본키가 (팀,날짜,사람)이라 하루에 하나뿐이었다.
+--   그래서 같은 날 두 번째 일정을 넣으면 첫 일정을 덮어썼다. 일정을 '이름 + 기간' 한 행으로
+--   따로 두면 한 사람이 같은 날에 몇 개든 등록할 수 있고, 지우는 것도 행 하나 지우면 끝난다.
+--   day_votes 는 그대로 둔다 — 그냥 누르는 O/X 는 여전히 사람당 하루 하나가 맞다.
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.day_plans (
+  id         uuid primary key default gen_random_uuid(),
+  team_id    uuid not null references public.teams(id) on delete cascade,
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  name       text not null,
+  start_date date not null,
+  end_date   date not null,
+  created_at timestamptz not null default now(),
+  constraint day_plans_name_chk  check (char_length(btrim(name)) between 1 and 20),
+  constraint day_plans_range_chk check (end_date >= start_date)
+);
+create index if not exists day_plans_team_range_idx
+  on public.day_plans(team_id, start_date, end_date);
+
+-- ─────────────────────────────────────────────────────────────
 -- 3) 권한 + RLS
 -- ─────────────────────────────────────────────────────────────
 grant select, insert, update, delete on public.club_events to authenticated;
 grant select, insert, update, delete on public.day_votes  to authenticated;
+grant select, insert, update, delete on public.day_plans  to authenticated;
 
 alter table public.club_events enable row level security;
 alter table public.day_votes  enable row level security;
+alter table public.day_plans  enable row level security;
+
+-- 일정: 표와 똑같이 '내 것'만 읽고 쓴다. 남의 일정은 조회 자체가 불가능하고,
+-- 화면에 보이는 막대는 plan_spans 가 이름과 인원수만 집계해서 돌려준 것이다.
+drop policy if exists "read own plan" on public.day_plans;
+drop policy if exists "add own plan"  on public.day_plans;
+drop policy if exists "edit own plan" on public.day_plans;
+drop policy if exists "drop own plan" on public.day_plans;
+
+create policy "read own plan" on public.day_plans
+  for select using (user_id = auth.uid());
+create policy "add own plan" on public.day_plans
+  for insert with check (user_id = auth.uid() and public.is_member_of(team_id));
+create policy "edit own plan" on public.day_plans
+  for update using (user_id = auth.uid())
+       with check (user_id = auth.uid() and public.is_member_of(team_id));
+create policy "drop own plan" on public.day_plans
+  for delete using (user_id = auth.uid());
 
 -- 정기전: 팀원이면 읽고, 팀 관리자만 쓴다
 drop policy if exists "read team events"   on public.club_events;
@@ -166,14 +206,37 @@ stable
 security definer
 set search_path = public
 as $$
-  with mine as (
-    select v.vote_date, v.choice, v.from_hour, v.to_hour,
-           nullif(btrim(v.reason), '') as reason
+  with mem as (select public.is_member_of(t) as ok),   -- 팀원이 아니면 아래가 전부 빈 결과
+  -- 등록된 일정을 날짜별로 펼친다. 일정이 걸린 날은 그 사람이 '불가'인 것으로 본다.
+  plan_days as (
+    select g::date as vote_date, p.user_id, btrim(p.name) as reason
+    from public.day_plans p
+         cross join lateral generate_series(greatest(p.start_date, d1),
+                                            least(p.end_date, d2), interval '1 day') g
+    where p.team_id = t and p.start_date <= d2 and p.end_date >= d1
+      and (select ok from mem)
+  ),
+  votes as (
+    select v.vote_date, v.choice, v.from_hour, v.to_hour, v.user_id
     from public.day_votes v
     where v.team_id = t
       and v.vote_date >= d1
       and v.vote_date <= d2
-      and public.is_member_of(t)     -- 팀원이 아니면 빈 결과
+      and (select ok from mem)
+  ),
+  -- 표와 일정을 한 판으로 합친다. 일정이 있으면 그 사람은 그 날 불가로 친다.
+  mine as (
+    select vote_date, user_id,
+           case when exists (select 1 from plan_days pd
+                              where pd.vote_date = v.vote_date and pd.user_id = v.user_id)
+                then 'x' else choice end as choice,
+           from_hour, to_hour
+    from votes v
+    union all
+    select pd.vote_date, pd.user_id, 'x', null::smallint, null::smallint
+    from plan_days pd
+    where not exists (select 1 from votes v
+                       where v.vote_date = pd.vote_date and v.user_id = pd.user_id)
   ),
   -- 시작~종료를 시(hour) 단위로 펼쳐서 센다. 끝 시각은 제외 — 19~22 는 19,20,21 시에 있다는 뜻.
   hrs as (
@@ -183,15 +246,16 @@ as $$
     where m.choice = 'o' and m.from_hour is not null and m.to_hour is not null
     group by m.vote_date, g.h
   ),
+  -- 그 날 걸려 있는 일정 이름별 인원수 (이름만 나가고 누구인지는 나가지 않는다)
   rsn as (
-    select m.vote_date, m.reason, count(*)::int as cnt
-    from mine m
-    where m.choice = 'x' and m.reason is not null
-    group by m.vote_date, m.reason
+    select pd.vote_date, pd.reason, count(distinct pd.user_id)::int as cnt
+    from plan_days pd
+    group by pd.vote_date, pd.reason
   )
+  -- 한 사람이 같은 날 일정을 여러 개 걸어도 인원수는 1이어야 하므로 distinct user_id 로 센다.
   select c.vote_date,
-         (count(*) filter (where c.choice = 'o'))::integer,
-         (count(*) filter (where c.choice = 'x'))::integer,
+         (count(distinct c.user_id) filter (where c.choice = 'o'))::integer,
+         (count(distinct c.user_id) filter (where c.choice = 'x'))::integer,
          coalesce((select jsonb_agg(jsonb_build_array(h.h, h.cnt) order by h.h)
                      from hrs h where h.vote_date = c.vote_date), '[]'::jsonb),
          coalesce((select jsonb_agg(jsonb_build_array(r.reason, r.cnt) order by r.cnt desc, r.reason)
@@ -200,6 +264,28 @@ as $$
   group by c.vote_date
 $$;
 grant execute on function public.vote_counts(uuid, date, date) to authenticated;
+
+-- ─────────────────────────────────────────────────────────────
+-- 4-2) 달력에 그릴 일정 막대 — 이름·기간·인원수만 나간다.
+--   같은 이름이라도 기간이 다르면 다른 막대다. 예전처럼 날짜별 사유를 클라이언트가
+--   이어 붙이지 않으므로, 두 사람의 '시험기간'이 기간이 다른데 하나로 합쳐지던 문제도 없다.
+-- ─────────────────────────────────────────────────────────────
+create or replace function public.plan_spans(t uuid, d1 date, d2 date)
+returns table(name text, start_date date, end_date date, cnt integer)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select btrim(p.name), p.start_date, p.end_date, count(distinct p.user_id)::integer
+  from public.day_plans p
+  where p.team_id = t
+    and p.start_date <= d2
+    and p.end_date >= d1
+    and public.is_member_of(t)     -- 팀원이 아니면 빈 결과
+  group by btrim(p.name), p.start_date, p.end_date
+$$;
+grant execute on function public.plan_spans(uuid, date, date) to authenticated;
 
 -- ─────────────────────────────────────────────────────────────
 -- 4-1) PostgREST 스키마 캐시 갱신
@@ -219,6 +305,10 @@ declare missing text := '';
 begin
   if to_regclass('public.club_events') is null then missing := missing || ' club_events'; end if;
   if to_regclass('public.day_votes')  is null then missing := missing || ' day_votes';  end if;
+  if to_regclass('public.day_plans')  is null then missing := missing || ' day_plans';  end if;
+  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'public' and p.proname = 'plan_spans')
+    then missing := missing || ' plan_spans'; end if;
   if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                  where n.nspname = 'public' and p.proname = 'vote_counts')
     then missing := missing || ' vote_counts'; end if;
@@ -229,7 +319,7 @@ begin
   if missing <> '' then
     raise exception '설치가 덜 됐습니다. 빠진 것:%', missing;
   end if;
-  raise notice '캘린더 설치 완료 — club_events / day_votes / vote_counts / is_team_admin 모두 확인';
+  raise notice '캘린더 설치 완료 — club_events / day_votes / day_plans / vote_counts / plan_spans / is_team_admin 모두 확인';
 end $$;
 
 -- 설치 후 확인 쿼리 (선택)
