@@ -350,7 +350,7 @@ function topDaysHtml(){
 const BAR_H = 13;                                   // 막대 한 줄 높이(px)
 // 칸 간격은 CSS 의 --gap 하나만 보고 계산한다 — 여기에 숫자를 박아 두면 CSS 를 고칠 때 막대가 어긋난다.
 // INSET: 칸 폭에 딱 맞추면 둥근 모서리 밖으로 삐져나와 보이므로 양쪽을 조금 들여 그린다.
-const BAR_INSET = 3;
+const BAR_INSET = 5;
 const colLeft  = i => `calc((100% - var(--gap) * 6) / 7 * ${i} + var(--gap) * ${i} + ${BAR_INSET}px)`;
 const colWidth = n => `calc((100% - var(--gap) * 6) / 7 * ${n} + var(--gap) * ${n - 1} - ${BAR_INSET * 2}px)`;
 
