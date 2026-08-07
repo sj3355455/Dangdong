@@ -89,6 +89,29 @@ table.rank th.name,table.rank td.name{position:sticky;left:var(--rkw,34px);z-ind
   background:var(--card);box-shadow:1px 0 0 var(--line)}
 table.rank thead th.rk,table.rank thead th.name{z-index:3}
 table.rank tbody tr:hover td.rk,table.rank tbody tr:hover td.name{background:var(--hover)}
+/* 표 위쪽 도구 줄 — 보기 전환·정기전 토글·지표 선택이 한 줄에 흐른다 */
+.toolrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 0}
+/* ══ 포디움 ══
+   1·2·3등 칸은 실제 시상대처럼 2등 왼쪽 · 1등 가운데 · 3등 오른쪽으로 세운다.
+   공동 등수면 한 칸에 이름이 여러 개 쌓이므로, 칸 바닥을 맞추고(align-items:flex-end)
+   이름은 단 위로 자라게 둔다. */
+.pod{display:flex;align-items:flex-end;justify-content:center;gap:8px;margin:18px 0 4px}
+.pod .step{flex:1 1 0;min-width:0;max-width:33.33%;display:flex;flex-direction:column;align-items:center;gap:5px}
+.pod .who{display:flex;flex-direction:column;gap:2px;align-items:center;text-align:center;
+  font-weight:700;font-size:.95rem;line-height:1.3;word-break:keep-all}
+.pod .val{font-size:.8rem;color:var(--muted);white-space:nowrap}
+.pod .block{width:100%;border-radius:10px 10px 0 0;display:flex;align-items:center;
+  justify-content:center;font-size:1.6rem}
+.pod .b1{height:104px;background:linear-gradient(180deg,#ffdc7a,#f0b429)}
+.pod .b2{height:76px;background:linear-gradient(180deg,#e3e7ec,#b6bec8)}
+.pod .b3{height:56px;background:linear-gradient(180deg,#eab68c,#cb8f61)}
+/* 4등 이하 */
+.podrest{margin-top:16px;border-top:1px solid var(--line)}
+.pdrow{display:flex;align-items:center;gap:10px;padding:9px 4px;
+  border-bottom:1px solid var(--line);font-size:.9rem}
+.pdrow .pd-rk{flex:0 0 30px;text-align:center;color:var(--muted)}
+.pdrow .pd-nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdrow .pd-vl{flex:0 0 auto;font-weight:600}
 a.pl{color:var(--text);text-decoration:none;font-weight:600;border-bottom:1px dashed var(--muted);cursor:pointer}
 a.pl:hover{color:var(--accent);border-color:var(--accent)}
 .win{color:var(--accent);font-weight:600}

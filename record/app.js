@@ -99,7 +99,7 @@ function rangeRowHtml(cls, from, to, leftHtml){
 // 등록된 정기전이 없거나 DB에 event_id 컬럼이 없으면 아예 그리지 않는다.
 function eventRowHtml(cls){
   if (!HAS_EVENTS || !RAW_EVENTS.length) return '';
-  return `<button class="mbtn ${cls}-evt ${clubOnly?'on':''}" style="margin:8px 0 0">
+  return `<button class="mbtn ${cls}-evt ${clubOnly?'on':''}">
       ${clubOnly ? '✓ ' : ''}${EVT_ICON} 정기전만 보기
     </button>`;
 }
@@ -645,7 +645,11 @@ const MODE_TABS = ['통합','2인','3인','4인','팀전'];
 const colsFor = m => m==='통합' ? COLS_ALL : (m==='2인'||m==='팀전') ? COLS_VS : COLS_MULTI;
 const defSort = m => m==='통합' ? 'avgAvg' : 'winRate';
 const cell = (p, c) => p[c.k]==null ? '—' : (c.fmt ? c.fmt(p[c.k]) : p[c.k]);
+// 값이 낮을수록 잘한 지표. 표에서 제목을 처음 눌렀을 때와 포디움의 1등이 여기에 달려 있다.
+// (기복 = 경기별 에버리지 변동폭이라 낮을수록 안정적이다)
+const bestIsLow = k => k==='avgRank' || k==='foulRate' || k==='volatility';
 let rankMode='통합', sortKey='avgAvg', sortAsc=false;
+let rankView='table';   // 'table' | 'podium' — 순위 탭 안에서 표/포디움 전환
 
 function rankRows(mode){
   if(mode==='통합') return DATA.players.filter(p=>p.games>0 && p.id);
@@ -654,9 +658,42 @@ function rankRows(mode){
     .map(p=>({name:p.name, handicap:p.handicap, ...p.modes[mode]}));
 }
 
+/* 포디움 — 1·2·3등은 시상대에, 나머지는 아래 목록에.
+   등수는 표와 똑같이 rankOf(공동 등수)를 그대로 쓴다. 공동 1등이 둘이면 한 칸에 둘 다
+   올라가고 2등 칸은 비는 게 아니라 아예 없다(다음이 3등이므로). */
+function podiumHtml(rows, rankOf, COLS){
+  const col = COLS.find(c => c.k === sortKey) || COLS[0];
+  const groups = [];
+  rows.forEach((p, i) => {
+    const r = rankOf[i];
+    if (r > 3) return;
+    const g = groups.find(x => x.rank === r);
+    if (g) g.players.push(p); else groups.push({ rank: r, players: [p] });
+  });
+  const nameLink = p => `<a class="pl" data-p="${esc(p.name)}">${esc(p.name)}</a>`;
+  const step = g => !g ? '' : `<div class="step">
+      <div class="who">${g.players.map(nameLink).join('')}</div>
+      <div class="val">${cell(g.players[0], col)}</div>
+      <div class="block b${g.rank}">${['🥇','🥈','🥉'][g.rank-1]}</div>
+    </div>`;
+  const byRank = r => groups.find(g => g.rank === r);
+  // 2등 왼쪽 · 1등 가운데 · 3등 오른쪽
+  const pod = `<div class="pod">${[byRank(2), byRank(1), byRank(3)].map(step).join('')}</div>`;
+
+  const rest = rows.map((p, i) => ({ rank: rankOf[i], p })).filter(x => x.rank > 3);
+  const restHtml = !rest.length ? '' : `<div class="podrest">${rest.map(x => `
+      <div class="pdrow"><span class="pd-rk">${x.rank}</span>
+        <span class="pd-nm">${nameLink(x.p)}</span>
+        <span class="pd-vl">${cell(x.p, col)}</span></div>`).join('')}</div>`;
+
+  return `<div class="sub" style="text-align:center;margin:0">${esc(col.t)} 기준</div>${pod}${restHtml}`;
+}
+
 function renderRank(){
   const COLS = colsFor(rankMode);
   if(!COLS.some(c=>c.k===sortKey)) sortKey = defSort(rankMode);
+  // 포디움은 성적으로 세우는 화면이라 이름순이 의미가 없다 → 기본 지표로 되돌린다
+  if(rankView==='podium' && sortKey==='name'){ sortKey = defSort(rankMode); sortAsc = bestIsLow(sortKey); }
   const rows = rankRows(rankMode).sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey], r;
     if(x==null && y==null) r = 0;
@@ -693,6 +730,8 @@ function renderRank(){
   let inner;
   if(rows.length===0){
     inner = `<div class="empty">아직 ${rankMode==='통합'?'':rankMode+'전 '}기록이 없습니다</div>`;
+  } else if(rankView==='podium'){
+    inner = podiumHtml(rows, rankOf, COLS);
   } else {
     // 이름순 정렬은 성적 순위가 아니므로 메달도 등수도 아닌 그냥 줄 번호
     const ranked = sortKey !== 'name';
@@ -707,18 +746,29 @@ function renderRank(){
     }).join('');
     inner = `<div class="scroll"><table class="rank"><thead><tr><th class="rk"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
+  // 지표 선택 — 포디움엔 누를 표 제목이 없으므로 셀렉트로 고른다. 이름은 성적이 아니라 제외.
+  const metricSel = rankView!=='podium' ? '' :
+    `<select class="field p-metric" style="flex:1 1 120px; min-width:110px; height:30px; padding:0 24px 0 8px; font-size:0.85rem; border-radius:999px; margin:0;">` +
+    COLS.filter(c=>c.k!=='name').map(c=>`<option value="${c.k}" ${c.k===sortKey?'selected':''}>${esc(c.t)}</option>`).join('') +
+    `</select>`;
+  const viewBtns = `<div class="mbtns">
+      <button class="mbtn p-view ${rankView==='table'?'on':''}" data-v="table">표</button>
+      <button class="mbtn p-view ${rankView==='podium'?'on':''}" data-v="podium">🏅 포디움</button>
+    </div>`;
+
+  const sortHint = rankView==='podium' ? '' : '표 제목을 누르면 그 기준으로 정렬됩니다. · ';
   const note = rankMode==='통합'
-    ? '표 제목을 누르면 그 기준으로 정렬됩니다. · <b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준). · <b>파울률</b>은 전체 타격 중 파울의 비율이며, 낮을수록 좋습니다 (타격수 = 파울 차감 전 득점 + 알 이닝). 평균 타수·파울률은 파울이 기록되기 시작한 이후 경기만 집계합니다.'
+    ? sortHint + '<b>승률</b>은 모드별로 인원수를 고려하여 공정하게 환산한 승점 평균입니다 (50%가 평균). · <b>평균 타수</b>는 득점한 알 이닝에서 평균 몇 점씩 몰아쳤는지입니다 (공타·쿠션 이닝 제외, 파울 차감 전 기준). · <b>파울률</b>은 전체 타격 중 파울의 비율이며, 낮을수록 좋습니다 (타격수 = 파울 차감 전 득점 + 알 이닝). 평균 타수·파울률은 파울이 기록되기 시작한 이후 경기만 집계합니다.'
     : (rankMode==='3인'||rankMode==='4인')
-      ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
-      : '표 제목을 누르면 그 기준으로 정렬됩니다.';
+      ? sortHint + '<b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
+      : (sortHint || '지표를 고르면 그 기준으로 세웁니다.');
   // 공동 등수 안내는 어느 모드에서나 필요하다 (이름순은 등수가 아니라 줄 번호라 제외)
   const rankNote = sortKey === 'name' ? '' :
     ' · 정렬 기준 값이 같으면 <b>공동 등수</b>입니다 (공동 2등이 둘이면 다음은 4등).';
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
         ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
-        ${eventRowHtml('p-period')}
+        <div class="toolrow">${viewBtns}${eventRowHtml('p-period')}${metricSel}</div>
       </div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}${rankNote}</div></div>`);
@@ -745,10 +795,20 @@ function renderRank(){
     sortAsc = false;
     show('rank');
   };
+  el.querySelectorAll('.p-view').forEach(b => b.onclick = () => {
+    rankView = b.dataset.v;
+    show('rank');
+  });
+  const metricEl = el.querySelector('.p-metric');
+  if (metricEl) metricEl.onchange = () => {
+    sortKey = metricEl.value;
+    sortAsc = bestIsLow(sortKey);   // 고른 지표에서 잘한 사람이 1등이 되도록
+    show('rank');
+  };
   el.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
     const k = th.dataset.k;
-    // 낮을수록 좋은 지표(순위·파울률)는 첫 클릭에 오름차순 — 잘한 사람이 위로 오게
-    if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name'||k==='avgRank'||k==='foulRate'); }
+    // 낮을수록 좋은 지표(순위·파울률·기복)는 첫 클릭에 오름차순 — 잘한 사람이 위로 오게
+    if(k===sortKey) sortAsc=!sortAsc; else { sortKey=k; sortAsc = (k==='name' || bestIsLow(k)); }
     show('rank');
   });
   el.querySelectorAll('a.pl').forEach(a=>a.onclick=()=>showPlayer(a.dataset.p));
@@ -1479,7 +1539,7 @@ function renderGames(){
   const el = $(`<div class="card">
     <div style="margin-bottom:14px;">
       ${rangeRowHtml('pg-period', rankFrom, rankTo, modeSel)}
-      ${eventRowHtml('pg-period')}
+      ${eventRowHtml('pg-period') ? `<div class="toolrow">${eventRowHtml('pg-period')}</div>` : ''}
     </div>
     <div class="scroll">${inner}</div>
     <div class="sub" style="margin:10px 0 0">경기를 누르면 상세 기록을 볼 수 있습니다.</div>
