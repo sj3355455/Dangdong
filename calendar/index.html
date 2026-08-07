@@ -19,21 +19,21 @@
      한 곳에서만 고치면 되도록 변수로 둔다. */
   --gap: 2px;
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
-  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
+  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5; --accent-soft:rgba(232,89,12,.45); --accent-bg:#fdefe5;
   --ok:#12894a; --no:#c62f38; --okbg:#e8f6ee; --nobg:#fdecec;
 }
 @media (prefers-color-scheme:dark){
   :root{ --bg:#15181c; --card:#1e2228; --text:#e8eaed; --muted:#9aa1ab;
-         --line:#2f343c; --accent:#ff8c42; --hover:#262b33;
+         --line:#2f343c; --accent:#ff8c42; --hover:#262b33; --accent-soft:rgba(255,140,66,.42); --accent-bg:#33251b;
          --ok:#4ade80; --no:#f87171; --okbg:#16281f; --nobg:#2a1a1c; }
 }
 :root[data-theme="light"]{ color-scheme:light;
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
-  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
+  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5; --accent-soft:rgba(232,89,12,.45); --accent-bg:#fdefe5;
   --ok:#12894a; --no:#c62f38; --okbg:#e8f6ee; --nobg:#fdecec; }
 :root[data-theme="dark"]{ color-scheme:dark;
   --bg:#15181c; --card:#1e2228; --text:#e8eaed; --muted:#9aa1ab;
-  --line:#2f343c; --accent:#ff8c42; --hover:#262b33;
+  --line:#2f343c; --accent:#ff8c42; --hover:#262b33; --accent-soft:rgba(255,140,66,.42); --accent-bg:#33251b;
   --ok:#4ade80; --no:#f87171; --okbg:#16281f; --nobg:#2a1a1c; }
 *{box-sizing:border-box}
 body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));background:var(--bg);color:var(--text);
@@ -85,18 +85,24 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 .cell.pad{background:transparent;border-color:transparent;cursor:default}
 .cell.past{background:transparent}
 .cell.past .dnum{opacity:.45}
+/* 정기전 날 — 칸 전체를 칠한다. .past 뒤에 둬서 지난 정기전도 색이 남는다. */
+.cell.event{background:var(--accent-bg);border-color:var(--accent-soft)}
 .cell.today{border-color:var(--accent);border-width:2px;padding:3px 2px 2px}
-.cell.mine{box-shadow:inset 0 0 0 2px var(--accent)}
+.cell.mine{box-shadow:inset 0 0 0 1.5px var(--accent-soft)}
 .dnum{font-size:.85rem;font-weight:700;line-height:1.1}
 .dnum.sun{color:var(--no)} .dnum.sat{color:#3b82f6}
 .evchip{font-size:.66rem;font-weight:800;color:#fff;background:var(--accent);
   border-radius:5px;padding:1px 4px;align-self:flex-start;line-height:1.35;white-space:nowrap;
   max-width:100%;overflow:hidden;text-overflow:ellipsis}
+/* 칸이 이미 주황이니 칩까지 채우면 답답하다 — 글자만 남긴다 */
+.cell.event .evchip{background:none;color:var(--accent);padding:1px 0}
 .gchip{font-size:.66rem;color:var(--muted);line-height:1.3;white-space:nowrap}
-.votes{margin-top:auto;display:flex;gap:3px;flex-wrap:wrap}
-.vpill{font-size:.68rem;font-weight:800;border-radius:5px;padding:0 4px;line-height:1.45;white-space:nowrap}
-.vpill.o{color:var(--ok);background:var(--okbg)}
-.vpill.x{color:var(--no);background:var(--nobg)}
+/* 가능/불가 인원 — 좁은 칸에 두 줄로 넘치지 않게 "5 / 2" 한 줄로 */
+.votes{margin-top:auto;display:flex;align-items:baseline;gap:2px;white-space:nowrap;line-height:1.3}
+.votes b{font-size:.74rem;font-weight:800;font-variant-numeric:tabular-nums}
+.votes .vo{color:var(--ok)}
+.votes .vx{color:var(--no)}
+.votes .vsep{font-style:normal;font-size:.66rem;color:var(--muted)}
 .mymark{position:absolute;top:4px;right:4px;font-size:.62rem;font-weight:900;
   width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff}
 .mymark.o{background:var(--ok)} .mymark.x{background:var(--no)}
@@ -225,7 +231,7 @@ body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));backg
 
   <div style="text-align:center; margin-top:30px; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:8px;">
     <button class="linkbtn" id="btnLogout" style="display:none;">로그아웃 (처음으로)</button>
-    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v219</span>
+    <span style="font-size:0.75rem; color:var(--muted);" data-app-version>v221</span>
   </div>
 </div>
 

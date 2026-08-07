@@ -215,20 +215,23 @@ function render(){
       const d = Number(key.slice(8));
       const dow = new Date(y, m, d).getDay();
       const ev = events[key], g = gameCnt[key], c = counts[key] || { o: 0, x: 0 }, mv = myChoice(key);
+      // 지난 날의 참여 투표는 이미 의미가 없다 → 인원수·내 표·표시 테두리를 모두 지우고
+      // 그날 실제로 있었던 일(정기전·판수)만 남긴다.
+      const past = key < today;
+      // 정기전 날은 칸 전체를 칠해서 알린다 — 좁은 칸에 인원수까지 넣으면 줄이 넘친다.
+      const showVotes = !past && !ev && (c.o || c.x);
       const cls = ['cell'];
+      if (ev) cls.push('event');
       if (key === today) cls.push('today');
-      if (mv) cls.push('mine');
-      if (key < today) cls.push('past');   // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
+      if (mv && !past) cls.push('mine');
+      if (past) cls.push('past');          // 투표 불가 — 눌러서 정기전·판수는 볼 수 있다
       const dcls = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
       cells += `<div class="${cls.join(' ')}" data-d="${key}" style="padding-bottom:${padBottom}px">
-        ${mv ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
+        ${mv && !past ? `<span class="mymark ${mv}">${mv === 'o' ? 'O' : 'X'}</span>` : ''}
         <span class="dnum${dcls}">${d}</span>
         ${ev ? `<span class="evchip">${ev.round_no ? esc(ev.round_no) + '회' : '정기전'}</span>` : ''}
         ${g ? `<span class="gchip">🎱 ${g}판</span>` : ''}
-        <span class="votes">
-          ${c.o ? `<span class="vpill o">O ${c.o}</span>` : ''}
-          ${c.x ? `<span class="vpill x">X ${c.x}</span>` : ''}
-        </span>
+        ${showVotes ? `<span class="votes"><b class="vo">${c.o}</b><i class="vsep">/</i><b class="vx">${c.x}</b></span>` : ''}
       </div>`;
     }
     weeks += `<div class="week"><div class="wrow">${cells}</div>`
