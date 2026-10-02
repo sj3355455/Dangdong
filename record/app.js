@@ -729,6 +729,35 @@ function attachRecHd(rows){
   return { teamInn, goalInn, n: base.length };
 }
 
+/* ══ 튀는 값 ══
+   열마다 지금 표에 오른 사람들의 평균·표준편차를 내서, 평균에서 OUTLIER_Z 배 넘게 떨어진 칸을
+   빨갛게 칠한다. 잘한 쪽이든 못한 쪽이든 '남들과 확 다른 값'이면 칠한다.
+   1.8 은 열마다 한 명 나올까 말까 한 정도로 맞춘 값이다 (15명 표 기준 2.0 이면 인터벌처럼
+   눈에 띄게 빠른 한 명이 빠지고, 1.5 면 열마다 두세 명씩 칠해져 강조가 무뎌진다).
+   이름·수지·권장수지·경기수·승수는 실력 지표가 아니라 칠하지 않는다. */
+const OUTLIER_Z = 1.8;
+const OUTLIER_MIN_ROWS = 5;   // 이보다 적으면 표준편차가 뜻이 없다
+const OUTLIER_SKIP = new Set(['name', 'handicap', 'recHd', 'games', 'wins']);
+// 돌려주는 값: 열 키 → 그 열에서 튀는 선수 객체들의 Set
+function outlierOf(rows, COLS){
+  const out = new Map();
+  if (rows.length < OUTLIER_MIN_ROWS) return out;
+  const num = v => typeof v === 'number' && isFinite(v);
+  for (const c of COLS) {
+    if (OUTLIER_SKIP.has(c.k)) continue;
+    const vs = rows.map(p => p[c.k]).filter(num);
+    if (vs.length < OUTLIER_MIN_ROWS) continue;
+    const m = vs.reduce((a, b) => a + b, 0) / vs.length;
+    const sd = Math.sqrt(vs.reduce((a, v) => a + (v - m) ** 2, 0) / vs.length);
+    if (!(sd > 0)) continue;
+    // 1e-9 — 딱 경계(z = 1.8)에 걸친 값이 소수 오차로 빠지지 않게
+    const hit = new Set(rows.filter(p => num(p[c.k]) && Math.abs(p[c.k] - m) / sd >= OUTLIER_Z - 1e-9));
+    if (hit.size) out.set(c.k, hit);
+  }
+  return out;
+}
+const isOut = (outs, p, k) => !!(outs.get(k) && outs.get(k).has(p));
+
 function rankRows(mode){
   if(mode==='통합') return DATA.players.filter(p=>p.games>0 && p.id);
   return DATA.players
@@ -816,7 +845,8 @@ function imgKit(W, H){
   const rootCS = getComputedStyle(document.documentElement);
   const v = (n, d) => (rootCS.getPropertyValue(n) || '').trim() || d;
   const C = { bg:v('--card','#ffffff'), text:v('--text','#1a1d21'), muted:v('--muted','#6b7280'),
-              line:v('--line','#e5e7eb'), chip:v('--bg','#f6f7f9'), accent:v('--accent','#2563eb') };
+              line:v('--line','#e5e7eb'), chip:v('--bg','#f6f7f9'), accent:v('--accent','#2563eb'),
+              out:v('--out','#dc2626') };
 
   const S = 2;                                         // 2배로 그려서 선명하게
   const cv = document.createElement('canvas');
@@ -1008,6 +1038,7 @@ function tableCanvas(rows, COLS){
     return Math.ceil(w) + CELL * 2;
   });
   const tableW = widths.reduce((a, b) => a + b, 0);
+  const outs = outlierOf(list, COLS);   // 화면 표와 같은 기준으로 튀는 값을 빨갛게
   const title = rankMode === '통합' ? '순위표' : rankMode + '전 순위표';
   const cond = rankCondText() + '  ·  이름순';
   const W = Math.ceil(Math.max(560, tableW + PAD * 2, imgMeasure(cond, imgFont(500, 17)) + PAD * 2));
@@ -1043,7 +1074,8 @@ function tableCanvas(rows, COLS){
     drawRow(y, ROW, (c, j, px, py, al) => {
       if (c.k === '#') return text(String(i + 1), px, py, fB, C.muted, al);
       const s = val(p, c), ar = c.k === 'recHd' ? recArrow(p) : '';
-      if (!ar) return text(s, px, py, fontOf(c), c.k === 'name' ? C.text : (s === '—' ? C.muted : C.text), al);
+      const color = c.k === 'name' ? C.text : s === '—' ? C.muted : isOut(outs, p, c.k) ? C.out : C.text;
+      if (!ar) return text(s, px, py, fontOf(c), color, al);
       // 숫자 + 화살표(흐리게)를 한 덩어리로 가운데 맞춘다
       const sw = imgMeasure(s, fB), aw = imgMeasure(' ' + ar, fB);
       const left = px - (sw + aw) / 2;
@@ -1245,6 +1277,7 @@ function renderRank(){
   } else {
     // 이름순 정렬은 성적 순위가 아니므로 메달도 등수도 아닌 그냥 줄 번호
     const ranked = sortKey !== 'name';
+    const outs = outlierOf(rows, COLS);
     const body = rows.map((p,i)=>{
       const rk = rankOf[i];
       const medal = !ranked ? (i+1) : (['🥇','🥈','🥉'][rk-1] || rk);
@@ -1257,7 +1290,7 @@ function renderRank(){
           const d = p.recHd>now ? '<span class="up">↑</span>' : p.recHd<now ? '<span class="dn">↓</span>' : '';
           return `<td class="rec">${p.recHd}${d}</td>`;
         }
-        return `<td>${cell(p, c)}</td>`;
+        return `<td${isOut(outs, p, c.k) ? ' class="out"' : ''}>${cell(p, c)}</td>`;
       }).join('');
       return `<tr><td class="rk">${medal}</td>${tds}</tr>`;
     }).join('');
