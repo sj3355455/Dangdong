@@ -2078,17 +2078,25 @@ function monthOf(off){
 }
 
 let monthCache = { key: '', data: null };
+// 성장 카드에서 지난달과 견줄 달을 몇 달 전까지 찾아볼지. 한두 달 쉰 사람도 그 전에 친 달과
+// 견줄 수 있게 3달까지 본다. 더 멀리 가면 '지난번보다 늘었다'는 말이 무색해진다.
+const GROW_LOOKBACK = 3;
 function monthData(){
   const key = RAW_GAMES.length + '|' + todayYmd();
   if (monthCache.key === key && monthCache.data) return monthCache.data;
   // 성장·결산 모두 '지난달'이 기준 달이다. 진행 중인 이번 달은 며칠 치만 쌓여 있어
   // 견주면 들쭉날쭉하니, 다 끝난 지난달을 그 전달과 견준다.
-  const prev = monthOf(-1), prev2 = monthOf(-2);
+  const prev = monthOf(-1);
   const at = g => ymd(new Date(g.played_at));
+  const monthD = m => processData(RAW_GAMES.filter(g => inRange(at(g), m.from, m.to)), RAW_MEMBERS);
   const data = {
-    prev, prev2,
-    prevD:  processData(RAW_GAMES.filter(g => inRange(at(g), prev.from, prev.to)), RAW_MEMBERS),
-    prev2D: processData(RAW_GAMES.filter(g => inRange(at(g), prev2.from, prev2.to)), RAW_MEMBERS),
+    prev,
+    prevD:  monthD(prev),
+    // 성장 비교 상대 후보 — 지난달 바로 앞 달부터 GROW_LOOKBACK 달 전까지, 가까운 달이 먼저
+    backs: Array.from({ length: GROW_LOOKBACK }, (_, i) => {
+      const m = monthOf(-2 - i);
+      return { m: m.m, map: pMap(monthD(m)) };
+    }),
     // 하이런 '경신' 판정용 — 지난달 이전 통산
     befD:  processData(RAW_GAMES.filter(g => at(g) < prev.from), RAW_MEMBERS)
   };
@@ -2150,12 +2158,18 @@ const mkCards = (rows, badge, foot) => rows.filter(([r]) => r)
     label, foot: ownFoot || foot
   }));
 
-// ── 성장 — 지난달이 그 전달보다 얼마나 올랐나. 하이런 신기록 → 수지 → 에버리지 → 승률 ──
+// ── 성장 — 지난달이 그 사람의 직전 활동 달보다 얼마나 올랐나. 하이런 신기록 → 수지 → 에버리지 → 승률 ──
 function homeGrowCards(){
   const M = monthData();
   const cur = M.prev;                 // 견주는 기준 달 = 지난달
-  const C = pMap(M.prevD), P = pMap(M.prev2D), B = pMap(M.befD);
-  const gap = (p, c) => M.prev2.m + ' ' + p.games + '경기 → ' + M.prev.m + ' ' + c.games + '경기';
+  const C = pMap(M.prevD), B = pMap(M.befD);
+  const gap = g => g.m + ' ' + g.p.games + '경기 → ' + M.prev.m + ' ' + g.c.games + '경기';
+  // 비교 상대 = 지난달 이전에 이 사람이 '마지막으로 충분히 친 달'. 바로 앞 달을 쉬었으면
+  // 그 앞 달로 거슬러 간다(GROW_LOOKBACK 달까지). 경기 수가 모자란 달도 건너뛴다.
+  const lastBefore = (k, min) => {
+    for (const b of M.backs) { const p = b.map[k]; if (p && p.games >= min) return { p, m: b.m }; }
+    return null;
+  };
   const out = [];
 
   // ── 수지 상승 (handicap_history) ──
@@ -2176,21 +2190,20 @@ function homeGrowCards(){
     .filter(e => e.to > e.from)
     .sort((a, b) => (b.to - b.from) - (a.to - a.from));
 
-  // ── 성적 변화 (지난달이 그 전달보다) ──
-  // 한두 경기 뽑기로 뒤집히지 않게 양쪽 달 모두 2경기 이상인 사람만
+  // ── 성적 변화 (지난달이 그 사람의 직전 활동 달보다) ──
+  // 한두 경기 뽑기로 뒤집히지 않게 양쪽 달 모두 에버리지는 2경기, 승률은 3경기 이상일 때만
   const avgUp = [];
   const rateUp = [];
   const hrNew = [];
   for (const k in C) {
-    const c = C[k], p = P[k], b = B[k];
-    if (p && c.games >= 2 && p.games >= 2) {
-      if (p.avgAvg > 0 && c.avgAvg > p.avgAvg) avgUp.push({ c, p, d: c.avgAvg - p.avgAvg });
-      // 승률은 반드시 보정 승률(adjRate). 홈 카드는 모드를 안 가리고 한 달을 통째로 묶는데
-      // 원시 승률(wins/games)은 1등만 세서 다인전 2등이 꼴등과 같은 0점 취급이 된다.
-      // 통합 순위표의 '승률' 열도 adjRate 다 (COLS_ALL) — 표와 카드가 다른 수를 말하면 안 된다.
-      if (c.games >= 3 && p.games >= 3 && c.adjRate > p.adjRate + 0.5)
-        rateUp.push({ c, p, d: c.adjRate - p.adjRate });
-    }
+    const c = C[k], b = B[k];
+    const a = c.games >= 2 && lastBefore(k, 2);
+    if (a && a.p.avgAvg > 0 && c.avgAvg > a.p.avgAvg) avgUp.push({ c, ...a, d: c.avgAvg - a.p.avgAvg });
+    // 승률은 반드시 보정 승률(adjRate). 홈 카드는 모드를 안 가리고 한 달을 통째로 묶는데
+    // 원시 승률(wins/games)은 1등만 세서 다인전 2등이 꼴등과 같은 0점 취급이 된다.
+    // 통합 순위표의 '승률' 열도 adjRate 다 (COLS_ALL) — 표와 카드가 다른 수를 말하면 안 된다.
+    const r = c.games >= 3 && lastBefore(k, 3);
+    if (r && c.adjRate > r.p.adjRate + 0.5) rateUp.push({ c, ...r, d: c.adjRate - r.p.adjRate });
     // 하이런은 '지난달보다'보다 '통산 최고 경신'이 훨씬 값진 소식이라 이전 전체와 비교한다
     if (b && b.bestHr > 0 && c.bestHr > b.bestHr) hrNew.push({ c, b, d: c.bestHr - b.bestHr });
   }
@@ -2209,12 +2222,12 @@ function homeGrowCards(){
   avgUp.sort((a, b) => b.d - a.d).slice(0, 3).forEach(g => out.push({
     badge: '📈 성장', name: g.c.name, player: g.c.name,
     big: arrow(f3(g.p.avgAvg), f3(g.c.avgAvg)), label: '에버리지 상승',
-    delta: '+' + f3(g.d), foot: gap(g.p, g.c)
+    delta: '+' + f3(g.d), foot: gap(g)
   }));
   rateUp.sort((a, b) => b.d - a.d).slice(0, 2).forEach(g => out.push({
     badge: '📈 성장', name: g.c.name, player: g.c.name,
     big: arrow(fPct(g.p.adjRate), fPct(g.c.adjRate)), label: '승률 상승',
-    delta: '+' + g.d.toFixed(1) + '%p', foot: gap(g.p, g.c)
+    delta: '+' + g.d.toFixed(1) + '%p', foot: gap(g)
   }));
 
   return out;
@@ -2254,7 +2267,7 @@ function homeBestCards(){
 
 // 고른 묶음이 비어 있으면 빈 화면 대신 안내 한 장
 const HOME_EMPTY = {
-  grow: ['📈 성장', '아직 성장 소식이 없어요', '지난달과 그 전달을 견줄 기록이 쌓이면 여기에 뜹니다'],
+  grow: ['📈 성장', '아직 성장 소식이 없어요', '지난달 기록을 그 전에 친 달과 견줄 수 있으면 여기에 뜹니다'],
   last: ['🏅 지난 달 결산', '지난 달 기록이 없어요', '한 달 치가 쌓이면 결산이 만들어집니다'],
   best: ['👑 통산 최고 기록', '아직 기록이 없어요', '첫 경기를 치면 여기가 채워집니다']
 };
