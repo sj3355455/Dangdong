@@ -734,10 +734,19 @@ function attachRecHd(rows){
    빨갛게 칠한다. 잘한 쪽이든 못한 쪽이든 '남들과 확 다른 값'이면 칠한다.
    1.8 은 열마다 한 명 나올까 말까 한 정도로 맞춘 값이다 (15명 표 기준 2.0 이면 인터벌처럼
    눈에 띄게 빠른 한 명이 빠지고, 1.5 면 열마다 두세 명씩 칠해져 강조가 무뎌진다).
-   이름·수지·권장수지·경기수·승수는 실력 지표가 아니라 칠하지 않는다. */
+   이름·수지·권장수지·경기수·승수는 실력 지표가 아니라 칠하지 않는다.
+
+   대부분은 값의 '차이'로 견주지만, OUTLIER_LOG 열은 로그를 씌워 '배수'로 견준다.
+   0 보다 큰 값만 나오고 위로 끝이 없으며 0 에 가까울수록 특별한 지표들이다 —
+   기복 2.9% 는 17.6% 와 15 차이밖에 안 나지만 6분의 1 이라 눈에 띄는 값이다.
+   반대로 0%·100% 가 자연스럽게 나오는 비율(승률·득점률·파울률·쿠션)이나 하이런 같은 작은
+   정수는 차이로 보는 게 맞고, 0 이 있으면 로그를 씌울 수도 없다.
+   에버리지는 경계선이다. 배수로 보면 맨 위가 아니라 입문자의 낮은 값(0.045 등)이 칠해져서
+   '잘 치는 사람이 튄다'는 쓰임과 어긋나 차이로 둔다. */
 const OUTLIER_Z = 1.8;
 const OUTLIER_MIN_ROWS = 5;   // 이보다 적으면 표준편차가 뜻이 없다
 const OUTLIER_SKIP = new Set(['name', 'handicap', 'recHd', 'games', 'wins']);
+const OUTLIER_LOG = new Set(['volatility', 'avgInterval']);   // 기복 · 평균 인터벌
 // 돌려주는 값: 열 키 → 그 열에서 튀는 선수 객체들의 Set
 function outlierOf(rows, COLS){
   const out = new Map();
@@ -745,13 +754,17 @@ function outlierOf(rows, COLS){
   const num = v => typeof v === 'number' && isFinite(v);
   for (const c of COLS) {
     if (OUTLIER_SKIP.has(c.k)) continue;
-    const vs = rows.map(p => p[c.k]).filter(num);
-    if (vs.length < OUTLIER_MIN_ROWS) continue;
+    const raw = rows.map(p => p[c.k]).filter(num);
+    if (raw.length < OUTLIER_MIN_ROWS) continue;
+    // 로그 열이라도 0 이하가 하나라도 있으면 로그를 못 씌우니 그 열은 차이로 견준다
+    const useLog = OUTLIER_LOG.has(c.k) && raw.every(v => v > 0);
+    const f = useLog ? Math.log : v => v;
+    const vs = raw.map(f);
     const m = vs.reduce((a, b) => a + b, 0) / vs.length;
     const sd = Math.sqrt(vs.reduce((a, v) => a + (v - m) ** 2, 0) / vs.length);
     if (!(sd > 0)) continue;
     // 1e-9 — 딱 경계(z = 1.8)에 걸친 값이 소수 오차로 빠지지 않게
-    const hit = new Set(rows.filter(p => num(p[c.k]) && Math.abs(p[c.k] - m) / sd >= OUTLIER_Z - 1e-9));
+    const hit = new Set(rows.filter(p => num(p[c.k]) && Math.abs(f(p[c.k]) - m) / sd >= OUTLIER_Z - 1e-9));
     if (hit.size) out.set(c.k, hit);
   }
   return out;
