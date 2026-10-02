@@ -997,7 +997,7 @@ function tableCanvas(rows, COLS){
     : c.k === 'recHd' ? (p.recHd == null ? '—' : String(p.recHd))
     : String(cell(p, c));
   const cols = [{ k: '#', t: '' }, ...COLS];
-  const fontOf = c => (c.k === 'name' || c.k === 'recHd') ? fBold : fB;
+  const fontOf = c => c.k === 'name' ? fBold : fB;
   const widths = cols.map(c => {
     let w = imgMeasure(c.t, fH);
     list.forEach((p, i) => {
@@ -1044,10 +1044,10 @@ function tableCanvas(rows, COLS){
       if (c.k === '#') return text(String(i + 1), px, py, fB, C.muted, al);
       const s = val(p, c), ar = c.k === 'recHd' ? recArrow(p) : '';
       if (!ar) return text(s, px, py, fontOf(c), c.k === 'name' ? C.text : (s === '—' ? C.muted : C.text), al);
-      // 숫자(굵게) + 화살표(흐리게)를 한 덩어리로 가운데 맞춘다
-      const sw = imgMeasure(s, fBold), aw = imgMeasure(' ' + ar, fB);
+      // 숫자 + 화살표(흐리게)를 한 덩어리로 가운데 맞춘다
+      const sw = imgMeasure(s, fB), aw = imgMeasure(' ' + ar, fB);
       const left = px - (sw + aw) / 2;
-      text(s, left, py, fBold, C.text, 'left');
+      text(s, left, py, fB, C.text, 'left');
       text(' ' + ar, left + sw, py, fB, C.muted, 'left');
     });
   });
@@ -1255,7 +1255,7 @@ function renderRank(){
           if(p.recHd==null) return `<td class="rec">—</td>`;
           const now = (p.handicap||0)*10;
           const d = p.recHd>now ? '<span class="up">↑</span>' : p.recHd<now ? '<span class="dn">↓</span>' : '';
-          return `<td class="rec"><b>${p.recHd}</b>${d}</td>`;
+          return `<td class="rec">${p.recHd}${d}</td>`;
         }
         return `<td>${cell(p, c)}</td>`;
       }).join('');
@@ -1599,7 +1599,7 @@ function showPlayer(name){
   const recHd = recRow[0].recHd;
   const nowHd = (p.handicap || 0) * 10;
   const recStr = recHd == null ? '' :
-    ' · 권장수지 <b>' + recHd + '</b>' +
+    ' · 권장수지 ' + recHd +
     (recHd > nowHd ? '<span class="up">↑</span>' : recHd < nowHd ? '<span class="dn">↓</span>' : '');
 
   const el = $(`<div>
