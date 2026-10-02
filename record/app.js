@@ -20,14 +20,8 @@ function stopHome(){
   if (homeVis) { document.removeEventListener('visibilitychange', homeVis); homeVis = null; }
 }
 
-// ── 정기전 필터 ──
-// 경기는 날짜가 아니라 정기전(club_events)에 붙어 있다. 날짜 범위로는 "정기전 날에 낀
-// 정기전 아닌 경기"를 뺄 수 없어서 따로 둔다. 켜고 끄는 것 하나면 충분하다 —
-// 특정 회차만 보고 싶으면 이걸 켠 채 기간을 그 날짜로 잡으면 된다.
-const EVT_ICON = '⭐';   // 정기전 표시. 🏆 는 우승 표시로 이미 쓰고 있어 겹치면 안 된다.
-let RAW_EVENTS = [];
-let clubOnly = false;
-let HAS_EVENTS = true;   // DB에 event_id 컬럼이 있는지 (없으면 필터 UI를 숨긴다)
+// 정기전/일반 경기 구분(정기전만 보기 필터·⭐ 표시·소속 정정)은 없앴다(2026-10).
+// 모든 경기는 그냥 경기다. games.event_id 컬럼은 DB 에 남아 있지만 읽지 않는다.
 
 // ── 최소 경기 수 필터 (순위 탭) ──
 // 한두 판만 친 사람이 에버리지·승률 맨 위에 올라오는 걸 걸러내는 용도.
@@ -35,8 +29,6 @@ let HAS_EVENTS = true;   // DB에 event_id 컬럼이 있는지 (없으면 필터
 // 경기 수(통합이면 통산, 3인전이면 3인전 경기 수)를 기준으로 한다.
 const MIN_GAMES_STEPS = [1, 3, 5, 10];   // 버튼을 누를 때마다 이 순서로 돌아간다
 let minGames = 1;                        // 1 = 제한 없음
-const evtLabel = e => e ? ((e.round_no ? `제${e.round_no}회 정기전` : '정기전') + ' (' + ddmy(e.event_date) + ')') : '';
-const evtById = id => RAW_EVENTS.find(e => String(e.id) === String(id)) || null;
 
 // ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
 const LS_TEAM = 'dangCurrentTeam';
@@ -93,22 +85,9 @@ function missOf(p, bInn){
   }
   return Math.max(0, Math.min(miss, bInn));
 }
-// 정기전만 보기 토글. 기간 줄 아래에 따로 둔다 — 한 줄에 넣으면 폰에서 너무 좁다.
-// 등록된 정기전이 없거나 DB에 event_id 컬럼이 없으면 아예 그리지 않는다.
-function eventRowHtml(cls){
-  if (!HAS_EVENTS || !RAW_EVENTS.length) return '';
-  return `<button class="mbtn push ${cls}-evt ${clubOnly?'on':''}">
-      ${clubOnly ? '✓ ' : ''}정기전만
-    </button>`;
-}
-// 토글 버튼을 변경 핸들러에 연결. 없으면 아무것도 하지 않는다.
-function bindEventSel(el, cls, onChange){
-  const btn = el.querySelector('.'+cls+'-evt');
-  if (btn) btn.onclick = () => { clubOnly = !clubOnly; onChange(); };
-}
 // 최소 경기 수 버튼 — 누를 때마다 1 → 3 → 5 → 10 → 1 로 돈다.
-// 셀렉트가 아니라 버튼인 이유는 옆의 정기전 토글과 생김새·조작을 맞추기 위해서다.
-// 도구 줄에 버튼이 넷이라 폭이 빠듯하다 — 아이콘 없이 글자만 쓴다
+// 셀렉트가 아니라 버튼인 이유는 옆의 표/포디움 전환 버튼과 생김새·조작을 맞추기 위해서다.
+// 도구 줄 폭이 빠듯하다 — 아이콘 없이 글자만 쓴다
 const minGamesLabel = () => minGames > 1 ? `✓ ${minGames}경기 이상` : '경기 수 무관';
 function minGamesBtnHtml(cls){
   return `<button class="mbtn ${cls}-min ${minGames > 1 ? 'on' : ''}"
@@ -143,14 +122,13 @@ function getFullProcessData() {
 }
 
 function getFilteredData() {
-  const cacheKey = `${rankFrom}|${rankTo}|${clubOnly}|${RAW_GAMES.length}`;
+  const cacheKey = `${rankFrom}|${rankTo}|${RAW_GAMES.length}`;
   if (filteredDataCache && filteredCacheKey === cacheKey) {
     return filteredDataCache;
   }
-  const byDate = (rankFrom || rankTo)
+  const games = (rankFrom || rankTo)
     ? RAW_GAMES.filter(g => inRange(ymd(new Date(g.played_at)), rankFrom, rankTo))
     : RAW_GAMES;
-  const games = clubOnly ? byDate.filter(g => !!g.event_id) : byDate;
   filteredDataCache = processData(games, RAW_MEMBERS);
   filteredCacheKey = cacheKey;
   return filteredDataCache;
@@ -168,22 +146,10 @@ async function fetchGames() {
     if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
   } catch(e) {}
   
-  // event_id 는 마이그레이션(sql/event-games.sql) 이후에만 있는 컬럼이다. 아직 없는 DB에서도
-  // 기록실이 통째로 죽지 않도록, 실패하면 빼고 한 번 더 부른다(정기전 필터만 비활성).
-  const base = SB_URL + '/rest/v1/games?select=';
-  const tail = '&order=played_at.asc&team_id=eq.' + currentTeam;
-  const get = async cols => {
-    const res = await fetch(base + cols + tail, { headers: headers });
-    if (!res.ok) throw Object.assign(new Error('fetch error'), { status: res.status });
-    return await res.json();
-  };
-  try {
-    return await get('id,played_at,players,event_id');
-  } catch(e){
-    if (e.status !== 400 && e.status !== 404) throw e;
-    HAS_EVENTS = false;
-    return await get('id,played_at,players');
-  }
+  const res = await fetch(SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc&team_id=eq.' + currentTeam,
+    { headers: headers });
+  if (!res.ok) throw Object.assign(new Error('fetch error'), { status: res.status });
+  return await res.json();
 }
 
 // 수지 변경 이력. sql/handicap-history.sql 을 아직 안 돌린 DB에서도 홈 탭이 통째로 죽지 않게
@@ -195,16 +161,6 @@ async function fetchHandicapHistory(){
       + '?select=player_id,old_handicap,new_handicap,changed_at&order=changed_at.asc');
     return Array.isArray(rows) ? rows : [];
   } catch(e){ return []; }
-}
-
-// 정기전 목록 (캘린더에서 관리자가 등록한 것). 기록실에서는 읽기만 한다.
-async function fetchEvents(){
-  if (!currentTeam) return [];
-  try {
-    const rows = await sbFetch('/rest/v1/club_events?select=id,event_date,round_no,note&team_id=eq.'
-      + currentTeam + '&order=event_date.desc');
-    return Array.isArray(rows) ? rows : [];
-  } catch(e){ return []; }   // 캘린더 미배포 → 정기전 필터만 사라짐
 }
 
 // 내 소속 팀 로드 + 현재 팀 확정 (실패 시 전역 폴백)
@@ -302,7 +258,6 @@ async function fetchAdmin(){
 const REP = { headers: { Prefer: 'return=representation' } };
 const adminApi = {
   updateGame: (id, players) => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify({ players }) }, REP)),
-  updateGameEvent: (id, event_id) => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify({ event_id }) }, REP)),
   deleteGame: id => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'DELETE' }, REP)),
   updateProfile: (id, fields) => sbFetch('/rest/v1/profiles?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify(fields) }, REP)),
   // 이름 변경을 한 번에: 프로필 + 그 사람이 뛴 모든 경기의 저장된 이름을 서버에서 갱신 (본인/관리자만)
@@ -312,7 +267,6 @@ async function reloadData(){
   clearProcessCache();
   RAW_GAMES = await fetchGames();
   RAW_MEMBERS = await fetchMembers().catch(() => RAW_MEMBERS);
-  RAW_EVENTS = await fetchEvents();
   RAW_HDCP = await fetchHandicapHistory();   // 수지를 고친 직후면 이력이 한 줄 늘어 있다
   DATA = getFilteredData();
 }
@@ -322,23 +276,11 @@ function attachGameAdmin(el, id){
   const raw = RAW_GAMES.find(r => String(r.id) === String(id));
   if (!raw) return;
   const F = [['rank','순위'],['score','점수'],['target','목표'],['innings','이닝'],['highRun','하이런'],['misses','공타'],['fouls','파울'],['cushMade','쿠션성공'],['cushInn','쿠션시도']];
-  // 정기전 소속 정정 — 부원은 games 를 수정할 권한이 없어서(RLS) 잘못 저장된 소속은 여기서만 고친다.
-  // 예: 정기전 날에 낀 친선 경기를 '정기전 아님'으로 내리는 경우.
-  const evtSel = !HAS_EVENTS ? '' : `
-    <div style="margin-top:12px">
-      <div class="sub" style="margin:0 0 6px">정기전 소속</div>
-      <select id="gAdmEvt" class="field" style="width:100%; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">
-        <option value="" ${!raw.event_id?'selected':''}>정기전 아님 (일반 경기)</option>
-        ${RAW_EVENTS.map(e => `<option value="${esc(e.id)}" ${String(raw.event_id)===String(e.id)?'selected':''}>${esc(evtLabel(e))}</option>`).join('')}
-      </select>
-      <div id="gAdmEvtMsg" class="sub" style="margin-top:6px"></div>
-    </div>`;
   const bar = $(`<div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🛠 관리자</h3>
     <div style="display:flex; gap:8px;">
       <button class="mbtn" id="gAdmEdit">✏️ 경기 수정</button>
       <button class="mbtn" id="gAdmDel" style="color:#e5484d;border-color:#e5484d">🗑 경기 삭제</button>
     </div>
-    ${evtSel}
     <div id="gAdmForm" style="display:none; margin-top:12px">
       <div class="scroll"><table>
         <thead><tr><th class="name">선수</th>${F.map(f=>`<th>${f[1]}</th>`).join('')}</tr></thead>
@@ -356,24 +298,6 @@ function attachGameAdmin(el, id){
   bar.querySelector('#gAdmEdit').onclick = () => {
     const f = bar.querySelector('#gAdmForm');
     f.style.display = f.style.display === 'none' ? '' : 'none';
-  };
-  const evtSelEl = bar.querySelector('#gAdmEvt');
-  if (evtSelEl) evtSelEl.onchange = async () => {
-    const msg = bar.querySelector('#gAdmEvtMsg');
-    const prev = raw.event_id || '';
-    evtSelEl.disabled = true;
-    msg.textContent = '저장 중...'; msg.style.color = 'var(--muted)';
-    try {
-      const d = await adminApi.updateGameEvent(raw.id, evtSelEl.value || null);
-      if (!d || !d.length) throw new Error(NO_PERM);
-      await reloadData();
-      // 정기전 필터를 켜 둔 상태에서 소속을 바꾸면 이 경기가 목록에서 빠질 수 있다 → 목록으로
-      if (DATA.games.some(v => v.id === String(id))) showGame(id);
-      else show('games');
-    } catch(err){
-      evtSelEl.value = prev; evtSelEl.disabled = false;
-      msg.textContent = '변경 실패: ' + err.message; msg.style.color = '#f44336';
-    }
   };
   bar.querySelector('#gAdmCancel').onclick = () => { bar.querySelector('#gAdmForm').style.display = 'none'; };
   bar.querySelector('#gAdmSave').onclick = async e => {
@@ -427,7 +351,6 @@ function processData(games, members) {
       datetime: datetimeStr,
       type: typeStr,
       name: nameStr,
-      eventId: g.event_id || null,
       players: pls.map(p => ({
         name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
         rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
@@ -716,7 +639,7 @@ const REC_HOT_UP = 65;
 const REC_HOT_DOWN = 35;
 
 /* rows 에 recHd(권장수지)를 붙이고 이번 회차의 기준을 돌려준다. 셀 수 없으면 null.
-   화면의 기간·정기전 필터는 일부러 무시하고 통산 기록(getFullProcessData)에서 최근 경기를 센다.
+   화면의 기간·최소 경기 수 필터는 일부러 무시하고 통산 기록(getFullProcessData)에서 최근 경기를 센다.
    '오늘' 하루만 보고 있어도 권장수지는 같은 값이어야 하기 때문이다 — 기간을 좁힐 때마다
    기준이 흔들리면 무엇을 보고 수지를 고쳐야 할지 알 수 없다. 팀 평균도 화면에 걸린 사람이
    아니라 팀 전체에서 낸다. */
@@ -909,7 +832,6 @@ function imgKit(W, H){
 // 저장 이미지 머리말의 조건 줄 — 지금 화면에 걸린 모드·필터·기간을 그대로 적는다
 function rankCondText(){
   const parts = [rankMode === '통합' ? '통산 기준' : rankMode + '전'];
-  if (clubOnly) parts.push(EVT_ICON + ' 정기전만');
   if (minGames > 1) parts.push(minGames + '경기 이상');
   parts.push((rankFrom || rankTo) ? `${ddmy(rankFrom) || '처음'} ~ ${ddmy(rankTo) || '오늘'}` : '전체 기간');
   return parts.join('  ·  ');
@@ -1351,7 +1273,7 @@ function renderRank(){
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
         ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
-        <div class="toolrow">${viewBtns}<div class="push tgrp">${minGamesBtnHtml('p-period')}${eventRowHtml('p-period')}</div></div>
+        <div class="toolrow">${viewBtns}<div class="push tgrp">${minGamesBtnHtml('p-period')}</div></div>
         ${metricSel}
       </div>
       ${inner}
@@ -1371,7 +1293,6 @@ function renderRank(){
   };
   el.querySelector('.p-period-from').onchange = applyRankRange;
   el.querySelector('.p-period-to').onchange = applyRankRange;
-  bindEventSel(el, 'p-period', () => { DATA = getFilteredData(); refreshRankSub(); show('rank'); });
   // 최소 경기 수는 집계(DATA)를 바꾸지 않으므로 다시 그리기만 하면 된다
   bindMinGames(el, 'p-period', () => show('rank'));
 
@@ -2125,7 +2046,7 @@ function openAdminTeamEditModal(team){
 /* ══════════════════════════════════════════════════════════════════════
    홈 — 하이라이트 (세로 카드 한 장씩 3초마다)
 
-   다른 탭과 달리 조회 기간·정기전 필터를 따르지 않는다. "지난 달 / 최근 N경기"가
+   다른 탭과 달리 조회 기간 필터를 따르지 않는다. "지난 달 / 최근 N경기"가
    카드의 뜻 자체라서, 사용자가 순위 탭에서 잡아 둔 기간에 따라 내용이 바뀌면
    같은 문구가 다른 의미가 돼 버린다. 결산은 달력 기준 지난 달, 성장은 사람마다 최근 경기.
    ══════════════════════════════════════════════════════════════════════ */
@@ -2317,7 +2238,7 @@ function homeLastCards(){
      M.prev.label + ' · ' + M.prevD.games.length + '경기 기준');
 }
 
-/* ── 최고 기록 ── 기간·정기전 필터와 무관한 통산 전체.
+/* ── 최고 기록 ── 기간 필터와 무관한 통산 전체.
    에버리지는 '한 경기' 최고치다 — 결산은 그 달의 성적 요약이지만
    이쪽은 깨지기 전까지 남는 기록판이라 그날 하루의 최고점을 올린다.
    (하이런은 원래 경기별 최고 연속 득점이라 누적/한 경기 구분이 없다) */
@@ -2461,7 +2382,7 @@ function renderGames(){
     const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
     const all = g.players.map(p=>p.name).join(', ');
     return `<tr onclick="showGame('${g.id}')" style="cursor:pointer">
-      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}${g.eventId ? ' ' + EVT_ICON : ''}</td>
+      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}</td>
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
   };
 
@@ -2474,7 +2395,6 @@ function renderGames(){
   const el = $(`<div class="card">
     <div style="margin-bottom:14px;">
       ${rangeRowHtml('pg-period', rankFrom, rankTo, modeSel)}
-      ${eventRowHtml('pg-period') ? `<div class="toolrow">${eventRowHtml('pg-period')}</div>` : ''}
     </div>
     <div class="scroll">${inner}</div>
     <button class="pg-more mbtn" style="display:none; width:100%; margin-top:10px"></button>
@@ -2518,7 +2438,6 @@ function renderGames(){
   };
   el.querySelector('.pg-period-from').onchange = applyGamesRange;
   el.querySelector('.pg-period-to').onchange = applyGamesRange;
-  bindEventSel(el, 'pg-period', () => { DATA = getFilteredData(); refreshGamesSub(); show('games'); });
 
   el.querySelector('.pg-mode').onchange = (e) => {
     gamesMode = e.target.value;
@@ -2559,14 +2478,11 @@ function showGame(id){
   // 게임 총 시간 = 선수별 소모 시간 합 (시간 기록이 있는 경기만)
   const totMs = g.players.reduce((a,p)=>a+(p.timeMs||0), 0);
   const totStr = totMs > 0 ? ` · 총 ${Math.floor(totMs/60000)}분 ${Math.round(totMs%60000/1000)}초` : '';
-  const ev = g.eventId ? evtById(g.eventId) : null;
-  // 정기전에 붙어 있는데 캘린더에서 그 정기전이 지워진 경우 — 소속은 살아 있으니 그렇게 표시
-  const evtOf = g.eventId ? (ev ? evtLabel(ev) : '정기전 (삭제된 일정)') : '';
   const el = $(`<div>
     <button class="back">← 경기 목록으로</button>
     <div class="card">
       <h2 style="margin:0 0 4px">🎱 ${esc(g.name||g.type)}</h2>
-      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}${evtOf ? ' · ' + EVT_ICON + ' ' + esc(evtOf) : ''}</div>
+      <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}</div>
       <div class="scroll">
         <table class="statgrid">
           <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>알이닝</th><th>에버</th><th>인터벌</th><th>쿠션</th><th>하이런</th><th>공타</th><th>파울</th></tr></thead>
@@ -2590,17 +2506,15 @@ async function initDashboard() {
   if (sub) sub.textContent = '서버에서 데이터를 불러오는 중입니다...';
   try {
     await loadTeams();   // 현재 팀 확정 후 그 팀 게임만 로드
-    const [games, members, adm, events, hdcp] = await Promise.all([
+    const [games, members, adm, hdcp] = await Promise.all([
       fetchGames(),
       fetchMembers().catch(() => []),
       fetchAdmin(),
-      fetchEvents(),
       fetchHandicapHistory()
     ]);
     RAW_GAMES = games;
     RAW_MEMBERS = members;
     IS_ADMIN = adm;
-    RAW_EVENTS = events;
     RAW_HDCP = hdcp;
     DATA = getFilteredData();
     if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
