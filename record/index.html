@@ -151,6 +151,10 @@ a.pl:hover{color:var(--accent);border-color:var(--accent)}
 /* 순위표의 권장수지 칸과 내 기록 머리말(수지 30 · 권장수지 35↑)이 같은 모양을 쓴다 */
 /* 튀는 값 — 열 평균에서 표준편차 2배 넘게 떨어진 칸 (app.js 의 outlierOf) */
 td.out{color:var(--out)}
+/* 권장수지가 빨간 경우 — 최근 승률도 같은 방향을 가리켜 수지를 정말 고칠 때 (app.js 의 recHot).
+   화살표도 같이 빨갛게 해서 '올려라/내려라'가 한눈에 보이게 */
+.rec-hot{color:var(--out)}
+td.rec.out .up,td.rec.out .dn,.rec-hot .up,.rec-hot .dn{color:inherit}
 .up,.dn{margin-left:2px;font-size:.8em;font-weight:700;color:var(--muted)}
 .back{background:none;border:none;color:var(--accent);cursor:pointer;
   font-size:.9rem;padding:0;margin-bottom:12px}

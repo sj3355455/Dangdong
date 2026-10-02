@@ -693,17 +693,27 @@ const REC_MIN_GAMES = 1;    // 팀 기준이닝을 낼 때 넣을 최소 경기�
 const REC_SHOW_GAMES = 5;   // 개인 권장수지를 '표기'할 최소 경기수 (계산에서 빼는 게 아니라 표기만 미룬다)
 const REC_MAX_GAMES = 10;   // 최근 몇 경기까지 볼지. 수지는 '지금 실력'에 맞춰야 하므로 통산이 아니다
 
-// 최근 REC_MAX_GAMES 경기만으로 다시 낸 에버리지. history[0] 이 가장 최근이다
-// (processData 가 오래된 경기부터 훑으며 unshift 한다).
+// 최근 REC_MAX_GAMES 경기만으로 다시 낸 에버리지와 보정 승률. history[0] 이 가장 최근이다
+// (processData 가 오래된 경기부터 훑으며 unshift 한다). 승률도 에버리지와 같은 경기들로 낸다 —
+// 권장수지를 뒷받침하는지 보는 값이라 구간이 어긋나면 안 된다.
 function recentAvg(p){
-  let score = 0, binn = 0, games = 0;
+  let score = 0, binn = 0, games = 0, pts = 0;
   for (const h of (p.history || [])) {
     if (games >= REC_MAX_GAMES) break;
     if (!(h.ballInn > 0)) continue;        // 알 이닝이 없는 기록은 에버리지를 낼 수 없다
-    score += h.score; binn += h.ballInn; games++;
+    score += h.score; binn += h.ballInn; pts += (h.adjPt || 0); games++;
   }
-  return { games, avg: binn > 0 ? score / binn : 0 };
+  return { games, avg: binn > 0 ? score / binn : 0, rate: games > 0 ? pts / games : 0 };
 }
+
+/* 권장수지 확신 표시 — 에버리지로 낸 권장수지와 같은 방향을 승률도 가리키면 빨갛게 칠한다.
+   보정 승률은 1등 100 · 꼴등 0 이라 수지가 딱 맞으면 50% 근처에 모인다.
+   올리라는데 최근 승률이 REC_HOT_UP 이상이면 '정말 올려야 한다', 내리라는데 REC_HOT_DOWN
+   이하면 '정말 내려야 한다'. 50 에서 ±15%p 를 둔 건 표본 때문이다 — 최근 5~10경기의 보정
+   승률은 수지가 맞아도 ±13~18%p 쯤 흔들려서, 그보다 좁히면 운으로 칠해지는 경우가 잦다.
+   에버리지와 승률이 서로 다른 말을 하면(에버는 올리라는데 승률은 평범) 그냥 검은 글씨다. */
+const REC_HOT_UP = 65;
+const REC_HOT_DOWN = 35;
 
 /* rows 에 recHd(권장수지)를 붙이고 이번 회차의 기준을 돌려준다. 셀 수 없으면 null.
    화면의 기간·정기전 필터는 일부러 무시하고 통산 기록(getFullProcessData)에서 최근 경기를 센다.
@@ -711,7 +721,7 @@ function recentAvg(p){
    기준이 흔들리면 무엇을 보고 수지를 고쳐야 할지 알 수 없다. 팀 평균도 화면에 걸린 사람이
    아니라 팀 전체에서 낸다. */
 function attachRecHd(rows){
-  rows.forEach(p => { p.recHd = null; });
+  rows.forEach(p => { p.recHd = null; p.recRate = null; p.recHot = false; });
   const stats = getFullProcessData().players
     .filter(p => p.id)                     // 게스트는 수지가 없다
     .map(p => ({ p, ...recentAvg(p) }));
@@ -724,7 +734,11 @@ function attachRecHd(rows){
   rows.forEach(p => {
     const s = byId.get(p.id);
     // 표기 문턱은 REC_SHOW_GAMES — 위 teamInn/goalInn 은 이 사람도 넣어 이미 계산이 끝났다
-    if (s && s.games >= REC_SHOW_GAMES && s.avg > 0) p.recHd = snapHd(s.avg * goalInn * 10);
+    if (!(s && s.games >= REC_SHOW_GAMES && s.avg > 0)) return;
+    p.recHd = snapHd(s.avg * goalInn * 10);
+    p.recRate = s.rate;
+    const now = (p.handicap || 0) * 10;
+    p.recHot = (p.recHd > now && s.rate >= REC_HOT_UP) || (p.recHd < now && s.rate <= REC_HOT_DOWN);
   });
   return { teamInn, goalInn, n: base.length };
 }
@@ -1089,11 +1103,11 @@ function tableCanvas(rows, COLS){
       const s = val(p, c), ar = c.k === 'recHd' ? recArrow(p) : '';
       const color = c.k === 'name' ? C.text : s === '—' ? C.muted : isOut(outs, p, c.k) ? C.out : C.text;
       if (!ar) return text(s, px, py, fontOf(c), color, al);
-      // 숫자 + 화살표(흐리게)를 한 덩어리로 가운데 맞춘다
+      // 숫자 + 화살표(흐리게)를 한 덩어리로 가운데 맞춘다. 승률도 같은 방향이면 둘 다 빨갛게(화면과 같다)
       const sw = imgMeasure(s, fB), aw = imgMeasure(' ' + ar, fB);
       const left = px - (sw + aw) / 2;
-      text(s, left, py, fB, C.text, 'left');
-      text(' ' + ar, left + sw, py, fB, C.muted, 'left');
+      text(s, left, py, fB, p.recHot ? C.out : C.text, 'left');
+      text(' ' + ar, left + sw, py, fB, p.recHot ? C.out : C.muted, 'left');
     });
   });
 
@@ -1301,7 +1315,9 @@ function renderRank(){
           if(p.recHd==null) return `<td class="rec">—</td>`;
           const now = (p.handicap||0)*10;
           const d = p.recHd>now ? '<span class="up">↑</span>' : p.recHd<now ? '<span class="dn">↓</span>' : '';
-          return `<td class="rec">${p.recHd}${d}</td>`;
+          // 승률도 같은 방향이면 빨갛게 (REC_HOT_UP / REC_HOT_DOWN). 눌러 두면 근거 승률이 보인다
+          const tip = `최근 ${REC_MAX_GAMES}경기 승률 ${p.recRate.toFixed(1)}%`;
+          return `<td class="rec${p.recHot ? ' out' : ''}" title="${tip}">${p.recHd}${d}</td>`;
         }
         return `<td${isOut(outs, p, c.k) ? ' class="out"' : ''}>${cell(p, c)}</td>`;
       }).join('');
@@ -1329,7 +1345,9 @@ function renderRank(){
       + (sortKey==='avgInterval' ? ' <b>평균 인터벌</b>은 짧을수록 1등입니다.' : '')
     : (rankMode==='3인'||rankMode==='4인')
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
-      : '표 제목을 누르면 그 기준으로 정렬됩니다.';
+      : '표 제목을 누르면 그 기준으로 정렬됩니다.'
+        // 권장수지 빨간 글씨의 뜻 — 통합 표에만 권장수지 열이 있다
+        + (rankMode === '통합' ? ` · <b>권장수지</b>가 빨간색이면 최근 승률도 같은 쪽(${REC_HOT_UP}% 이상 / ${REC_HOT_DOWN}% 이하)이라 수지를 고칠 때입니다.` : '');
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
         ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
@@ -1640,13 +1658,14 @@ function showPlayer(name){
 
   // 권장수지 — 순위표와 똑같은 값(통산 최근 경기 기준)이라 기간·모드를 바꿔도 흔들리지 않는다.
   // 그래서 아래 성적 칸이 아니라 지금 수지 옆, 한 번만 그리는 머리말에 붙인다.
-  const recRow = [{ id: p.id }];
+  // handicap 도 넘긴다 — 승률 확신 표시(recHot)가 지금 수지와 견줘 방향을 본다
+  const recRow = [{ id: p.id, handicap: p.handicap }];
   attachRecHd(recRow);
   const recHd = recRow[0].recHd;
   const nowHd = (p.handicap || 0) * 10;
   const recStr = recHd == null ? '' :
-    ' · 권장수지 ' + recHd +
-    (recHd > nowHd ? '<span class="up">↑</span>' : recHd < nowHd ? '<span class="dn">↓</span>' : '');
+    ' · 권장수지 <span' + (recRow[0].recHot ? ' class="rec-hot"' : '') + '>' + recHd +
+    (recHd > nowHd ? '<span class="up">↑</span>' : recHd < nowHd ? '<span class="dn">↓</span>' : '') + '</span>';
 
   const el = $(`<div>
     <button class="back">← 순위로</button>
