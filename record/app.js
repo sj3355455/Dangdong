@@ -732,8 +732,8 @@ function attachRecHd(rows){
 /* ══ 튀는 값 ══
    열마다 지금 표에 오른 사람들의 평균·표준편차를 내서, 평균에서 OUTLIER_Z 배 넘게 떨어진 칸을
    빨갛게 칠한다. 잘한 쪽이든 못한 쪽이든 '남들과 확 다른 값'이면 칠한다.
-   1.8 은 열마다 한 명 나올까 말까 한 정도로 맞춘 값이다 (15명 표 기준 2.0 이면 인터벌처럼
-   눈에 띄게 빠른 한 명이 빠지고, 1.5 면 열마다 두세 명씩 칠해져 강조가 무뎌진다).
+   2.0 은 열마다 한 명 나올까 말까 한 정도로 맞춘 값이다 (1.8 은 경계에 걸린 값까지 칠해
+   잦았고, 1.5 면 열마다 두세 명씩 칠해져 강조가 무뎌진다).
    이름·수지·권장수지·경기수·승수는 실력 지표가 아니라 칠하지 않는다.
 
    대부분은 값의 '차이'로 견주지만, OUTLIER_LOG 열은 로그를 씌워 '배수'로 견준다.
@@ -743,7 +743,7 @@ function attachRecHd(rows){
    정수는 차이로 보는 게 맞고, 0 이 있으면 로그를 씌울 수도 없다.
    에버리지는 경계선이다. 배수로 보면 맨 위가 아니라 입문자의 낮은 값(0.045 등)이 칠해져서
    '잘 치는 사람이 튄다'는 쓰임과 어긋나 차이로 둔다. */
-const OUTLIER_Z = 1.8;
+const OUTLIER_Z = 2.0;
 const OUTLIER_MIN_ROWS = 5;   // 이보다 적으면 표준편차가 뜻이 없다
 const OUTLIER_SKIP = new Set(['name', 'handicap', 'recHd', 'games', 'wins']);
 const OUTLIER_LOG = new Set(['volatility', 'avgInterval']);   // 기복 · 평균 인터벌
@@ -763,7 +763,7 @@ function outlierOf(rows, COLS){
     const m = vs.reduce((a, b) => a + b, 0) / vs.length;
     const sd = Math.sqrt(vs.reduce((a, v) => a + (v - m) ** 2, 0) / vs.length);
     if (!(sd > 0)) continue;
-    // 1e-9 — 딱 경계(z = 1.8)에 걸친 값이 소수 오차로 빠지지 않게
+    // 1e-9 — 딱 경계(z = OUTLIER_Z)에 걸친 값이 소수 오차로 빠지지 않게
     const hit = new Set(rows.filter(p => num(p[c.k]) && Math.abs(f(p[c.k]) - m) / sd >= OUTLIER_Z - 1e-9));
     if (hit.size) out.set(c.k, hit);
   }
