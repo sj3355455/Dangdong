@@ -1147,7 +1147,9 @@ function homeCardCanvas(s){
  *     '다운로드' 앨범에 들어가는 것이 웹에서 갈 수 있는 최선이다)
  *  iOS: 홈 화면 앱에서 a[download] 가 동작하지 않으므로 공유 시트로 보낸다.
  *    시트의 '이미지 저장'을 누르면 사진 앱에 들어간다.
- *  그 외(데스크톱 등): 그냥 내려받기.
+ *  그 외(데스크톱 등): 그냥 내려받기 (다운로드 폴더).
+ *    ※ 윈도우 크롬·엣지도 파일 공유를 지원해서 canShare 만 보고 고르면 데스크톱에서
+ *      저장 대신 윈도우 공유 창이 뜬다. 그래서 공유 시트는 iOS 에서만 쓴다.
  */
 async function saveImage(cv, metricName, msgEl){
   const say = (t, err) => { if (msgEl) { msgEl.textContent = t; msgEl.style.color = err ? '#f44336' : 'var(--muted)'; } };
@@ -1158,7 +1160,10 @@ async function saveImage(cv, metricName, msgEl){
   const file = new File([blob], fname, { type: 'image/png' });
 
   const isAndroid = /Android/i.test(navigator.userAgent);
-  const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  // 아이패드는 사파리가 데스크톱 맥처럼 자기소개를 해서 터치 지원으로 가려낸다
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const canShare = isIOS && !!(navigator.canShare && navigator.canShare({ files: [file] }));
 
   const download = () => {
     const url = URL.createObjectURL(blob);
@@ -1168,15 +1173,14 @@ async function saveImage(cv, metricName, msgEl){
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
-  if (isAndroid || !canShare) {
+  if (!canShare) {
     try {
       download();
-      say(isAndroid ? '갤러리에 저장했습니다. (다운로드 앨범)' : '저장했습니다.');
-      return;
+      say(isAndroid ? '갤러리에 저장했습니다. (다운로드 앨범)' : '다운로드 폴더에 저장했습니다.');
     } catch(e){
-      if (!canShare) { say('저장에 실패했습니다.', true); return; }
-      // 내려받기가 막힌 안드로이드 → 아래 공유 시트로 넘어간다
+      say('저장에 실패했습니다.', true);
     }
+    return;
   }
   try { await navigator.share({ files: [file] }); say(''); }
   catch(e){
