@@ -1196,13 +1196,22 @@ function win(winnerIdx){
 }
 
 // ══ 경기 끝내기(중도 기록) ══
-// 목표를 다 못 채웠어도 지금까지의 '달성 비율'로 순위를 매겨 경기를 종료·저장한다.
-//   달성 비율 = (뺀 점수 + 낸 마무리쿠션 × 3) ÷ (목표점수 + 필요 마무리쿠션 × 3)
-const CUSH_PT = 3;
-function progRatio(i){
-  const denom = S.targets[i] + (S.round > 0 ? S.round * CUSH_PT : 0);
-  const prog = S.sc[i] + (S.cush[i] || 0) * CUSH_PT;   // sc/cush는 팀전에서 팀 공유값
-  return denom > 0 ? prog / denom : 0;
+// 목표를 다 못 채웠어도 지금까지의 진행도로 순위를 매겨 경기를 종료·저장한다.
+//   1순위: 알 달성률 = 뺀 점수 ÷ 목표점수 (최대 100%)
+//   2순위: 낸 마무리 쿠션 수 — 알 달성률이 같을 때만 본다(쿠션은 알을 다 뺀 뒤에만 치므로 사실상 100%끼리)
+//
+// 예전엔 쿠션 1개 = 알 3개로 환산해 한 비율로 합쳤는데, 그러면 쿠션 비중이 목표점수에 따라 달라진다
+// (목표 10점에겐 쿠션 3개가 목표의 90%, 목표 30점에겐 30%). 그래서 알을 다 뺀 수지 100 선수가
+// 아직 알을 치는 수지 300 선수보다 아래로 가는 일이 생겼다. 알과 쿠션은 섞지 않는다.
+// sc/cush 는 팀전에서 팀 공유값이다.
+const ballRatio = i => S.targets[i] > 0 ? Math.min(1, S.sc[i] / S.targets[i]) : 1;
+const cushMade = i => S.done[i] ? (S.cush[i] || 0) : 0;
+// o 가 r 보다 확실히 앞서 있나 (동률이면 false → 공동 등수)
+function progAhead(o, r){
+  const EPS = 1e-9, bo = ballRatio(o), br = ballRatio(r);
+  if (bo > br + EPS) return true;
+  if (br > bo + EPS) return false;
+  return cushMade(o) > cushMade(r);
 }
 // 결과 화면 표시용 순위 배열. 확정된 순위는 그대로 두고, 미확정 선수만 달성 비율로
 // 잠정 순위를 매겨 돌려준다. (S.rank 원본은 건드리지 않아 꼴등전 진행에 영향 없음)
@@ -1213,9 +1222,8 @@ function displayRanks(){
   const reps = isTeam ? [0, 1] : [...Array(N).keys()];
   const pending = reps.filter(r => !out[r] && !(isTeam && out[r + 2]));
   const nextRank = nextRankValue();
-  const EPS = 1e-9;
   pending.forEach(r => {
-    const better = pending.filter(o => progRatio(o) > progRatio(r) + EPS).length;
+    const better = pending.filter(o => progAhead(o, r)).length;
     const rk = nextRank + better;
     out[r] = rk;
     if (isTeam) out[r + 2] = rk;
@@ -1232,10 +1240,9 @@ function rankRemainingByRatio(){
   const pending = reps.filter(r => !S.rank[r] && !(isTeam && S.rank[r + 2]));
   if (!pending.length) return;
   const nextRank = nextRankValue();
-  const EPS = 1e-9;
   pending.forEach(r => {
-    // 표준 경쟁 순위: 나보다 비율이 확실히 높은 유닛 수 + 다음 등수 (동률은 공동)
-    const better = pending.filter(o => progRatio(o) > progRatio(r) + EPS).length;
+    // 표준 경쟁 순위: 나보다 확실히 앞선 유닛 수 + 다음 등수 (동률은 공동)
+    const better = pending.filter(o => progAhead(o, r)).length;
     const rk = nextRank + better;
     S.rank[r] = rk;
     if (isTeam) S.rank[r + 2] = rk;
@@ -1317,9 +1324,10 @@ function showEarlyResult(){
     const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
     const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
     const scStr = (S.done[i] && S.round > 0) ? `${S.targets[i]} + 쿠션${indC}` : `${indS} / ${S.targets[i]}`;
-    const pct = (progRatio(i) * 100).toFixed(1);
+    // 알 달성률, 그리고 알을 다 뺀 사람은 쿠션 진행을 따로 붙인다 (예: 100.0% + 쿠션 2/3)
+    const pct = (ballRatio(i) * 100).toFixed(1) + '%' + (S.done[i] && S.round > 0 ? ` + 쿠션 ${cushMade(i)}/${S.round}` : '');
     const medal = S.rank[i] === 1 ? '🏆 ' : '';
-    html += `<tr><td>${esc(nm)}</td><td>${medal}${S.rank[i]}위</td><td>${scStr}</td><td>${pct}%</td></tr>`;
+    html += `<tr><td>${esc(nm)}</td><td>${medal}${S.rank[i]}위</td><td>${scStr}</td><td>${pct}</td></tr>`;
   }
   $('#winStats').innerHTML = html;
   $('#btnWinCont').style.display = 'none';
@@ -1415,7 +1423,7 @@ if ($('#btnVoice')) $('#btnVoice').onclick = () => {
   if (voiceOn) speak('음성 안내를 켰습니다'); else { try { speechSynthesis.cancel(); } catch(e){} }
 };
 $('#btnEndGame').onclick = () => {
-  if(confirm('지금까지의 점수 비율(뺀 점수 + 쿠션×3)로 순위를 정하고 경기를 기록할까요?')){
+  if(confirm('지금까지 뺀 알의 비율로 순위를 정하고(알을 다 뺀 사람끼리는 마무리 쿠션 수로) 경기를 기록할까요?')){
     $('#menuOvl').classList.remove('on');
     endGameEarly();
   }
