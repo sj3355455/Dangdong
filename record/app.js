@@ -2081,6 +2081,8 @@ let monthCache = { key: '', data: null };
 // 성장 카드에서 지난달과 견줄 달을 몇 달 전까지 찾아볼지. 한두 달 쉰 사람도 그 전에 친 달과
 // 견줄 수 있게 3달까지 본다. 더 멀리 가면 '지난번보다 늘었다'는 말이 무색해진다.
 const GROW_LOOKBACK = 3;
+// 성장 카드(에버리지·승률)에 올리려면 지난달과 비교 상대 달 모두 이만큼은 쳤어야 한다
+const GROW_MIN_GAMES = 3;
 function monthData(){
   const key = RAW_GAMES.length + '|' + todayYmd();
   if (monthCache.key === key && monthCache.data) return monthCache.data;
@@ -2191,18 +2193,18 @@ function homeGrowCards(){
     .sort((a, b) => (b.to - b.from) - (a.to - a.from));
 
   // ── 성적 변화 (지난달이 그 사람의 직전 활동 달보다) ──
-  // 한두 경기 뽑기로 뒤집히지 않게 양쪽 달 모두 에버리지는 2경기, 승률은 3경기 이상일 때만
+  // 한두 경기 뽑기로 뒤집히지 않게 양쪽 달 모두 GROW_MIN_GAMES 경기 이상일 때만 (에버리지·승률 같은 기준)
   const avgUp = [];
   const rateUp = [];
   const hrNew = [];
   for (const k in C) {
     const c = C[k], b = B[k];
-    const a = c.games >= 2 && lastBefore(k, 2);
+    const a = c.games >= GROW_MIN_GAMES && lastBefore(k, GROW_MIN_GAMES);
     if (a && a.p.avgAvg > 0 && c.avgAvg > a.p.avgAvg) avgUp.push({ c, ...a, d: c.avgAvg - a.p.avgAvg });
     // 승률은 반드시 보정 승률(adjRate). 홈 카드는 모드를 안 가리고 한 달을 통째로 묶는데
     // 원시 승률(wins/games)은 1등만 세서 다인전 2등이 꼴등과 같은 0점 취급이 된다.
     // 통합 순위표의 '승률' 열도 adjRate 다 (COLS_ALL) — 표와 카드가 다른 수를 말하면 안 된다.
-    const r = c.games >= 3 && lastBefore(k, 3);
+    const r = c.games >= GROW_MIN_GAMES && lastBefore(k, GROW_MIN_GAMES);
     if (r && c.adjRate > r.p.adjRate + 0.5) rateUp.push({ c, ...r, d: c.adjRate - r.p.adjRate });
     // 하이런은 '지난달보다'보다 '통산 최고 경신'이 훨씬 값진 소식이라 이전 전체와 비교한다
     if (b && b.bestHr > 0 && c.bestHr > b.bestHr) hrNew.push({ c, b, d: c.bestHr - b.bestHr });
