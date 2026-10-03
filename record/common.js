@@ -359,7 +359,7 @@ export function registerSW(){
    그래서 로그아웃할 때 구독을 끊고, 로그인할 때 지금 계정으로 다시 붙인다.
 
    점수판·기록실·캘린더 어디서 로그아웃해도 같아야 하므로 공통 모듈에 둔다.
-   켜고 끄는 스위치 UI 자체는 점수판 설정에만 있다(score/app.js 의 initPush). */
+   켜고 끄는 스위치 UI 는 아래 initPushSwitch — 세 화면의 설정 창이 함께 쓴다. */
 const VAPID_PUBLIC = 'BJO7jjlFWFhPntIIWsmk0NTUpW67axk-3ikmxIt9OoXZIHjVx88dFUqhL_0OxBMvpeVyLdsrn65A8VpOK0KUwF0';
 
 // 테스트 앱에서만 쓴다 — 본 앱 경로에서는 아래 함수들이 전부 아무 일도 하지 않는다
@@ -422,6 +422,71 @@ export async function pushDetach(){
       { method: 'DELETE', headers: { Prefer: 'return=minimal' } }).catch(()=>{});
     await sub.unsubscribe();
   } catch(e){}
+}
+
+/* 설정 창의 '알림 받기' 스위치. 점수판·기록실·캘린더 설정 창이 똑같이 쓴다.
+   (예전에는 점수판에만 있어서, 기록실이나 캘린더에서 설정을 열면 스위치가 보이지 않았다)
+   getUid() = 지금 로그인한 계정 id. 앱마다 로그인 정보를 들고 있는 방식이 달라 받아서 쓴다.
+   결과 안내는 스위치 바로 아래 줄(#setPushHint)에 적는다 — 토스트가 없는 화면도 있어서다. */
+export function initPushSwitch(getUid){
+  const row = document.getElementById('setPushRow'), btn = document.getElementById('setPush');
+  const hint = document.getElementById('setPushHint');
+  if (!row || !btn || !location.pathname.includes('-beta')) return;   // 본 앱에서는 숨긴 채로 둔다
+  row.style.display = '';
+
+  const say = t => { if (!hint) return; hint.textContent = t || ''; hint.style.display = t ? '' : 'none'; };
+  const mark = on => btn.classList.toggle('on', !!on);
+
+  // 이 브라우저에서는 알림을 아예 받을 수 없을 때 — 숨기지 않고 이유를 보여 준다.
+  // 아이폰은 Safari 에서 '홈 화면에 추가'로 설치한 앱으로 열어야만 푸시를 쓸 수 있다.
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  if (!supported) {
+    btn.disabled = true; mark(false);
+    say(/iPhone|iPad/.test(navigator.userAgent)
+      ? "아이폰은 Safari 공유 버튼 → '홈 화면에 추가'로 설치한 앱에서만 알림을 켤 수 있어요."
+      : '이 브라우저는 알림을 지원하지 않아요.');
+    return;
+  }
+
+  // 스위치는 추측하지 않고 "이 기기에 구독이 살아 있는가"를 그대로 비춘다.
+  // 설정을 열 때마다 다시 확인한다 — 페이지 로드 때 한 번만 읽으면 껐다 켠 뒤 옛 상태가 남는다.
+  const sync = async () => {
+    say('');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      const on = !!sub && Notification.permission === 'granted';
+      mark(on);
+      if (Notification.permission === 'denied') say('브라우저에서 알림이 차단돼 있어요 — 기기 설정에서 허용해 주세요.');
+      // 표에 행이 빠졌거나 계정이 바뀌었으면 조용히 지금 계정으로 맞춘다
+      if (on) pushSaveSub(sub, getUid()).catch(()=>{});
+    } catch (_) { mark(false); }
+  };
+  sync();
+  const gear = document.getElementById('btnSettings');
+  if (gear) gear.addEventListener('click', sync);   // 앱의 initSettings 가 단 onclick 과 별개로 붙는다
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (await reg.pushManager.getSubscription()) {          // 켜져 있으면 → 끄기
+        await pushDetach();
+        mark(false); say('알림을 껐습니다.');
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        say('브라우저에서 알림이 차단돼 있어요 — 기기 설정에서 허용해 주세요.'); return;
+      }
+      if (await Notification.requestPermission() !== 'granted') { say('알림 권한이 없어 켜지 못했습니다.'); return; }
+      // pushAttach 는 표에 못 넣으면 false 를 준다 — 스위치만 켜지고 보낼 주소는 없는 상태를 만들지 않는다
+      if (!await pushAttach(getUid())) { say('알림을 켜지 못했습니다. 잠시 뒤 다시 시도해 주세요.'); sync(); return; }
+      mark(true); say('알림을 켰습니다.');
+    } catch (e) {
+      say('알림 설정 실패: ' + (e && e.message || e));
+      sync();
+    } finally { btn.disabled = false; }
+  };
 }
 
 // ── 팀 설정 모달 (팀 참가 / 팀 만들기 / 팀장: 코드·이름 변경·팀원 내보내기) ──

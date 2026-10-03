@@ -1,7 +1,7 @@
 import { sbFetch } from './supabase.js';
 import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
          ymd, todayYmd, ddmy, rangeRowHtml, bindRangePicker, syncRangeDisp,
-         pushDetach } from './common.js';
+         pushDetach, initPushSwitch } from './common.js';
 
 let DATA = { updated: '', players: [], games: [] };
 let RAW_GAMES = [];
@@ -2600,6 +2600,7 @@ const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b));
   });
   applyTheme(getTheme());
 })();
+initPushSwitch(() => getAuth()?.uid || null);
 
 // 내 정보 설정 모달 닫기 (× 버튼 / 배경 클릭)
 (function initMeModal(){

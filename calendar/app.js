@@ -15,7 +15,7 @@
 // 자세한 정책은 저장소 루트의 sql/calendar/ 참고 (1,2,4,5,7,8 을 순서대로 실행).
 import { sbFetch } from '../record/supabase.js';
 import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
-         shiftDay, openDayPicker, pushDetach } from '../record/common.js';
+         shiftDay, openDayPicker, pushDetach, initPushSwitch } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -1611,6 +1611,7 @@ const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b));
     applyTheme(t); sync();
   });
 })();
+initPushSwitch(() => getAuth()?.uid || null);
 
 $('#dsClose').onclick = () => $('#daySheet').classList.remove('on');
 $('#daySheet').onclick = e => { if (e.target.id === 'daySheet') $('#daySheet').classList.remove('on'); };

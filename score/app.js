@@ -1,6 +1,6 @@
 import { sbFetch, sbAuth } from '../record/supabase.js';
 import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
-         pushAttach, pushDetach, pushSaveSub } from '../record/common.js';
+         pushAttach, pushDetach, initPushSwitch } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
 const show = id => document.querySelectorAll('.screen').forEach(el => el.style.display = el.id === id ? 'flex' : 'none');
@@ -1499,52 +1499,5 @@ registerSW();
  * 보내는 쪽은 Supabase Edge Function — 모임은 notify-meetup, 정기전 하루 전은 notify-event.
  * (저장소 밖 ~/Documents/dangdong-push/send.js 는 손으로 쏘는 예비 수단)
  */
-// 구독을 만들고 지우는 일 자체는 공통 모듈이 맡는다(pushAttach/pushDetach/pushSaveSub) —
-// 로그인·로그아웃에서도 같은 동작이 필요해서다. 여기는 설정의 스위치 UI만 본다.
-(function initPush(){
-  const row = $('#setPushRow'), btn = $('#setPush');
-  if (!row || !btn) return;
-  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-  if (!location.pathname.includes('-beta') || !supported) return;   // 본 앱·미지원 브라우저는 조용히 숨긴다
-  row.style.display = '';
-
-  const mark = on => btn.classList.toggle('on', !!on);
-  const uid = () => auth ? auth.uid : null;
-
-  // 스위치는 추측하지 않고 "이 기기에 구독이 살아 있는가"를 그대로 비춘다.
-  // 설정을 열 때마다 다시 확인한다 — 페이지 로드 때 한 번만 읽으면 껐다 켠 뒤 옛 상태가 남는다.
-  const syncPush = async () => {
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      const on = !!sub && Notification.permission === 'granted';
-      mark(on);
-      // 표에 행이 빠졌거나 계정이 바뀌었으면 조용히 지금 계정으로 맞춘다
-      if (on) pushSaveSub(sub, uid()).catch(()=>{});
-    } catch (_) { mark(false); }
-  };
-  syncPush();
-  $('#btnSettings').addEventListener('click', syncPush);   // initSettings 의 onclick 과 별개로 붙는다
-
-  btn.onclick = async () => {
-    btn.disabled = true;
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      if (await reg.pushManager.getSubscription()) {          // 켜져 있으면 → 끄기
-        await pushDetach();
-        mark(false); toast('알림을 껐습니다');
-        return;
-      }
-      if (Notification.permission === 'denied') {
-        toast('브라우저에서 알림이 차단돼 있어요 — 기기 설정에서 허용해 주세요'); return;
-      }
-      if (await Notification.requestPermission() !== 'granted') { toast('알림 권한이 없어 켜지 못했습니다'); return; }
-      // pushAttach 는 표에 못 넣으면 false 를 준다 — 스위치만 켜지고 보낼 주소는 없는 상태를 만들지 않는다
-      if (!await pushAttach(uid())) { toast('알림을 켜지 못했습니다. 잠시 뒤 다시 시도해 주세요'); syncPush(); return; }
-      mark(true); toast('알림을 켰습니다');
-    } catch (e) {
-      toast('알림 설정 실패: ' + (e && e.message || e));
-      syncPush();
-    } finally { btn.disabled = false; }
-  };
-})();
+// 설정의 스위치는 공통 모듈(initPushSwitch)이 그린다 — 기록실·캘린더 설정 창에도 같은 스위치가 있다.
+initPushSwitch(() => auth ? auth.uid : null);
