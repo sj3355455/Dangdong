@@ -14,9 +14,9 @@
 // 두 번 보내지 않는 법: 보낸 정기전은 club_events.remind_sent_at 에 시각을 찍는다.
 //   크론이 하루에 여러 번 돌거나 재시도가 나도 이미 찍힌 건 건너뛴다.
 //
-// 누구에게 가나: 그 팀의 팀원 전원 중 테스트 앱에서 알림을 켜 둔 기기.
+// 누구에게 가나: 그 팀의 팀원 전원 중 본 앱이든 테스트 앱이든 알림을 켜 둔 기기.
 //   이미 투표한 사람에게도 간다 — '내일 정기전이 있다'는 사실 자체를 알리는 자리라서.
-//   scope 에 '-beta' 가 없는 구독은 건너뛴다 → 본 앱에는 어떤 경우에도 가지 않는다.
+//   알림을 누르면 그 기기가 구독한 앱이 열린다 (구독의 scope 로 고른다 — appBase).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
@@ -44,6 +44,13 @@ const addDays = (ymd: string, n: number) => {
   const [y, m, d] = ymd.split('-').map(Number);
   const t = new Date(Date.UTC(y, m - 1, d + n));
   return t.toISOString().slice(0, 10);
+};
+
+// 알림을 누르면 열릴 앱 주소. scope 에는 구독을 만든 화면 경로(예: /Dangdong/score/)가 들어 있어
+// 첫 마디가 곧 앱의 뿌리다 → 본 앱 구독은 본 앱으로, 테스트 앱 구독은 테스트 앱으로 연다.
+const appBase = (scope: string | null, fallback: string) => {
+  const m = (scope || '').match(/^\/[^/]+\//);
+  return m ? new URL(m[0], fallback).href : fallback;
 };
 
 type Ev = { id: string; team_id: string; event_date: string; note: string | null };
@@ -131,8 +138,7 @@ Deno.serve(async (req) => {
       .in('user_id', memberIds);
     if (subErr) { failed++; console.error('구독 조회 실패', ev.id, subErr.message); continue; }
 
-    // 테스트 앱 구독만 — 본 앱으로는 어떤 경우에도 나가지 않는다
-    const targets = (subs || []).filter((s: { scope: string | null }) => (s.scope || '').includes('-beta'));
+    const targets = subs || [];
     if (!targets.length) { done.push(ev.id); continue; }
 
     // 지금까지의 참석 현황 — 알림만 보고도 분위기를 알 수 있게 숫자를 실어 준다
@@ -140,11 +146,11 @@ Deno.serve(async (req) => {
       .from('event_rsvps').select('event_id', { count: 'exact', head: true })
       .eq('event_id', ev.id).eq('status', 'yes');
 
-    const payload = JSON.stringify({
+    const payloadFor = (scope: string | null) => JSON.stringify({
       title: `🏅 ${round ? `제${round}회 ` : ''}정기전이 내일입니다`,
       body: [dateText(ev.event_date), ev.note || '',
              `지금까지 참석 ${yesCnt || 0}명 · 참석 여부를 알려 주세요`].filter(Boolean).join('\n'),
-      url: `${APP_URL}calendar/?event=${ev.id}`,
+      url: `${appBase(scope, APP_URL)}calendar/?event=${ev.id}`,
       tag: `event-${ev.id}`
     });
 
@@ -153,7 +159,7 @@ Deno.serve(async (req) => {
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_key } },
-          payload
+          payloadFor(s.scope)
         );
         sent++;
       } catch (e) {

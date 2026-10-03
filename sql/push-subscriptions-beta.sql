@@ -1,11 +1,11 @@
--- ── 웹 푸시 구독 저장소 (테스트 앱 전용) ────────────────────────────────
+-- ── 웹 푸시 구독 저장소 (본 앱·테스트 앱 공통) ────────────────────────────
 -- Supabase 대시보드 → SQL Editor 에 붙여넣고 실행. 여러 번 실행해도 안전하다.
 --
 -- 이 표는 "어느 기기로 알림을 보낼지" 주소록이다. 앱에서 알림을 켜면 한 줄이 생기고,
--- 끄면 지워진다. 보내는 쪽(로컬 send.js)이 이 표를 읽어서 각 기기로 푸시를 쏜다.
+-- 끄면 지워진다. 보내는 쪽(Edge Function notify-meetup / notify-event)이 이 표를 읽어 각 기기로 푸시를 쏜다.
 --
--- 이름에 _beta 를 붙인 이유: 본 앱은 이 표를 쓰지 않는다. 테스트에서 뭘 하든
--- 다른 부원들이 쓰는 앱에는 영향이 없다는 걸 표 이름에서부터 분명히 해 둔다.
+-- 이름에 _beta 가 붙은 건 처음에 테스트 앱 전용이었던 흔적이다. 2026-10-03 부터 본 앱도 함께 쓴다.
+-- 이름을 바꾸면 앱·함수·정책을 한꺼번에 고쳐야 해서 그대로 둔다. 어느 앱 구독인지는 scope 로 구분한다.
 -- ─────────────────────────────────────────────────────────────────────
 
 create table if not exists public.push_subscriptions_beta (
@@ -14,7 +14,7 @@ create table if not exists public.push_subscriptions_beta (
   auth_key   text not null,                    -- 페이로드 암호화용 인증 시크릿 ("auth" 는 예약어라 _key)
   user_id    uuid,                             -- 누구 기기인지 메모용. auth.users 외래키는 일부러 안 건다(아래 설명)
   label      text,                             -- 기기 구분용 메모 (iPhone / Android …)
-  scope      text,                             -- 구독이 만들어진 경로. 항상 /Dangdong-beta/... 여야 한다
+  scope      text,                             -- 구독이 만들어진 경로 (/Dangdong/... 본 앱, /Dangdong-beta/... 테스트 앱)
   created_at timestamptz not null default now()
 );
 

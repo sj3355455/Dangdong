@@ -13,8 +13,9 @@
 //        APP_URL            https://sj3355455.github.io/Dangdong-beta/
 //      (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 는 자동으로 들어와 있다)
 //
-// 누구에게 가나: 그 모임이 속한 팀의 팀원 중, 테스트 앱에서 알림을 켜 둔 기기 전부.
-//   scope 에 '-beta' 가 없는 구독은 건너뛴다 → 본 앱에는 어떤 경우에도 가지 않는다.
+// 누구에게 가나: 그 모임이 속한 팀의 팀원 중, 본 앱이든 테스트 앱이든 알림을 켜 둔 기기 전부.
+//   알림을 누르면 그 기기가 구독한 앱이 열린다 (구독의 scope 로 고른다 — appBase).
+//   APP_URL 은 VAPID 서명용 연락처와, scope 가 비어 있을 때의 기본 주소로만 쓴다.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
@@ -40,6 +41,13 @@ function timeText(t: string | null){
   const [h, mi] = t.split(':').map(Number);
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h < 12 ? '오전' : '오후'} ${h12}시${mi ? ` ${mi}분` : ''}`;
+}
+
+// 알림을 누르면 열릴 앱 주소. scope 에는 구독을 만든 화면 경로(예: /Dangdong/score/)가 들어 있어
+// 첫 마디가 곧 앱의 뿌리다 → 본 앱 구독은 본 앱으로, 테스트 앱 구독은 테스트 앱으로 연다.
+function appBase(scope: string | null, fallback: string){
+  const m = (scope || '').match(/^\/[^/]+\//);
+  return m ? new URL(m[0], fallback).href : fallback;
 }
 
 Deno.serve(async (req) => {
@@ -98,8 +106,7 @@ Deno.serve(async (req) => {
     .in('user_id', memberIds);
   if (subErr) return fail('구독 목록을 읽지 못했습니다: ' + subErr.message, 500);
 
-  // 테스트 앱 구독만 — 본 앱으로는 어떤 경우에도 나가지 않는다
-  const targets = (subs || []).filter((s: { scope: string | null }) => (s.scope || '').includes('-beta'));
+  const targets = subs || [];
   if (!targets.length) return json({ sent: 0, failed: 0,
     note: `알림을 켠 기기가 없습니다 (팀원 ${memberIds.length}명, 구독 ${(subs || []).length}건)` });
 
@@ -108,12 +115,12 @@ Deno.serve(async (req) => {
 
   const when = timeText(meetup.meet_time);
   const parts = [when, meetup.place].filter(Boolean);
-  const payload = JSON.stringify({
+  const payloadFor = (scope: string | null) => JSON.stringify({
     title: `🎱 ${dateText(meetup.meet_date)} 모임`,
     body: [parts.join(' · ') || '시간·장소 미정',
            meetup.note || '',
            creator?.display_name ? `${creator.display_name}님이 만듦` : ''].filter(Boolean).join('\n'),
-    url: `${APP_URL}calendar/?meetup=${meetup.id}`,
+    url: `${appBase(scope, APP_URL)}calendar/?meetup=${meetup.id}`,
     tag: `meetup-${meetup.id}`
   });
 
@@ -125,7 +132,7 @@ Deno.serve(async (req) => {
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_key } },
-        payload
+        payloadFor(s.scope)
       );
       sent++;
     } catch (e) {

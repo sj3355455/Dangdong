@@ -362,9 +362,11 @@ export function registerSW(){
    켜고 끄는 스위치 UI 는 아래 initPushSwitch — 세 화면의 설정 창이 함께 쓴다. */
 const VAPID_PUBLIC = 'BJO7jjlFWFhPntIIWsmk0NTUpW67axk-3ikmxIt9OoXZIHjVx88dFUqhL_0OxBMvpeVyLdsrn65A8VpOK0KUwF0';
 
-// 테스트 앱에서만 쓴다 — 본 앱 경로에서는 아래 함수들이 전부 아무 일도 하지 않는다
+// 본 앱·테스트 앱 둘 다 쓴다. 구독은 서비스워커 스코프에 묶여 두 앱이 서로 다른 구독이 되고,
+// 보내는 쪽은 구독마다 scope 를 보고 알림을 누르면 열 앱을 고른다.
+// (표 이름의 _beta 는 테스트 앱에서만 쓰던 시절의 흔적이다 — 이름만 그렇고 두 앱이 함께 쓴다)
 const pushUsable = () => 'serviceWorker' in navigator && 'PushManager' in window
-  && 'Notification' in window && location.pathname.includes('-beta');
+  && 'Notification' in window;
 
 // VAPID 공개키(base64url) → subscribe() 가 요구하는 Uint8Array
 const b64ToU8 = s => {
@@ -431,7 +433,7 @@ export async function pushDetach(){
 export function initPushSwitch(getUid){
   const row = document.getElementById('setPushRow'), btn = document.getElementById('setPush');
   const hint = document.getElementById('setPushHint');
-  if (!row || !btn || !location.pathname.includes('-beta')) return;   // 본 앱에서는 숨긴 채로 둔다
+  if (!row || !btn) return;
   row.style.display = '';
 
   const say = t => { if (!hint) return; hint.textContent = t || ''; hint.style.display = t ? '' : 'none'; };
