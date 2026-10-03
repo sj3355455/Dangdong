@@ -12,7 +12,7 @@ Supabase SQL Editor 는 긴 스크립트를 한 번에 붙여넣기 어려워서
 | 5 | `5-meetups.sql` | **모임 투표** — `meetups` · `meetup_rsvps` 표와 집계 함수 |
 | 6 | `6-drop-day-votes.sql` | ⚠️ 옛 날짜별 O/X 투표(`day_votes`)를 지운다. **되돌릴 수 없음** |
 | 7 | `7-event-votes.sql` | **정기전 투표** — `event_rsvps` 표와 집계 함수 `club_events_in` |
-| 8 | `8-event-reminder-cron.sql` | 정기전 **이틀 전 알림** 예약 (pg_cron → Edge Function) |
+| 8 | `8-event-reminder-cron.sql` | 정기전 **하루 전 알림** 예약 (pg_cron → Edge Function) |
 | 9 | `9-drop-endpoint-rsvp.sql` | 알림 버튼으로 투표하던 함수 둘을 걷어낸다 |
 
 전부 **여러 번 실행해도 안전**합니다(멱등). 순서를 건너뛰면 각 파일이 앞 단계가 없다고
@@ -37,7 +37,7 @@ Supabase SQL Editor 는 긴 스크립트를 한 번에 붙여넣기 어려워서
 | 함수 | 언제 보내나 | 누가 부르나 |
 |---|---|---|
 | `notify-meetup` | 모임을 만든 그 순간 | 앱 (만든 사람) |
-| `notify-event` | 정기전 **이틀 전** 아침 10시 | pg_cron (`8-event-reminder-cron.sql`) |
+| `notify-event` | 정기전 **하루 전** 아침 10시 | pg_cron (`8-event-reminder-cron.sql`) |
 
 `notify-event` 는 8번을 돌리기 **전에** 배포해 두세요. 크론은 함수가 없으면 매일 조용히 실패합니다.
 

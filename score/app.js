@@ -1496,7 +1496,7 @@ registerSW();
  * 본 앱에서는 아래 -beta 검사에 걸려 UI 자체가 뜨지 않는다.
  * 게다가 푸시 구독은 서비스워커 스코프(/Dangdong-beta/)에 묶이므로,
  * 설령 코드가 본 앱에 올라가더라도 서로 다른 구독이라 알림이 섞일 수 없다.
- * 보내는 쪽은 Supabase Edge Function — 모임은 notify-meetup, 정기전 이틀 전은 notify-event.
+ * 보내는 쪽은 Supabase Edge Function — 모임은 notify-meetup, 정기전 하루 전은 notify-event.
  * (저장소 밖 ~/Documents/dangdong-push/send.js 는 손으로 쏘는 예비 수단)
  */
 // 구독을 만들고 지우는 일 자체는 공통 모듈이 맡는다(pushAttach/pushDetach/pushSaveSub) —

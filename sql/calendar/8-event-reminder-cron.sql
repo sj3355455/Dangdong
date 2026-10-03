@@ -1,12 +1,12 @@
 -- ═══════════════════════════════════════════════════════════════
--- 당동 캘린더 [8] 정기전 이틀 전 알림 — 매일 한 번 부르는 예약
+-- 당동 캘린더 [8] 정기전 하루 전 알림 — 매일 한 번 부르는 예약
 --
 -- 7-event-votes.sql 을 먼저 실행하고, Edge Function `notify-event` 를 배포한 뒤에 돌리세요.
 --
 -- 얼개: pg_cron 이 매일 정해진 시각에 pg_net 으로 Edge Function 을 부른다.
 --   푸시를 보내려면 VAPID 개인키로 서명해야 하는데 그 키는 Edge Function 에만 있다.
 --   그래서 DB 는 "지금 확인해 봐"라고 두드리기만 하고, 누구에게 보낼지 고르는 일은
---   함수가 한다 (한국 날짜로 모레인 정기전 전부).
+--   함수가 한다 (한국 날짜로 내일인 정기전 전부).
 --
 -- ▶ 아래 두 곳을 자기 프로젝트 값으로 바꾼 다음 Run 하세요.
 --     :project_ref   Supabase 프로젝트 ref  (대시보드 주소의 그 문자열)
@@ -34,7 +34,7 @@ begin
   where exists (select 1 from cron.job where jobname = 'dangdong-event-reminder');
 
   -- 매일 한국시간 오전 10시 = UTC 01:00.
-  -- 아침에 받아야 이틀 뒤 일정을 조정할 시간이 남는다. 너무 이르면 알림이 잠결에 묻힌다.
+  -- 아침에 받아야 내일 일정을 조정할 시간이 남는다. 너무 이르면 알림이 잠결에 묻힌다.
   perform cron.schedule(
     'dangdong-event-reminder',
     '0 1 * * *',

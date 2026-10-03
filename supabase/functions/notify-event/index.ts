@@ -1,9 +1,10 @@
-// 당동 — 정기전 이틀 전에 "참석 투표해 주세요" 알림을 보낸다.
+// 당동 — 정기전 하루 전에 "참석 투표해 주세요" 알림을 보낸다.
 //
 // notify-meetup 과 다른 점: 사람이 부르는 게 아니라 크론이 하루 한 번 부른다.
 //   · 그래서 로그인 토큰이 없다 → service_role 키를 그대로 Authorization 에 실어 부르고,
 //     이 함수는 그 키가 맞는지만 확인한다. (아무나 부르면 부원들 폰이 울린다)
-//   · 보낼 대상을 스스로 찾는다 — 한국 날짜로 '모레'인 정기전 전부.
+//   · 보낼 대상을 스스로 찾는다 — 한국 날짜로 '내일'인 정기전 전부.
+//     요일로 정하지 않는다. club_events 에 실제로 잡힌 날짜만 보므로, 정기전이 없는 주에는 오지 않는다.
 //
 // 배포 (대시보드에서 다 된다):
 //   1) Edge Functions → Deploy a new function → 이름 notify-event → 이 파일 내용 붙여넣기
@@ -14,7 +15,7 @@
 //   크론이 하루에 여러 번 돌거나 재시도가 나도 이미 찍힌 건 건너뛴다.
 //
 // 누구에게 가나: 그 팀의 팀원 전원 중 테스트 앱에서 알림을 켜 둔 기기.
-//   이미 투표한 사람에게도 간다 — '이틀 뒤에 정기전이 있다'는 사실 자체를 알리는 자리라서.
+//   이미 투표한 사람에게도 간다 — '내일 정기전이 있다'는 사실 자체를 알리는 자리라서.
 //   scope 에 '-beta' 가 없는 구독은 건너뛴다 → 본 앱에는 어떤 경우에도 가지 않는다.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -96,8 +97,8 @@ Deno.serve(async (req) => {
 
   const admin = createClient(SB_URL, SERVICE);
 
-  // 오늘(한국)로부터 이틀 뒤 = 알림을 보낼 날
-  const target = addDays(seoulToday(), 2);
+  // 오늘(한국)로부터 하루 뒤 = 알림을 보낼 날
+  const target = addDays(seoulToday(), 1);
 
   const pick = admin.from('club_events').select('id, team_id, event_date, note');
   const { data: evs, error: evErr } = forceId
@@ -140,7 +141,7 @@ Deno.serve(async (req) => {
       .eq('event_id', ev.id).eq('status', 'yes');
 
     const payload = JSON.stringify({
-      title: `🏅 ${round ? `제${round}회 ` : ''}정기전이 이틀 뒤입니다`,
+      title: `🏅 ${round ? `제${round}회 ` : ''}정기전이 내일입니다`,
       body: [dateText(ev.event_date), ev.note || '',
              `지금까지 참석 ${yesCnt || 0}명 · 참석 여부를 알려 주세요`].filter(Boolean).join('\n'),
       url: `${APP_URL}calendar/?event=${ev.id}`,

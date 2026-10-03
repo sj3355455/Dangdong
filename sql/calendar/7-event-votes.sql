@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- 당동 캘린더 [7] 정기전 참석 투표 + 이틀 전 알림
+-- 당동 캘린더 [7] 정기전 참석 투표 + 하루 전 알림
 --
 -- Supabase → SQL Editor 에 붙여넣고 Run. 여러 번 실행해도 안전합니다 (멱등).
 -- 1-tables.sql / 2-rls.sql / 5-meetups.sql 을 먼저 실행한 뒤에 돌리세요.
@@ -49,7 +49,7 @@ create table if not exists public.event_rsvps (
 );
 create index if not exists event_rsvps_event_idx on public.event_rsvps(event_id);
 
--- 이틀 전 알림을 이미 보냈는지. 크론이 하루에 여러 번 돌아도 같은 정기전으로 두 번 보내지 않는다.
+-- 하루 전 알림을 이미 보냈는지. 크론이 하루에 여러 번 돌아도 같은 정기전으로 두 번 보내지 않는다.
 -- 별도 표를 두지 않는 이유: 정기전이 지워지면 이 자국도 같이 사라져야 맞다.
 alter table public.club_events add column if not exists remind_sent_at timestamptz;
 
@@ -156,4 +156,4 @@ grant execute on function public.club_event_one(uuid) to authenticated;
 -- 걷어냈다(2026-09-01). 이유는 5-meetups.sql · sw.js 의 설명 참고.
 -- 남아 있는 서버에서 걷어내는 건 9-drop-endpoint-rsvp.sql 이 맡는다.
 
-do $$ begin raise notice '정기전 투표 설치 완료 — 이틀 전 알림은 8-event-reminder-cron.sql'; end $$;
+do $$ begin raise notice '정기전 투표 설치 완료 — 하루 전 알림은 8-event-reminder-cron.sql'; end $$;
