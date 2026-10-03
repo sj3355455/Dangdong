@@ -33,11 +33,11 @@ begin
   perform cron.unschedule('dangdong-event-reminder')
   where exists (select 1 from cron.job where jobname = 'dangdong-event-reminder');
 
-  -- 매일 한국시간 오전 10시 = UTC 01:00.
-  -- 아침에 받아야 내일 일정을 조정할 시간이 남는다. 너무 이르면 알림이 잠결에 묻힌다.
+  -- 매일 한국시간 낮 12시 = UTC 03:00.
+  -- 점심때 받으면 놓치지 않고 보고, 내일 일정을 조정할 시간도 남는다.
   perform cron.schedule(
     'dangdong-event-reminder',
-    '0 1 * * *',
+    '0 3 * * *',
     format(
       -- pg_net 은 비동기다 — 이 select 는 요청을 걸어 두고 바로 끝나고, 응답은 뒤에
       -- net._http_response 로 들어온다. 기본 5초는 여러 기기에 푸시를 돌리기엔 짧아서 넉넉히 준다
@@ -53,7 +53,7 @@ begin
       )$cmd$, fn_url, service_key)
   );
 
-  raise notice '정기전 알림 예약 완료 — 매일 한국시간 10:00 에 % 를 부릅니다', fn_url;
+  raise notice '정기전 알림 예약 완료 — 매일 한국시간 12:00 에 % 를 부릅니다', fn_url;
 end $$;
 
 -- ── 확인·정리용 ──────────────────────────────────────────────
@@ -66,6 +66,9 @@ end $$;
 -- 함수가 뭐라고 답했는지 보기 (pg_net 은 비동기라 결과가 여기 따로 쌓인다):
 --   select created, status_code, content from net._http_response order by created desc limit 5;
 --   → status_code 200 에 content 가 {"target":...,"sent":N,...} 이면 정상
+-- 알림 시각만 바꾸기 (키를 다시 넣지 않아도 된다. 시각은 UTC — 한국시간에서 9를 뺀다):
+--   select cron.alter_job((select jobid from cron.job where jobname = 'dangdong-event-reminder'),
+--                         schedule := '0 3 * * *');
 -- 예약 끄기:
 --   select cron.unschedule('dangdong-event-reminder');
 --
