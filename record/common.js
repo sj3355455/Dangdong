@@ -426,6 +426,38 @@ export async function pushDetach(){
   } catch(e){}
 }
 
+/* ══ 방문 기록 (관리자 메뉴의 '방문 기록') ══
+   '한 번 들어옴' = VISIT_GAP 넘게 안 쓰다가 앱을 다시 연 것. 새로고침이나 점수판·기록실·캘린더를
+   오가는 것(전부 페이지 이동이다)은 세지 않는다 — 마지막으로 쓴 시각을 세 화면이 같은 열쇠로 나눠 본다.
+   홈 화면 앱은 껐다 켜도 새로 뜨지 않고 뒤에서 깨어나기만 할 때가 많아서, 화면이 다시 보일 때도 같은 검사를 한다.
+   로그인 전에는 적지 않는다(서버 함수 log_visit 도 로그인 없으면 무시한다). 표·함수는 sql/app-visits.sql. */
+const LS_SEEN = 'dangLastSeen';
+const VISIT_GAP = 30 * 60 * 1000;   // 30분
+
+export function logVisit(app, getUid){
+  const check = () => {
+    // 로그인 전에는 시각도 남기지 않는다 — 남기면 로그인하고 30분 동안은 방문으로 안 잡힌다
+    if (!getUid()) return;
+    let last = 0;
+    try { last = Number(localStorage.getItem(LS_SEEN)) || 0; } catch(e){}
+    const now = Date.now();
+    try { localStorage.setItem(LS_SEEN, String(now)); } catch(e){}
+    if (now - last < VISIT_GAP) return;
+    // 실패해도 조용히 넘긴다 — 방문 기록 때문에 앱이 멈추거나 오류를 띄울 일은 아니다
+    sbFetch('/rest/v1/rpc/log_visit', {
+      method: 'POST',
+      body: JSON.stringify({ p_app: app, p_beta: location.pathname.includes('-beta') })
+    }).catch(()=>{});
+  };
+  check();
+  // 화면을 떠날 때도 시각을 남긴다 — 안 그러면 두 시간 내내 쓰다가 10분 쉬고 와도
+  // '처음 연 때로부터 두 시간'으로 보여 새 방문으로 세어진다
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check();
+    else if (getUid()) try { localStorage.setItem(LS_SEEN, String(Date.now())); } catch(e){}
+  });
+}
+
 /* 설정 창의 '알림 받기' 스위치. 점수판·기록실·캘린더 설정 창이 똑같이 쓴다.
    (예전에는 점수판에만 있어서, 기록실이나 캘린더에서 설정을 열면 스위치가 보이지 않았다)
    getUid() = 지금 로그인한 계정 id. 앱마다 로그인 정보를 들고 있는 방식이 달라 받아서 쓴다.

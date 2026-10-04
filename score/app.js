@@ -1,6 +1,6 @@
 import { sbFetch, sbAuth } from '../record/supabase.js';
 import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
-         pushAttach, pushDetach, initPushSwitch } from '../record/common.js';
+         pushAttach, pushDetach, initPushSwitch, logVisit } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
 const show = id => document.querySelectorAll('.screen').forEach(el => el.style.display = el.id === id ? 'flex' : 'none');
@@ -1491,6 +1491,7 @@ init();
 
 // ══ 서비스 워커 등록 + 자동 업데이트 ══ (공통 모듈)
 registerSW();
+logVisit('score', () => auth?.uid);   // 관리자 메뉴의 방문 기록 (30분 넘게 비웠다 들어올 때만 센다)
 
 /* ══ 알림(웹 푸시) — 본 앱·테스트 앱 공통 ══════════════════════════
  * 푸시 구독은 서비스워커 스코프(/Dangdong/ 또는 /Dangdong-beta/)에 묶이므로 두 앱은 서로 다른 구독이다.

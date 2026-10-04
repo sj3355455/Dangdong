@@ -1,7 +1,7 @@
 import { sbFetch } from './supabase.js';
 import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
          ymd, todayYmd, ddmy, rangeRowHtml, bindRangePicker, syncRangeDisp,
-         pushDetach, initPushSwitch } from './common.js';
+         pushDetach, initPushSwitch, logVisit } from './common.js';
 
 let DATA = { updated: '', players: [], games: [] };
 let RAW_GAMES = [];
@@ -1884,6 +1884,15 @@ async function renderAdminMenu(){
   const el = $(`<div>
     <button class="back">← 내 정보로</button>
     <div class="card">
+      <h2 style="margin:0 0 12px 0; font-size:1.3rem;">📊 방문 기록</h2>
+      <div class="setseg" id="admVisitSpan" style="margin-bottom:10px;">
+        <button data-d="1">24시간</button><button data-d="7" class="on">7일</button><button data-d="30">30일</button><button data-d="">전체</button>
+      </div>
+      <div id="admVisitMsg" style="color:var(--muted); font-size:0.9rem;">불러오는 중...</div>
+      <div id="admVisitList" style="display:flex; flex-direction:column; margin-top:8px;"></div>
+      <div style="color:var(--muted); font-size:0.78rem; line-height:1.5; margin-top:10px;">30분 넘게 안 쓰다가 다시 열면 1번으로 셉니다. 새로고침이나 화면 이동은 세지 않고, 로그인한 사람만 셉니다.</div>
+    </div>
+    <div class="card">
       <h2 style="margin:0 0 16px 0; font-size:1.3rem;">👑 관리자 메뉴 (회원 및 소속팀)</h2>
       <div id="adminRosterMsg" style="color:var(--muted); font-size:0.9rem;">불러오는 중...</div>
       <div id="adminRosterList" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;"></div>
@@ -1891,6 +1900,7 @@ async function renderAdminMenu(){
   </div>`);
 
   el.querySelector('.back').onclick = () => { show('rank'); openMeModal(); };
+  initAdminVisits(el);
 
   const container = el.querySelector('#adminRosterList');
   const msg = el.querySelector('#adminRosterMsg');
@@ -1955,6 +1965,44 @@ async function renderAdminMenu(){
 
   document.getElementById('view').replaceChildren(el);
   scrollTo(0,0);
+}
+
+// 방문 기록 카드 — 기간 버튼을 누를 때마다 서버에서 다시 센다 (sql/app-visits.sql 의 admin_visit_stats).
+// '전체'가 아닐 때는 그 기간에 한 번도 안 들어온 사람도 0회로 보여 준다 — 안 들어온 사람을 찾는 것도 쓸모라서.
+function initAdminVisits(el){
+  const msg = el.querySelector('#admVisitMsg'), list = el.querySelector('#admVisitList');
+  const btns = el.querySelectorAll('#admVisitSpan button');
+  const when = iso => {
+    const d = new Date(iso);
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const load = async days => {
+    msg.textContent = '불러오는 중...'; list.innerHTML = '';
+    try {
+      const rows = await sbFetch('/rest/v1/rpc/admin_visit_stats', {
+        method: 'POST', body: JSON.stringify({ p_days: days ? Number(days) : null })
+      }) || [];
+      const sum = rows.reduce((a, r) => a + Number(r.visits), 0);
+      const who = rows.filter(r => Number(r.visits) > 0).length;
+      msg.textContent = `${who}명이 총 ${sum}번 들어왔습니다`;
+      list.innerHTML = rows.map(r => `<div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:8px 2px; border-top:1px solid var(--line);${Number(r.visits) ? '' : ' opacity:.5;'}">
+          <span style="font-weight:600;">${esc(r.display_name || '이름 없음')}</span>
+          <span style="font-size:0.85rem; color:var(--muted); white-space:nowrap;">
+            <b style="color:var(--text); font-size:0.95rem;">${Number(r.visits)}회</b>${r.last_visit ? ` · 마지막 ${when(r.last_visit)}` : ''}
+          </span>
+        </div>`).join('');
+    } catch(e) {
+      // 함수가 아직 없으면(SQL 을 안 돌렸으면) 무엇을 해야 하는지 알려 준다
+      msg.textContent = /admin_visit_stats|function|404/i.test(e.message + ' ' + e.status)
+        ? '방문 기록 기능이 아직 서버에 없습니다 — sql/app-visits.sql 을 SQL Editor 에서 실행해 주세요.'
+        : '방문 기록을 불러오지 못했습니다: ' + e.message;
+    }
+  };
+  btns.forEach(b => b.onclick = () => {
+    btns.forEach(x => x.classList.toggle('on', x === b));
+    load(b.dataset.d);
+  });
+  load('7');
 }
 
 function openAdminTeamEditModal(team){
@@ -2614,6 +2662,7 @@ initDashboard();
 
 // ══ 서비스 워커 등록 + 자동 업데이트 ══ (공통 모듈)
 registerSW();
+logVisit('record', () => getAuth()?.uid);   // 관리자 메뉴의 방문 기록 (30분 넘게 비웠다 들어올 때만 센다)
 
 
 // ══ 관리자 메뉴: 회원 정보 수정 전용 화면 ══
