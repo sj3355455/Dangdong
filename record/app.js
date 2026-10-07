@@ -1873,9 +1873,10 @@ function openMeModal(){
 }
 function closeMeModal(){ const m = document.getElementById('meModal'); if (m) m.style.display = 'none'; }
 
-// ══ 관리자 메뉴 (전체 회원 · 소속 팀 · 방문 기록 · 알림 상태) ══
+// ══ 관리자 메뉴 (방문 기록 · 전체 회원/소속 팀/알림 상태 · 테스트 알림) ══
 // 설정 창의 '👑 관리자 메뉴' 버튼으로 들어온다 (common.js 의 initAdminEntry).
-// 회원 한 사람 칸에 소속 팀, 방문 기록(sql/app-visits.sql), 알림 상태(sql/admin-push-status.sql)를 함께 적는다.
+// 방문 기록(sql/app-visits.sql)은 많이 들어온 순으로 따로 본다 — 회원 칸에 섞으면 누가 많이 쓰는지 한눈에 안 보인다.
+// 알림 상태(sql/admin-push-status.sql)는 회원 한 사람 칸에 소속 팀과 함께 적는다.
 // 방문·알림은 곁들이는 정보라 그쪽 서버 함수가 없거나 실패해도 회원 목록은 그대로 보여 준다.
 const admWhen = iso => {
   const d = new Date(iso);
@@ -1891,17 +1892,19 @@ async function renderAdminMenu(){
   const el = $(`<div>
     <button class="back">← 기록실로</button>
     <div class="card">
-      <h2 style="margin:0 0 12px 0; font-size:1.3rem;">👑 관리자 메뉴</h2>
-      <div style="font-size:0.8rem; color:var(--muted); margin-bottom:4px;">방문 횟수를 셀 기간</div>
+      <h2 style="margin:0 0 12px 0; font-size:1.3rem;">📊 방문 기록</h2>
       <div class="setseg" id="admVisitSpan" style="margin-bottom:10px;">
         <button data-d="1">24시간</button><button data-d="7" class="on">7일</button><button data-d="30">30일</button><button data-d="">전체</button>
       </div>
+      <div id="admVisitMsg" style="color:var(--muted); font-size:0.9rem;">불러오는 중...</div>
+      <div id="admVisitList" style="display:flex; flex-direction:column; margin-top:8px;"></div>
+      <div style="color:var(--muted); font-size:0.78rem; line-height:1.5; margin-top:10px;">30분 넘게 안 쓰다가 다시 열면 1번으로 셉니다. 새로고침이나 화면 이동은 세지 않고, 로그인한 사람만 셉니다.</div>
+    </div>
+    <div class="card">
+      <h2 style="margin:0 0 12px 0; font-size:1.3rem;">👑 관리자 메뉴 (회원 및 소속팀)</h2>
       <div id="adminRosterMsg" style="color:var(--muted); font-size:0.9rem; line-height:1.6;">불러오는 중...</div>
       <div id="adminRosterList" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;"></div>
-      <div style="color:var(--muted); font-size:0.78rem; line-height:1.5; margin-top:12px;">
-        · 방문: 30분 넘게 안 쓰다가 다시 열면 1번으로 셉니다. 새로고침·화면 이동은 세지 않고, 로그인한 사람만 셉니다.<br>
-        · 알림: 폰 설정에서 알림을 막았거나 앱을 지운 기기는 다음 알림이 실패해 정리되기 전까지 '켬'으로 보일 수 있습니다. 확실히 보려면 아래 테스트 알림을 보내 보세요.
-      </div>
+      <div style="color:var(--muted); font-size:0.78rem; line-height:1.5; margin-top:12px;">알림: 폰 설정에서 알림을 막았거나 앱을 지운 기기는 다음 알림이 실패해 정리되기 전까지 '켬'으로 보일 수 있습니다. 확실히 보려면 아래 테스트 알림을 보내 보세요.</div>
     </div>
     <div class="card">
       <h2 style="margin:0 0 12px 0; font-size:1.3rem;">🔔 테스트 알림</h2>
@@ -1921,19 +1924,38 @@ async function renderAdminMenu(){
 
   const container = el.querySelector('#adminRosterList');
   const msg = el.querySelector('#adminRosterMsg');
-  const spanBtns = el.querySelectorAll('#admVisitSpan button');
-  let days = '7';
-  let members = [], visits = null, push = null;          // null = 못 읽음 (이유는 아래 *Err)
-  let visitErr = '', pushErr = '';
+  let members = [], push = null;          // null = 못 읽음 (이유는 pushErr)
+  let pushErr = '';
 
-  const loadVisits = async () => {
+  // 방문 기록 — 기간 버튼을 누를 때마다 서버에서 다시 센다. 서버가 많이 들어온 순으로 준다.
+  // 그 기간에 한 번도 안 들어온 사람도 0회로 흐리게 보여 준다 — 안 들어오는 사람을 찾는 것도 쓸모라서.
+  const vMsg = el.querySelector('#admVisitMsg'), vList = el.querySelector('#admVisitList');
+  const spanBtns = el.querySelectorAll('#admVisitSpan button');
+  const loadVisits = async days => {
+    vMsg.textContent = '불러오는 중...'; vList.innerHTML = '';
     try {
       const rows = await sbFetch('/rest/v1/rpc/admin_visit_stats', {
         method: 'POST', body: JSON.stringify({ p_days: days ? Number(days) : null })
       }) || [];
-      visits = new Map(rows.map(r => [r.user_id, r])); visitErr = '';
-    } catch(e) { visits = null; visitErr = admMissing(e, 'admin_visit_stats', 'sql/app-visits.sql'); }
+      const sum = rows.reduce((a, r) => a + Number(r.visits), 0);
+      const who = rows.filter(r => Number(r.visits) > 0).length;
+      vMsg.textContent = `${who}명이 총 ${sum}번 들어왔습니다`;
+      vList.innerHTML = rows.map(r => `<div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:8px 2px; border-top:1px solid var(--line);${Number(r.visits) ? '' : ' opacity:.5;'}">
+          <span style="font-weight:600;">${esc(r.display_name || '이름 없음')}</span>
+          <span style="font-size:0.85rem; color:var(--muted); white-space:nowrap;">
+            <b style="color:var(--text); font-size:0.95rem;">${Number(r.visits)}회</b>${r.last_visit ? ` · 마지막 ${admWhen(r.last_visit)}` : ''}
+          </span>
+        </div>`).join('');
+    } catch(e) {
+      vMsg.textContent = '방문 기록: ' + admMissing(e, 'admin_visit_stats', 'sql/app-visits.sql');
+    }
   };
+  spanBtns.forEach(b => b.onclick = () => {
+    spanBtns.forEach(x => x.classList.toggle('on', x === b));
+    loadVisits(b.dataset.d);
+  });
+  loadVisits('7');
+
   const loadPush = async () => {
     try {
       const rows = await sbFetch('/rest/v1/rpc/admin_push_status', { method: 'POST', body: '{}' }) || [];
@@ -1959,17 +1981,11 @@ async function renderAdminMenu(){
     }
   };
 
-  const spanText = () => ({ '1': '24시간', '7': '7일', '30': '30일', '': '전체 기간' })[days];
-
   const render = () => {
-    // 맨 위 요약 — 회원 수 · 알림 켠 사람 · 그 기간 방문
+    // 맨 위 요약 — 회원 수 · 알림 켠 사람
     const onCnt = push ? members.filter(m => (push.get(m.user_id) || []).length).length : null;
-    const vRows = visits ? members.map(m => visits.get(m.user_id)).filter(Boolean) : [];
-    const vWho = vRows.filter(r => Number(r.visits) > 0).length;
-    const vSum = vRows.reduce((a, r) => a + Number(r.visits), 0);
     msg.innerHTML = `총 <b>${members.length}명</b>의 회원`
-      + `<br>🔔 알림 ${push ? `켠 사람 <b>${onCnt}명</b> · 끈 사람 ${members.length - onCnt}명` : `— ${esc(pushErr)}`}`
-      + `<br>📊 ${spanText()} 방문 ${visits ? `<b>${vWho}명</b> · 총 ${vSum}회` : `— ${esc(visitErr)}`}`;
+      + `<br>🔔 알림 ${push ? `켠 사람 <b>${onCnt}명</b> · 끈 사람 ${members.length - onCnt}명` : `— ${esc(pushErr)}`}`;
 
     container.innerHTML = members.map(m => {
       const name = m.display_name || '이름 없음';
@@ -1978,13 +1994,6 @@ async function renderAdminMenu(){
       const teamChips = teams.length === 0
         ? `<span style="font-size:0.85rem; color:var(--muted);">(소속 팀 없음)</span>`
         : teams.map(t => `<button class="adm-team-chip" data-tid="${esc(t.id)}" data-tname="${esc(t.name)}" data-tcode="${esc(t.join_code||'')}" style="padding:4px 10px; border-radius:6px; background:var(--card2); color:var(--accent); border:1px solid var(--line); font-size:0.85rem; font-weight:600; cursor:pointer; margin-right:6px; margin-top:4px;">${esc(t.name)}${t.is_admin ? ' 👑' : ''}</button>`).join('');
-
-      // 방문 — 그 기간에 안 들어왔으면 흐리게 (안 들어오는 사람을 찾는 것도 쓸모라서 숨기지 않는다)
-      const v = visits && visits.get(m.user_id);
-      const vCnt = v ? Number(v.visits) : 0;
-      const visitLine = !visits ? ''
-        : `<div style="font-size:0.85rem;${vCnt ? '' : ' color:var(--muted);'}">📊 방문 <b>${vCnt}회</b>`
-          + `${v && v.last_visit ? `<span style="color:var(--muted);"> · 마지막 ${admWhen(v.last_visit)}</span>` : ''}</div>`;
 
       // 알림 — 켠 기기마다 종류·앱·켠 날짜
       const devs = push ? (push.get(m.user_id) || []) : null;
@@ -2003,7 +2012,7 @@ async function renderAdminMenu(){
           <span style="color:var(--muted); font-size:0.8rem; margin-right:4px;">소속팀:</span>
           ${teamChips}
         </div>
-        ${visitLine}${pushLine}
+        ${pushLine}
       </div>`;
     }).join('');
 
@@ -2023,14 +2032,8 @@ async function renderAdminMenu(){
   // 테스트 알림이 만료 기기를 지우면 알림 상태가 바뀐다 → 다시 읽어 그린다
   const fillTestTargets = initAdminTest(el, async () => { await loadPush(); render(); });
 
-  spanBtns.forEach(b => b.onclick = async () => {
-    spanBtns.forEach(x => x.classList.toggle('on', x === b));
-    days = b.dataset.d;
-    await loadVisits(); render();
-  });
-
   try {
-    await Promise.all([loadMembers(), loadVisits(), loadPush()]);
+    await Promise.all([loadMembers(), loadPush()]);
     fillTestTargets(members);
     render();
   } catch(e) {
