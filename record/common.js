@@ -426,6 +426,21 @@ export async function pushDetach(){
   } catch(e){}
 }
 
+/* ══ 설정 창의 '👑 관리자 메뉴' 버튼 ══
+   점수판·기록실·캘린더 설정 창에 같은 버튼(#setAdmin)이 숨어 있고, 사이트 관리자(profiles.is_admin)일 때만 보인다.
+   여기서 숨기는 건 화면뿐이다 — 관리자 메뉴가 부르는 서버 함수들이 각자 is_admin() 으로 다시 막는다.
+   onOpen = 눌렀을 때 할 일. 관리자 메뉴는 기록실에만 있어서 점수판·캘린더는 기록실로 넘긴다. */
+export function initAdminEntry(getUid, onOpen){
+  const btn = $id('setAdmin');
+  if (!btn) return;
+  btn.onclick = () => { const m = $id('setModal'); if (m) m.classList.remove('on'); onOpen(); };
+  const uid = getUid();
+  if (!uid) return;
+  sbFetch('/rest/v1/profiles?select=is_admin&id=eq.' + encodeURIComponent(uid))
+    .then(d => { if (d && d[0] && d[0].is_admin) btn.style.display = ''; })
+    .catch(() => {});   // is_admin 컬럼이 없거나 오프라인이면 그냥 숨긴 채로 둔다
+}
+
 /* ══ 방문 기록 (관리자 메뉴의 '방문 기록') ══
    '한 번 들어옴' = VISIT_GAP 넘게 안 쓰다가 앱을 다시 연 것. 새로고침이나 점수판·기록실·캘린더를
    오가는 것(전부 페이지 이동이다)은 세지 않는다 — 마지막으로 쓴 시각을 세 화면이 같은 열쇠로 나눠 본다.
