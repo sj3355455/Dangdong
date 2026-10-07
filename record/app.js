@@ -1893,6 +1893,16 @@ async function renderAdminMenu(){
       <div style="color:var(--muted); font-size:0.78rem; line-height:1.5; margin-top:10px;">30분 넘게 안 쓰다가 다시 열면 1번으로 셉니다. 새로고침이나 화면 이동은 세지 않고, 로그인한 사람만 셉니다.</div>
     </div>
     <div class="card">
+      <h2 style="margin:0 0 12px 0; font-size:1.3rem;">🔔 테스트 알림</h2>
+      <select id="admTestTarget" class="field" style="margin-bottom:10px;">
+        <option value="me">나에게 (내 기기 전부)</option>
+        <option value="all">알림을 켠 모든 기기</option>
+      </select>
+      <button id="admTestSend" class="bigbtn">테스트 알림 보내기</button>
+      <div id="admTestMsg" style="font-size:0.9rem; margin-top:10px; color:var(--muted);"></div>
+      <div id="admTestList" style="display:flex; flex-direction:column; margin-top:6px;"></div>
+    </div>
+    <div class="card">
       <h2 style="margin:0 0 16px 0; font-size:1.3rem;">👑 관리자 메뉴 (회원 및 소속팀)</h2>
       <div id="adminRosterMsg" style="color:var(--muted); font-size:0.9rem;">불러오는 중...</div>
       <div id="adminRosterList" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;"></div>
@@ -1901,6 +1911,7 @@ async function renderAdminMenu(){
 
   el.querySelector('.back').onclick = () => { show('rank'); openMeModal(); };
   initAdminVisits(el);
+  const fillTestTargets = initAdminTest(el);
 
   const container = el.querySelector('#adminRosterList');
   const msg = el.querySelector('#adminRosterMsg');
@@ -1925,6 +1936,7 @@ async function renderAdminMenu(){
     }
 
     msg.textContent = `총 ${membersWithTeams.length}명의 회원`;
+    fillTestTargets(membersWithTeams);
 
     container.innerHTML = membersWithTeams.map(m => {
       const name = m.display_name || '이름 없음';
@@ -2003,6 +2015,50 @@ function initAdminVisits(el){
     load(b.dataset.d);
   });
   load('7');
+}
+
+// 테스트 알림 카드 — 서버 함수 notify-test 가 보내고 기기마다 결과를 돌려준다.
+// 받는 사람 목록은 아래 회원 목록을 불러온 뒤에 채운다 → 채우는 함수를 돌려준다.
+function initAdminTest(el){
+  const sel = el.querySelector('#admTestTarget'), btn = el.querySelector('#admTestSend');
+  const msg = el.querySelector('#admTestMsg'), list = el.querySelector('#admTestList');
+  const RESULT = { ok: ['✅', '보냄'], fail: ['❌', '실패'], gone: ['🗑️', '만료된 기기 — 목록에서 지움'] };
+
+  btn.onclick = async () => {
+    const target = sel.value;
+    const who = sel.options[sel.selectedIndex].textContent;
+    // 나에게가 아니면 남의 폰이 울린다 — 한 번 더 묻는다
+    if (target !== 'me' && !confirm(`'${who}'에게 테스트 알림을 보낼까요?\n받는 사람 폰이 실제로 울립니다.`)) return;
+    btn.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = '보내는 중...'; list.innerHTML = '';
+    try {
+      const r = await sbFetch('/functions/v1/notify-test', { method: 'POST', body: JSON.stringify({ target }) }) || {};
+      const devs = r.devices || [];
+      if (!devs.length) { msg.textContent = r.note || '알림을 켠 기기가 없습니다.'; return; }
+      msg.style.color = r.failed ? '#f44336' : 'var(--text)';
+      msg.textContent = `${devs.length}대 중 ${r.sent}대에 보냈습니다`
+        + (r.failed ? ` · 실패 ${r.failed}대` : '') + (r.cleaned ? ` · 만료 ${r.cleaned}대 정리` : '');
+      list.innerHTML = devs.map(d => {
+        const [ic, tx] = RESULT[d.result] || ['❔', d.result];
+        return `<div style="display:flex; justify-content:space-between; gap:10px; padding:7px 2px; border-top:1px solid var(--line); font-size:0.88rem;">
+          <span><b>${esc(d.name)}</b> <span style="color:var(--muted);">${esc(d.label)} · ${esc(d.app)}</span></span>
+          <span style="white-space:nowrap;">${ic} ${esc(tx)}${d.code ? ` (${d.code})` : ''}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      msg.style.color = '#f44336';
+      // 함수가 없으면 브라우저는 CORS 오류(TypeError)로만 알려 준다 → 무엇을 해야 하는지 적어 준다
+      msg.textContent = (e instanceof TypeError || e.status === 404)
+        ? '알림 서버(notify-test)에 닿지 못했습니다. Supabase → Edge Functions 에 그 이름으로 배포돼 있는지 확인해 주세요.'
+        : '보내지 못했습니다: ' + e.message;
+    } finally { btn.disabled = false; }
+  };
+
+  return members => {
+    const me = getAuth()?.uid;
+    const opts = (members || []).filter(m => m.user_id && m.user_id !== me)
+      .map(m => `<option value="${esc(m.user_id)}">${esc(m.display_name || '이름 없음')}</option>`).join('');
+    if (opts) sel.insertAdjacentHTML('beforeend', `<optgroup label="회원 한 명에게">${opts}</optgroup>`);
+  };
 }
 
 function openAdminTeamEditModal(team){
