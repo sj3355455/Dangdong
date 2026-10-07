@@ -2177,7 +2177,7 @@ function openAdminTeamEditModal(team){
 
    다른 탭과 달리 조회 기간 필터를 따르지 않는다. "지난 달 / 최근 N경기"가
    카드의 뜻 자체라서, 사용자가 순위 탭에서 잡아 둔 기간에 따라 내용이 바뀌면
-   같은 문구가 다른 의미가 돼 버린다. 결산은 달력 기준 지난 달, 성장은 사람마다 최근 경기.
+   같은 문구가 다른 의미가 돼 버린다. 결산·성장 모두 달력 기준 지난 달.
    ══════════════════════════════════════════════════════════════════════ */
 
 // off=0 이번 달, -1 지난 달. 달의 첫날~마지막날을 YYYY-MM-DD 로.
@@ -2258,28 +2258,22 @@ const mkCards = (rows, badge, foot) => rows.filter(([r]) => r)
     label, foot: ownFoot || foot
   }));
 
-/* ── 성장 ── 달력이 아니라 사람마다 '최근 N경기'를 '그 앞 N경기'와 견준다.
-   N 은 쌓인 경기 수로 정한다: 20경기 이상이면 10, 10~19경기면 5, 6~9경기면 3. 6경기가 안 되면
-   양쪽에 3경기씩도 못 채워 빠진다. 양쪽 경기 수가 같아야 공정하고(한 달 3경기 vs 12경기 같은
-   일이 없다), 한두 달 쉬어도 경기 순서로 이어지니 비교가 끊기지 않는다.
-   다만 마지막 경기가 GROW_RECENT_DAYS 일보다 오래된 사람은 뺀다 — '요즘 늘었다'는 소식이라
-   석 달 전에 멈춘 사람의 성장이 계속 걸려 있으면 안 된다.
-   하이런 신기록·수지 상승은 견줄 구간이 따로 없는 소식이라 같은 '최근 30일'로 자른다. */
-// 비교 구간 후보 — 큰 것부터. 양쪽(최근 N + 그 앞 N)을 채울 수 있는 가장 큰 N 을 쓴다.
-// 맨 끝 값도 못 채우면 비교하지 않는다.
-const GROW_WINDOWS = [10, 5, 3];
-const GROW_RECENT_DAYS = 30;
-const growWindow = n => GROW_WINDOWS.find(w => n >= w * 2) || 0;
-const daysAgoYmd = d => { const t = new Date(); t.setDate(t.getDate() - d); return ymd(t); };
+/* ── 성장 ── 달력 기준 '지난 달'의 경기를 그 앞 경기들과 견준다.
+   '최근 N경기'로 굴리면 경기를 칠 때마다 카드가 바뀌어서, 결산처럼 한 달에 한 번만 바뀌게 한다.
+   지난 달에 n경기를 쳤으면 그 앞의 n경기와 비교하고, 앞 경기가 n개가 안 되면 있는 만큼 전부와 견준다.
+   양쪽 다 GROW_MIN 경기 이상이어야 한다 — 한두 경기로는 늘었는지 운인지 가릴 수 없다.
+   지난 달에 안 친 사람은 자연히 빠진다(지난 달 0경기).
+   하이런 신기록·수지 상승도 같은 '지난 달' 한 칸으로 자른다. */
+const GROW_MIN = 3;
 
 // 하이런 신기록 → 수지 → 에버리지 → 승률
 function homeGrowCards(){
-  const since = daysAgoYmd(GROW_RECENT_DAYS);
-  const gap = g => '이전 ' + g.n + '경기 → 최근 ' + g.n + '경기';
+  const M = monthOf(-1);
+  const gap = g => '이전 ' + g.nb + '경기 → ' + M.m + ' ' + g.nc + '경기';
   const out = [];
 
   // ── 수지 상승 (handicap_history) ──
-  // 최근 30일 사이 여러 번 바뀌었으면 처음 값 → 마지막 값 하나로 합친다.
+  // 지난 달 사이 여러 번 바뀌었으면 처음 값 → 마지막 값 하나로 합친다.
   const memName = {};
   for (const m of (RAW_MEMBERS || [])) if (m && m.id) memName[m.id] = m.display_name;
   const hd = {};
@@ -2288,7 +2282,7 @@ function homeGrowCards(){
     if (!memName[h.player_id]) continue;                                  // 다른 팀 회원은 뺀다
     // changed_at 은 timestamptz(UTC 로 온다) — 문자열을 자르면 안 되고 로컬 날짜로 바꿔서 견준다.
     // 한국은 UTC+9 라 1일 오전 0~9시 변경분이 전달 말일로 잡혀 통째로 누락된다. 경기(played_at)와 같은 방식.
-    if (ymd(new Date(h.changed_at)) < since) continue;
+    if (!inRange(ymd(new Date(h.changed_at)), M.from, M.to)) continue;
     const e = hd[h.player_id] || (hd[h.player_id] = { from: h.old_handicap });
     e.to = h.new_handicap;
   }
@@ -2296,18 +2290,22 @@ function homeGrowCards(){
     .filter(e => e.to > e.from)
     .sort((a, b) => (b.to - b.from) - (a.to - a.from));
 
-  // ── 성적 변화 (최근 N경기가 그 앞 N경기보다) ──
+  // ── 성적 변화 (지난 달 n경기가 그 앞 n경기보다) ──
   // history[0] 이 가장 최근 경기다 (processData 가 오래된 경기부터 훑으며 unshift 한다)
+  // 그래서 지난 달 이전 경기를 앞에서 n개 자르면 '지난 달 바로 앞 n경기'가 된다.
+  // 이번 달(진행 중) 경기는 어느 쪽에도 안 넣는다.
   const avgUp = [];
   const rateUp = [];
   const hrNew = [];
   for (const p of getFullProcessData().players) {
     const h = p.history || [];
-    if (!h.length || h[0].date < since) continue;          // 최근 30일 안에 안 친 사람은 빠진다
+    const cur = h.filter(x => inRange(x.date, M.from, M.to));
+    if (!cur.length) continue;                              // 지난 달에 안 친 사람은 빠진다
+    const before = h.filter(x => x.date < M.from);
 
-    const n = growWindow(h.length);
-    if (n) {
-      const g = { name: p.name, n, c: calcStatsForHistory(h.slice(0, n)), b: calcStatsForHistory(h.slice(n, n * 2)) };
+    const prev = before.slice(0, cur.length);
+    if (cur.length >= GROW_MIN && prev.length >= GROW_MIN) {
+      const g = { name: p.name, nc: cur.length, nb: prev.length, c: calcStatsForHistory(cur), b: calcStatsForHistory(prev) };
       if (g.b.avgAvg > 0 && g.c.avgAvg > g.b.avgAvg) avgUp.push({ ...g, d: g.c.avgAvg - g.b.avgAvg });
       // 승률은 반드시 보정 승률(adjRate). 모드를 안 가리고 묶는데 원시 승률(wins/games)은
       // 1등만 세서 다인전 2등이 꼴등과 같은 0점 취급이 된다.
@@ -2316,25 +2314,24 @@ function homeGrowCards(){
     }
 
     // 하이런은 '그 앞 N경기보다'보다 '통산 최고 경신'이 훨씬 값진 소식이라
-    // 최근 30일 경기의 최고를 그 이전 전체의 최고와 견준다
-    const k = h.findIndex(x => x.date < since);            // 30일보다 오래된 첫 경기
-    if (k > 0) {
+    // 지난 달 경기의 최고를 그 이전 전체의 최고와 견준다
+    if (before.length) {
       const top = arr => arr.reduce((m, x) => Math.max(m, x.highRun || 0), 0);
-      const now = top(h.slice(0, k)), before = top(h.slice(k));
-      if (before > 0 && now > before) hrNew.push({ name: p.name, now, before, d: now - before });
+      const now = top(cur), was = top(before);
+      if (was > 0 && now > was) hrNew.push({ name: p.name, now, before: was, d: now - was });
     }
   }
 
   hrNew.sort((a, b) => b.d - a.d).slice(0, 3).forEach(g => out.push({
     badge: '📈 성장', name: g.name, player: g.name,
     big: arrow(g.before, g.now), label: '하이런 신기록',
-    delta: '+' + g.d, foot: '최근 ' + GROW_RECENT_DAYS + '일 사이 지난 기록을 갈아치웠습니다'
+    delta: '+' + g.d, foot: M.m + '에 지난 기록을 갈아치웠습니다'
   }));
 
   hdUp.forEach(e => out.push({
     badge: '📈 성장', name: memName[e.id], player: memName[e.id],
     big: arrow(e.from * 10, e.to * 10), label: '수지 상승',
-    delta: '+' + (e.to - e.from) * 10, foot: '최근 ' + GROW_RECENT_DAYS + '일'
+    delta: '+' + (e.to - e.from) * 10, foot: M.label
   }));
   avgUp.sort((a, b) => b.d - a.d).slice(0, 3).forEach(g => out.push({
     badge: '📈 성장', name: g.name, player: g.name,
@@ -2384,7 +2381,7 @@ function homeBestCards(){
 
 // 고른 묶음이 비어 있으면 빈 화면 대신 안내 한 장
 const HOME_EMPTY = {
-  grow: ['📈 성장', '아직 성장 소식이 없어요', '6경기 이상 치고 최근 30일 안에 경기가 있으면 여기에 뜹니다'],
+  grow: ['📈 성장', '지난 달 성장 소식이 없어요', '지난 달 3경기 이상, 그 이전에도 3경기 이상 쳤으면 여기에 뜹니다'],
   last: ['🏅 지난 달 결산', '지난 달 기록이 없어요', '한 달 치가 쌓이면 결산이 만들어집니다'],
   best: ['👑 통산 최고 기록', '아직 기록이 없어요', '첫 경기를 치면 여기가 채워집니다']
 };
