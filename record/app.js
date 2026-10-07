@@ -1893,6 +1893,12 @@ async function renderAdminMenu(){
       <div style="color:var(--muted); font-size:0.78rem; line-height:1.5; margin-top:10px;">30분 넘게 안 쓰다가 다시 열면 1번으로 셉니다. 새로고침이나 화면 이동은 세지 않고, 로그인한 사람만 셉니다.</div>
     </div>
     <div class="card">
+      <h2 style="margin:0 0 12px 0; font-size:1.3rem;">🔔 알림 켠 사람</h2>
+      <div id="admPushMsg" style="color:var(--muted); font-size:0.9rem;">불러오는 중...</div>
+      <div id="admPushList" style="display:flex; flex-direction:column; margin-top:8px;"></div>
+      <div style="color:var(--muted); font-size:0.78rem; line-height:1.5; margin-top:10px;">폰 설정에서 알림을 막았거나 앱을 지운 기기는, 다음 알림이 실패해 정리되기 전까지 '켬'으로 보일 수 있습니다. 확실히 보려면 아래 테스트 알림을 보내 보세요.</div>
+    </div>
+    <div class="card">
       <h2 style="margin:0 0 12px 0; font-size:1.3rem;">🔔 테스트 알림</h2>
       <select id="admTestTarget" class="field" style="margin-bottom:10px;">
         <option value="me">나에게 (내 기기 전부)</option>
@@ -1911,7 +1917,8 @@ async function renderAdminMenu(){
 
   el.querySelector('.back').onclick = () => { show('rank'); openMeModal(); };
   initAdminVisits(el);
-  const fillTestTargets = initAdminTest(el);
+  const reloadPush = initAdminPush(el);
+  const fillTestTargets = initAdminTest(el, reloadPush);
 
   const container = el.querySelector('#adminRosterList');
   const msg = el.querySelector('#adminRosterMsg');
@@ -2017,9 +2024,45 @@ function initAdminVisits(el){
   load('7');
 }
 
+// 알림 켠 사람 카드 — 구독 표는 자기 행만 보이게 잠겨 있어 관리자 전용 함수로 읽는다
+// (sql/admin-push-status.sql 의 admin_push_status). 켠 사람이 위, 끈 사람은 흐리게 아래.
+// 다시 읽는 함수를 돌려준다 — 테스트 알림이 만료 기기를 정리하면 명단도 바뀌기 때문이다.
+function initAdminPush(el){
+  const msg = el.querySelector('#admPushMsg'), list = el.querySelector('#admPushList');
+  const day = iso => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+  const load = async () => {
+    try {
+      const rows = await sbFetch('/rest/v1/rpc/admin_push_status', { method: 'POST', body: '{}' }) || [];
+      const on  = rows.filter(r => (r.devices || []).length);
+      const off = rows.filter(r => !(r.devices || []).length);
+      msg.textContent = `켠 사람 ${on.length}명 · 끈 사람 ${off.length}명`;
+      const row = r => {
+        const devs = r.devices || [];
+        const right = devs.length
+          ? devs.map(d => `${esc(d.label || '기기')} · ${d.beta ? '테스트 앱' : '본 앱'}`
+              + `<span style="color:var(--muted);"> (${day(d.since)}~)</span>`).join('<br>')
+          : '꺼짐';
+        return `<div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:7px 2px; border-top:1px solid var(--line); font-size:0.88rem;${devs.length ? '' : ' opacity:.5;'}">
+          <span style="font-weight:600; white-space:nowrap;">${devs.length ? '🔔' : '🔕'} ${esc(r.display_name || '이름 없음')}</span>
+          <span style="text-align:right;">${right}</span>
+        </div>`;
+      };
+      list.innerHTML = on.map(row).join('') + off.map(row).join('');
+    } catch(e) {
+      list.innerHTML = '';
+      // 함수가 아직 없으면(SQL 을 안 돌렸으면) 무엇을 해야 하는지 알려 준다
+      msg.textContent = /admin_push_status|function|404/i.test(e.message + ' ' + e.status)
+        ? '이 기능이 아직 서버에 없습니다 — sql/admin-push-status.sql 을 SQL Editor 에서 실행해 주세요.'
+        : '명단을 불러오지 못했습니다: ' + e.message;
+    }
+  };
+  load();
+  return load;
+}
+
 // 테스트 알림 카드 — 서버 함수 notify-test 가 보내고 기기마다 결과를 돌려준다.
 // 받는 사람 목록은 아래 회원 목록을 불러온 뒤에 채운다 → 채우는 함수를 돌려준다.
-function initAdminTest(el){
+function initAdminTest(el, afterSend){
   const sel = el.querySelector('#admTestTarget'), btn = el.querySelector('#admTestSend');
   const msg = el.querySelector('#admTestMsg'), list = el.querySelector('#admTestList');
   const RESULT = { ok: ['✅', '보냄'], fail: ['❌', '실패'], gone: ['🗑️', '만료된 기기 — 목록에서 지움'] };
@@ -2044,6 +2087,7 @@ function initAdminTest(el){
           <span style="white-space:nowrap;">${ic} ${esc(tx)}${d.code ? ` (${d.code})` : ''}</span>
         </div>`;
       }).join('');
+      if (r.cleaned && afterSend) afterSend();   // 만료 기기를 지웠으면 '알림 켠 사람' 명단도 바뀐다
     } catch(e) {
       msg.style.color = '#f44336';
       // 함수가 없으면 브라우저는 CORS 오류(TypeError)로만 알려 준다 → 무엇을 해야 하는지 적어 준다
