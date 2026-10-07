@@ -2019,11 +2019,6 @@ function initAdminVisits(el){
 
 // 테스트 알림 카드 — 서버 함수 notify-test 가 보내고 기기마다 결과를 돌려준다.
 // 받는 사람 목록은 아래 회원 목록을 불러온 뒤에 채운다 → 채우는 함수를 돌려준다.
-//
-// 부르는 주소가 이름(notify-test)과 다르다: 대시보드 에디터로 만들 때 주소(slug)가 자동 이름
-// 'hyper-worker' 로 붙었고, 주소는 나중에 바꿀 수 없다. 함수를 지우고 notify-test 주소로
-// 다시 만들면 아래 한 줄만 고치면 된다.
-const TEST_FN = 'hyper-worker';
 function initAdminTest(el){
   const sel = el.querySelector('#admTestTarget'), btn = el.querySelector('#admTestSend');
   const msg = el.querySelector('#admTestMsg'), list = el.querySelector('#admTestList');
@@ -2036,7 +2031,7 @@ function initAdminTest(el){
     if (target !== 'me' && !confirm(`'${who}'에게 테스트 알림을 보낼까요?\n받는 사람 폰이 실제로 울립니다.`)) return;
     btn.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = '보내는 중...'; list.innerHTML = '';
     try {
-      const r = await sbFetch('/functions/v1/' + TEST_FN, { method: 'POST', body: JSON.stringify({ target }) }) || {};
+      const r = await sbFetch('/functions/v1/notify-test', { method: 'POST', body: JSON.stringify({ target }) }) || {};
       const devs = r.devices || [];
       if (!devs.length) { msg.textContent = r.note || '알림을 켠 기기가 없습니다.'; return; }
       msg.style.color = r.failed ? '#f44336' : 'var(--text)';
@@ -2053,7 +2048,7 @@ function initAdminTest(el){
       msg.style.color = '#f44336';
       // 함수가 없으면 브라우저는 CORS 오류(TypeError)로만 알려 준다 → 무엇을 해야 하는지 적어 준다
       msg.textContent = (e instanceof TypeError || e.status === 404)
-        ? `알림 서버(notify-test, 주소 ${TEST_FN})에 닿지 못했습니다. Supabase → Edge Functions 에서 그 함수의 URL 끝이 ${TEST_FN} 인지 확인해 주세요.`
+        ? '알림 서버(notify-test)에 닿지 못했습니다. Supabase → Edge Functions 에서 그 함수의 URL 끝이 notify-test 인지 확인해 주세요.'
         : '보내지 못했습니다: ' + e.message;
     } finally { btn.disabled = false; }
   };

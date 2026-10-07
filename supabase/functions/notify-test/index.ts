@@ -4,8 +4,8 @@
 //   1) Edge Functions → Deploy a new function → 이름 notify-test → 이 파일 내용 붙여넣기
 //   2) Secrets 는 notify-meetup 과 같은 것을 쓴다 (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / APP_URL)
 //   Verify JWT 는 켠 채로 둔다 — 로그인한 사람의 토큰으로만 부를 수 있어야 한다.
-//   ※ 지금 배포본은 이름만 notify-test 이고 주소(slug)는 hyper-worker 다 (에디터가 자동으로 붙인 이름).
-//     앱은 record/app.js 의 TEST_FN 으로 그 주소를 부른다.
+//   ※ 앱은 /functions/v1/notify-test 로 부른다. 목록의 '이름'이 아니라 URL 끝(slug)이 notify-test 여야 한다 —
+//     에디터는 slug 를 자동 이름(예: hyper-worker)으로 붙이고, 만든 뒤에는 바꿀 수 없다.
 //
 // 누가 부를 수 있나: 사이트 관리자(profiles.is_admin)만. 부른 사람의 토큰으로 is_admin() 을 물어 확인한다.
 //   아무나 부를 수 있으면 부원들 폰을 마음대로 울릴 수 있다.
