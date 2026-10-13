@@ -28,7 +28,7 @@ function stopHome(){
 // 'recent' 는 사람마다 가장 최근 N경기만 센다 — 날짜가 아니라 경기 순서로 자른다.
 // N경기가 안 되는 사람은 빼지 않고 있는 경기 전부로 올린다. N 은 1 이상 아무 값이나 직접 적는다.
 // 모드(3인·4인 등)를 고르면 그 모드 경기만 놓고 최근 N경기를 센다.
-let rankScope = 'period';   // 'period' | 'recent'
+let rankScope = 'recent';   // 'recent' | 'period' — 기본은 최근 10경기
 let recentN = 10;
 
 // ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
@@ -1294,8 +1294,8 @@ function renderRank(){
   // 집계 범위 — 기간이면 달력 칸, 경기 수면 같은 자리에 '최근 [N]경기' 칸이 들어간다.
   // 겉모양은 달력 칸과 맞추고, 숫자만 직접 적는다.
   const scopeBtns = `<div class="seg">
-      <button class="p-scope ${!recent?'on':''}" data-s="period">기간</button>
       <button class="p-scope ${recent?'on':''}" data-s="recent">경기 수</button>
+      <button class="p-scope ${!recent?'on':''}" data-s="period">기간</button>
     </div>`;
   const scopeRow = !recent ? rangeRowHtml('p-period', rankFrom, rankTo, modeSel)
     : `<div style="display:flex; align-items:center; gap:6px;">${modeSel}
