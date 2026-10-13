@@ -96,7 +96,26 @@ function clearProcessCache() {
   filteredDataCache = null;
   filteredCacheKey = '';
   recentCache = { key: '', data: null };
+  playerGamesCache.clear();
   monthCache = { key: '', data: null };   // 홈 탭의 이번 달/지난 달 집계도 같이 버린다
+}
+
+/* ── 선수 화면: 팀 구분 없이 그 사람의 모든 경기 ──
+   games 는 내 팀 경기만 읽히므로 sql/player-games.sql 의 player_games 함수로 받는다.
+   함수가 아직 없거나 실패하면 null — 선수 화면은 지금 팀 기록만으로 그린다. */
+const playerGamesCache = new Map();   // 선수 id → { data, teams }
+let playerViewGames = [];             // 지금 보고 있는 선수 화면의 경기 — 다른 팀 경기 상세(showGame)용
+async function loadPlayerGames(id){
+  if (playerGamesCache.has(id)) return playerGamesCache.get(id);
+  try {
+    const rows = await sbFetch('/rest/v1/rpc/player_games', { method: 'POST', body: JSON.stringify({ p: id }) });
+    if (!Array.isArray(rows)) return null;
+    const teams = {};
+    for (const r of rows) if (r && r.team_id) teams[r.team_id] = r.team_name || '이름 없는 팀';
+    const out = { data: processData(rows, RAW_MEMBERS), teams };
+    playerGamesCache.set(id, out);
+    return out;
+  } catch(e){ return null; }
 }
 
 // 경기 종류 — processData 의 typeStr 과 같은 규칙
@@ -452,7 +471,9 @@ function processData(games, members, keep) {
         cushInn: p.cushInn ?? p.cush_inn ?? 0,
         timeMs: p.timeMs ?? p.time_ms ?? 0,
         win: p.win,
-        adjPt: pt
+        adjPt: pt,
+        team: g.team_id || null,          // 선수 화면의 팀 버튼용 (player_games 로 받은 경기에만 있다)
+        limited: g.full === false         // 내가 속하지 않은 팀 경기 — 상대 기록이 비어 있어 상세로 못 간다
       });
     }
   }
@@ -1621,8 +1642,19 @@ function showPlayer(name){
     const btn = document.getElementById('btnMyRec');
     if(btn) btn.classList.add('on');
   }
-  let p = DATA.players.find(v=>v.name===name);
-  if (!p) p = { name, id: null, handicap: 0, total_games: 0, win_rate: 0, avg: 0, hr: 0 };
+  // 순위 탭의 기간과 상관없이 지금 팀의 통산에서 찾는다 — 선수 화면은 기간을 따로 고른다.
+  // 지금 팀에서 한 경기도 안 쳤어도 회원이면 id 로 다른 팀 기록을 불러올 수 있다.
+  let p = getFullProcessData().players.find(v=>v.name===name);
+  if (!p) {
+    const m = (RAW_MEMBERS || []).find(x => x && x.display_name === name);
+    p = { name, id: m ? m.id : null, handicap: m && m.handicap != null ? parseInt(m.handicap, 10) : 0, history: [] };
+  }
+  // 이 화면에서 쓰는 경기 이력. 처음엔 지금 팀 기록으로 그리고, player_games 가 오면 전 팀 기록으로 바꾼다.
+  // (p.history 를 직접 바꾸면 순위표가 쓰는 캐시가 오염되므로 따로 든다)
+  let hist = p.history || [];
+  let teamNames = {};        // 팀 id → 이름 (두 팀 이상일 때만 버튼을 그린다)
+  let playerTeam = '';       // '' = 모든 팀
+  playerViewGames = [];
   let playerMode = '통합';
   let chartCur = 'avg';
   // 순위를 '최근 N경기'로 보다 넘어왔으면 순위 탭의 기간은 걸려 있지 않은 셈이라 전체 기간으로 연다
@@ -1649,6 +1681,7 @@ function showPlayer(name){
         ${rangeRowHtml('pd-period', playerFrom, playerTo, `<select class="field ptab" style="flex:0 0 auto; width:84px; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">
             ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
           </select>`)}
+        <div class="pd-teams"></div>
       </div>
       <div class="stats" id="pStats"></div>
       <div id="chartArea">
@@ -1675,12 +1708,13 @@ function showPlayer(name){
   bindRangePicker(el, 'pd-period', { max: todayYmd(), allowClear: true, aria: '조회 기간' });
   let lastW = 0;
 
-  const renderMode = () => {
-    let hPeriod = [...p.history];
-    if (playerFrom || playerTo) {
-      hPeriod = hPeriod.filter(r => inRange(r.date, playerFrom, playerTo));
-    }
+  // 팀 → 기간 순으로 거른 이력 (모드는 아래에서 따로)
+  const periodHist = () => hist.filter(r =>
+    (!playerTeam || r.team === playerTeam) &&
+    (!(playerFrom || playerTo) || inRange(r.date, playerFrom, playerTo)));
 
+  const renderMode = () => {
+    const hPeriod = periodHist();
     const h = playerMode === '통합' ? hPeriod : hPeriod.filter(r => r.type === playerMode);
 
     if (h.length === 0) {
@@ -1700,7 +1734,8 @@ function showPlayer(name){
     });
     el.querySelector('#pStats').innerHTML = statsHtml;
 
-    el.querySelector('#pHist').innerHTML = [...h].reverse().map(r=>`<tr onclick="showGame('${r.id}')" style="cursor:pointer">
+    // 내가 속하지 않은 팀의 경기는 상대 기록을 받아 오지 않아 상세로 넘기지 않는다
+    el.querySelector('#pHist').innerHTML = [...h].reverse().map(r=>`<tr${r.limited ? '' : ` onclick="showGame('${r.id}')" style="cursor:pointer"`}>
       <td class="name">${esc(r.date)}</td><td class="name">${esc(r.opponents)}</td>
       <td>${r.score}</td><td>${r.ballInn}</td><td>${+r.average.toFixed(3)}</td>
       <td>${r.highRun}</td><td>${r.win?'<span class="win">🏆</span>':'—'}</td></tr>`).join('');
@@ -1717,7 +1752,8 @@ function showPlayer(name){
 
       el.querySelector('#pMetricSel').onchange = (e) => {
         chartCur = e.target.value;
-        const currentH = playerMode === '통합' ? [...hPeriod] : hPeriod.filter(r => r.type === playerMode);
+        const hp = periodHist();
+        const currentH = playerMode === '통합' ? hp : hp.filter(r => r.type === playerMode);
         draw(chartCur, currentH);
       };
 
@@ -1809,6 +1845,34 @@ function showPlayer(name){
     renderMode();
   };
 
+  // 팀 버튼 — [모든 팀] [당동] [문가냐디] … 두 팀 이상에서 친 사람에게만 보인다
+  const renderTeams = () => {
+    const box = el.querySelector('.pd-teams');
+    const ids = Object.keys(teamNames).sort((a, b) => teamNames[a].localeCompare(teamNames[b], 'ko'));
+    if (ids.length < 2) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="toolrow"><div class="seg" style="flex-wrap:wrap; border-radius:12px;">
+        <button class="pd-team ${playerTeam===''?'on':''}" data-t="">모든 팀</button>
+        ${ids.map(id => `<button class="pd-team ${playerTeam===id?'on':''}" data-t="${esc(id)}">${esc(teamNames[id])}</button>`).join('')}
+      </div></div>`;
+    box.querySelectorAll('.pd-team').forEach(b => b.onclick = () => {
+      playerTeam = b.dataset.t;
+      renderTeams();
+      renderMode();
+    });
+  };
+
+  // 팀 구분 없는 전체 기록 — 받아 오는 동안은 지금 팀 기록으로 보이고, 오면 바꿔 그린다
+  if (p.id) loadPlayerGames(p.id).then(res => {
+    if (!res || !el.isConnected) return;   // 함수가 없거나, 그새 다른 화면으로 갔으면 그대로
+    const q = res.data.players.find(x => x.id === p.id);
+    if (!q) return;
+    hist = q.history;
+    teamNames = res.teams;
+    playerViewGames = res.data.games;
+    renderTeams();
+    renderMode();
+  });
+
   if (IS_ADMIN && p.id) {
     const adm = $(`<div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🛠 관리자: 선수 정보 수정</h3>
       <div class="sub" style="margin:0 0 8px">이름을 바꾸면 순위·기록에 새 이름으로 표시됩니다. 수지는 저장값 기준입니다 (예: 15 = 수지 150).</div>
@@ -1837,10 +1901,7 @@ function showPlayer(name){
   chartRO = new ResizeObserver(es=>{ 
     const w = es[0].contentRect.width; 
     if(Math.abs(w - lastW) > 2) {
-      let hPeriod = [...p.history];
-      if (playerFrom || playerTo) {
-        hPeriod = hPeriod.filter(r => inRange(r.date, playerFrom, playerTo));
-      }
+      const hPeriod = periodHist();
       const h = playerMode === '통합' ? hPeriod : hPeriod.filter(r => r.type === playerMode);
       draw(chartCur, h); 
     }
@@ -2626,7 +2687,8 @@ function renderGames(){
 }
 
 function showGame(id){
-  const g = DATA.games.find(v=>v.id===id);
+  // 선수 화면에서 다른 팀(내가 속한) 경기를 눌렀으면 그 화면이 받아 둔 경기에서 찾는다
+  const g = DATA.games.find(v=>v.id===id) || playerViewGames.find(v=>v.id===id);
   if(!g) return;
   if(gamesIO){ gamesIO.disconnect(); gamesIO = null; }   // 목록을 떠나므로 더 불러올 일이 없다
   // 표준 경쟁 순위: 앞선 인원 + 1 (공동 1등이 2명이면 다음은 3등). 동순위면 "공동 N등"
