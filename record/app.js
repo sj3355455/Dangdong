@@ -25,10 +25,9 @@ function stopHome(){
 
 // ── 순위 탭 집계 범위: 기간 / 최근 N경기 ──
 // 'period' 는 달력으로 고른 기간 안의 경기를 모두 센다(rankFrom~rankTo).
-// 'recent' 는 사람마다 가장 최근 N경기만 센다 — 날짜가 아니라 경기 순서로 자르므로
-// 자주 치는 사람과 가끔 치는 사람이 같은 경기 수로 견줘진다. N경기를 못 채운 사람은 순위에서 빠진다.
+// 'recent' 는 사람마다 가장 최근 N경기만 센다 — 날짜가 아니라 경기 순서로 자른다.
+// N경기가 안 되는 사람은 빼지 않고 있는 경기 전부로 올린다. N 은 1 이상 아무 값이나 직접 적는다.
 // 모드(3인·4인 등)를 고르면 그 모드 경기만 놓고 최근 N경기를 센다.
-const RECENT_STEPS = [5, 10, 20];
 let rankScope = 'period';   // 'period' | 'recent'
 let recentN = 10;
 
@@ -856,7 +855,7 @@ function imgKit(W, H){
 // 저장 이미지 머리말의 조건 줄 — 지금 화면에 걸린 모드·필터·기간을 그대로 적는다
 function rankCondText(){
   const parts = [rankMode === '통합' ? '통산 기준' : rankMode + '전'];
-  if (rankScope === 'recent') parts.push('개인별 최근 ' + recentN + '경기');
+  if (rankScope === 'recent') parts.push('최근 ' + recentN + '경기');
   else parts.push((rankFrom || rankTo) ? `${ddmy(rankFrom) || '처음'} ~ ${ddmy(rankTo) || '오늘'}` : '전체 기간');
   return parts.join('  ·  ');
 }
@@ -1200,13 +1199,10 @@ function renderRank(){
   // 포디움은 올릴 수 있는 지표가 정해져 있다. 표에서 다른 열로 정렬해 둔 채 넘어왔으면
   // (이름순 포함) 그 모드의 기본 지표로 되돌린다.
   if(rankView==='podium' && !PODIUM_KEYS.includes(sortKey)){ sortKey = defSort(rankMode); sortAsc = bestIsLow(sortKey); }
-  // 최근 N경기 — 사람마다 그 모드의 최근 N경기만 다시 집계하고, N경기를 못 채운 사람은 뺀다
-  // (여기서 p.games 는 지금 보고 있는 모드의 경기 수다 — rankRows 가 모드별 성적을 펼쳐 준다).
+  // 최근 N경기 — 사람마다 그 모드의 최근 N경기만 다시 집계한다. N경기가 안 되는 사람은 있는 만큼 전부.
   const recent = rankScope === 'recent';
-  const rows = (recent
-      ? rankRows(rankMode, getRecentData(rankMode, recentN)).filter(p => (p.games || 0) >= recentN)
-      : rankRows(rankMode)
-    ).sort((a,b)=>{
+  const rows = (recent ? rankRows(rankMode, getRecentData(rankMode, recentN)) : rankRows(rankMode))
+    .sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey], r;
     if(x==null && y==null) r = 0;
     else if(x==null) return 1;    // 값이 없는 사람은 정렬 방향과 무관하게 항상 아래로
@@ -1245,10 +1241,7 @@ function renderRank(){
   }).join('');
   let inner;
   if(rows.length===0){
-    // 필터로 다 걸러진 것과 기록 자체가 없는 것은 다른 상황이라 안내를 나눈다
-    inner = recent
-      ? `<div class="empty">${rankMode==='통합'?'':rankMode+'전 '}${recentN}경기 이상 친 선수가 없습니다</div>`
-      : `<div class="empty">아직 ${rankMode==='통합'?'':rankMode+'전 '}기록이 없습니다</div>`;
+    inner = `<div class="empty">아직 ${rankMode==='통합'?'':rankMode+'전 '}기록이 없습니다</div>`;
   } else if(rankView==='podium'){
     inner = podiumHtml(rows, rankOf, COLS);
   } else {
@@ -1298,16 +1291,20 @@ function renderRank(){
       : '표 제목을 누르면 그 기준으로 정렬됩니다.'
         // 권장수지 빨간 글씨의 뜻 — 통합 표에만 권장수지 열이 있다
         + (rankMode === '통합' ? ` · <b>권장수지</b>가 빨간색이면 최근 승률도 같은 쪽(${REC_HOT_UP}% 이상 / ${REC_HOT_DOWN}% 이하)이라 수지를 고칠 때입니다.` : '');
-  // 집계 범위 — 기간이면 달력 칸, 경기 수면 같은 자리에 '최근 N경기' 셀렉트가 들어간다
+  // 집계 범위 — 기간이면 달력 칸, 경기 수면 같은 자리에 '최근 [N]경기' 칸이 들어간다.
+  // 겉모양은 달력 칸과 맞추고, 숫자만 직접 적는다.
   const scopeBtns = `<div class="seg">
       <button class="p-scope ${!recent?'on':''}" data-s="period">기간</button>
       <button class="p-scope ${recent?'on':''}" data-s="recent">경기 수</button>
     </div>`;
   const scopeRow = !recent ? rangeRowHtml('p-period', rankFrom, rankTo, modeSel)
     : `<div style="display:flex; align-items:center; gap:6px;">${modeSel}
-        <select class="field p-recent" aria-label="최근 경기 수" style="flex:1 1 0; min-width:0; height:34px; padding:0 26px 0 10px; font-size:0.9rem; border-radius:8px; margin:0;">` +
-        RECENT_STEPS.map(n => `<option value="${n}" ${n===recentN?'selected':''}>🎱 개인별 최근 ${n}경기</option>`).join('') +
-        `</select></div>`;
+        <label style="flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; justify-content:center; gap:6px; padding:0 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text); font-size:0.9rem; white-space:nowrap; cursor:text;">
+          최근
+          <input class="p-recent" type="number" inputmode="numeric" min="1" step="1" value="${recentN}" aria-label="최근 경기 수"
+            style="width:64px; height:26px; padding:0 6px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--text); font-size:0.9rem; text-align:center;">
+          경기
+        </label></div>`;
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
         ${scopeRow}
@@ -1333,7 +1330,15 @@ function renderRank(){
     el.querySelector('.p-period-from').onchange = applyRankRange;
     el.querySelector('.p-period-to').onchange = applyRankRange;
   } else {
-    el.querySelector('.p-recent').onchange = e => { recentN = +e.target.value; show('rank'); };
+    // 칠 때마다 다시 그리면 입력칸이 새로 만들어져 포커스가 날아간다 → 다 적고 나서(엔터·포커스 이탈) 반영
+    const inp = el.querySelector('.p-recent');
+    inp.onchange = () => {
+      const n = Math.floor(Number(inp.value));
+      if (!(n >= 1)) { inp.value = recentN; return; }   // 비우거나 0·음수면 원래 값으로 되돌린다
+      recentN = n;
+      show('rank');
+    };
+    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };   // 폰 키패드의 완료/엔터로 바로 반영
   }
   // 범위를 바꿔도 고른 기간(rankFrom/To)은 지우지 않는다 — 경기 탭이 같은 기간을 쓰고, 돌아오면 그대로 있다
   el.querySelectorAll('.p-scope').forEach(b => b.onclick = () => {
