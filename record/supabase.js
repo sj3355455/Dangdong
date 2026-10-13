@@ -6,6 +6,16 @@ function getAuth() {
   try { const v = localStorage.getItem('dangScoreAuth'); return v ? JSON.parse(v) : null; } catch(e){ return null; }
 }
 
+// 저장된 로그인 정보의 일부만 고친다(이름 등). 화면이 들고 있던 옛 사본을 통째로 다시 쓰면
+// 그사이 sbFetch 가 갱신해 둔 토큰을 되돌려 놓게 된다 — refresh 토큰은 한 번 쓰면 끝이라 다음 갱신이 실패한다.
+export function patchAuth(fields){
+  const auth = getAuth();
+  if (!auth) return null;
+  Object.assign(auth, fields);
+  try { localStorage.setItem('dangScoreAuth', JSON.stringify(auth)); } catch(e){}
+  return auth;
+}
+
 async function refreshToken(){
   const auth = getAuth();
   if (!auth || !auth.refresh) return false;

@@ -9,13 +9,13 @@
 // 알림:
 //   · 모임을 만들면 그 자리에서 팀원에게 푸시가 간다 (Edge Function notify-meetup).
 //   · 정기전은 하루 전 낮 12시에 자동으로 간다 (notify-event + pg_cron. sql/calendar/8-…).
-//   · 안드로이드는 알림에 붙은 [참석]/[불참] 버튼으로 바로 답한다. iOS 는 알림 버튼을
-//     지원하지 않아서, 누르면 캘린더가 그 날을 연 채 뜨고 거기서 고른다.
+//   · 투표 알림을 누르면 캘린더가 그 날을 연 채 뜨고 거기서 참/불참을 고른다.
+//     (알림 자체의 [참석]/[불참] 버튼은 걷어냈다 — sw.js 머리말 참고)
 //   · 참석자는 이름까지 보이고 불참은 인원수만 나간다 — 서버 함수가 정하는 범위다.
 // 자세한 정책은 저장소 루트의 sql/calendar/ 참고 (1,2,4,5,7,8 을 순서대로 실행).
 import { sbFetch } from '../record/supabase.js';
-import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
-         shiftDay, openDayPicker, pushDetach, initPushSwitch, logVisit, initAdminEntry } from '../record/common.js';
+import { registerSW, initSettingsModal, initTeamModal, fetchMyTeams, renderTeamBar as drawTeamBar,
+         ymd, todayYmd as todayStr, shiftDay, openDayPicker, logout, initPushSwitch, logVisit, initAdminEntry } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -24,6 +24,7 @@ const LS_AUTH = 'dangScoreAuth', LS_TEAM = 'dangCurrentTeam';
 const getAuth = () => { try { const v = localStorage.getItem(LS_AUTH); return v ? JSON.parse(v) : null; } catch(e){ return null; } };
 const tGet = () => { try { return JSON.parse(localStorage.getItem(LS_TEAM)); } catch(e){ return null; } };
 const tSet = v => { try { localStorage.setItem(LS_TEAM, JSON.stringify(v)); } catch(e){} };
+const leaderOf = id => { const me = myTeams.find(t => t.id === id); return !!(me && me.is_admin); };
 
 let myTeams = [];
 let currentTeam = tGet();
@@ -40,7 +41,7 @@ let gameCnt = {};   // 날짜 → 경기 판수
 let meetups = {};   // 날짜 → [모임...]  각 모임은 meetups_in 이 준 그대로
                     // { id, meet_time, place, note, created_by, creator_name,
                     //   yes_names[], yes_cnt, no_cnt, my_status:'yes'|'no'|null }
-let planSpans = []; // 이 달에 걸린 일정 막대 [{ name, from, to, cnt }] — 이름·기간·인원수만 (익명)
+let planSpans = []; // 이 달에 걸린 일정 막대 [{ reason, from, to }] — 이름·기간만 (익명)
 let myPlans = [];   // 내가 등록한 일정 [{ id, name, start_date, end_date }] — 지우려면 이게 필요하다
 
 // 회차는 저장하지 않는다 — '몇 번째 모임인가'가 곧 회차라서, 팀의 정기전을 날짜순으로 세면 그게 답이다.
@@ -52,10 +53,7 @@ let canVoteEvents = false;   // 서버에 club_events_in 이 있는가 (없으�
 let loading = false;
 let loadErr = '';   // 이번 달 데이터를 못 불러온 이유 (화면에 그대로 띄운다)
 
-// ── 날짜 유틸 (로컬 시간 기준. toISOString 은 UTC 라 하루 밀릴 수 있어 쓰지 않는다) ──
-const pad = n => String(n).padStart(2, '0');
-const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-const todayStr = () => ymd(new Date());
+// ── 날짜 유틸 (로컬 시간 기준. toISOString 은 UTC 라 하루 밀릴 수 있어 쓰지 않는다 — ymd 는 common.js) ──
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 // 지난 날짜엔 모임을 만들 수 없다 (이미 지나간 날의 약속을 잡을 이유가 없다).
 // 키가 'YYYY-MM-DD' 라 문자열 비교로 충분하다.
@@ -102,20 +100,30 @@ async function afterEventChange(){
   await refresh(true);
 }
 
+// 정기전 넣기 (팀장). 회차는 넣지 않는다 — 날짜 순서가 곧 회차라서 앞뒤 정기전도 저절로 이어진다.
+// RLS 에 막히면 오류가 아니라 빈 배열이 오므로 그걸 실패로 본다.
+async function putEvents(rows){
+  // 한 번에 다 보내면 본문이 커진다 → 100행씩 끊어 넣는다
+  for (let i = 0; i < rows.length; i += 100) {
+    const part = await sbFetch('/rest/v1/club_events?on_conflict=team_id,event_date', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(rows.slice(i, i + 100).map(r => ({ team_id: currentTeam, round_no: null, note: null, ...r })))
+    });
+    if (!part || !part.length) throw new Error('권한이 없습니다. 팀장만 등록할 수 있습니다.');
+  }
+}
+// from ~ to (양 끝 포함) 사이의 정기전 지우기 (팀장)
+const dropEvents = (from, to) => sbFetch(`/rest/v1/club_events?team_id=eq.${currentTeam}`
+  + `&event_date=gte.${from}&event_date=lte.${to}`, { method: 'DELETE' });
+
 // ══ 데이터 ══
 async function loadTeams(){
   const auth = getAuth();
   if (!auth || !auth.uid) { myTeams = []; return; }
-  try {
-    const rows = await sbFetch('/rest/v1/rpc/my_teams', { method: 'POST', body: JSON.stringify({}) });
-    myTeams = Array.isArray(rows) ? rows : [];
-    const remembered = tGet();
-    if (remembered && myTeams.some(t => t.id === remembered)) currentTeam = remembered;
-    else currentTeam = myTeams[0] ? myTeams[0].id : null;
-    tSet(currentTeam);
-  } catch(e){ /* my_teams 미배포 → 팀 없음으로 처리 */ }
-  const me = myTeams.find(t => t.id === currentTeam);
-  isTeamLeader = !!(me && me.is_admin);
+  try { ({ teams: myTeams, current: currentTeam } = await fetchMyTeams()); }
+  catch(e){ /* my_teams 미배포 → 팀 없음으로 처리 */ }
+  isTeamLeader = leaderOf(currentTeam);
 }
 
 // 이번 달의 첫날/마지막날 (문자열)
@@ -128,7 +136,7 @@ function monthRange(){
 let monthCache = {};
 
 function getMonthKey() {
-  return (currentTeam || 'none') + ':' + cur.getFullYear() + '-' + pad(cur.getMonth() + 1);
+  return (currentTeam || 'none') + ':' + ymd(cur).slice(0, 7);
 }
 
 function updateMonthCache() {
@@ -217,8 +225,9 @@ async function loadMonth(force = false){
 
   // 일정 기능은 나중에 붙었다. sql/calendar/4-plan-spans.sql 을 아직 안 돌린 서버라면 여기서 404 가 난다.
   // 막대가 안 보일 뿐 달력은 그대로 쓸 수 있으므로 조용히 비워 두고 넘어간다.
+  // 서버가 '이름 + 기간' 그대로 돌려주므로 이름이 같아도 기간이 다르면 각각 다른 막대가 된다.
   planSpans = (spans.status === 'fulfilled' && Array.isArray(spans.value))
-    ? spans.value.map(r => ({ name: r.name, from: r.start_date, to: r.end_date, cnt: r.cnt }))
+    ? spans.value.map(r => ({ reason: r.name, from: r.start_date, to: r.end_date }))
     : [];
   myPlans = (plans.status === 'fulfilled' && Array.isArray(plans.value)) ? plans.value : [];
 
@@ -301,10 +310,9 @@ function render(){
   // 그 주 안에서 몇 번째 칸부터 몇 칸인지를 알아야 하기 때문이다.
   const slots = [];                                    // 42칸 안팎의 격자 — 앞뒤 빈 칸은 null
   for (let i = 0; i < lead; i++) slots.push(null);
-  for (let d = 1; d <= daysInMonth; d++) slots.push(`${y}-${pad(m + 1)}-${pad(d)}`);
+  for (let d = 1; d <= daysInMonth; d++) slots.push(ymd(new Date(y, m, d)));
   while (slots.length % 7) slots.push(null);
 
-  const spans = spansForMonth();                       // 이 달의 일정 (사유별로 이어 붙인 구간)
   const isEvent = k => !!events[k];                    // 정기전 칸에서는 막대를 끊는다
 
   // 주마다 막대를 먼저 계산해서 '이 달에서 가장 많이 쌓인 줄 수'를 구한다.
@@ -312,7 +320,7 @@ function render(){
   const laid = [];
   for (let w = 0; w * 7 < slots.length; w++) {
     const row = slots.slice(w * 7, w * 7 + 7);
-    laid.push({ row, bars: barsForWeek(row, spans, isEvent) });
+    laid.push({ row, bars: barsForWeek(row, planSpans, isEvent) });
   }
   const monthLanes = laid.reduce((n, wk) =>
     Math.max(n, wk.bars.reduce((m, b) => Math.max(m, b.lane + 1), 0)), 0);
@@ -521,13 +529,6 @@ const EV_H = BAR_H + 2;                             // 정기전 회차가 앉�
 const BAR_INSET = 2;
 const colLeft  = i => `calc((100% - var(--gap) * 6) / 7 * ${i} + var(--gap) * ${i} + ${BAR_INSET}px)`;
 const colWidth = n => `calc((100% - var(--gap) * 6) / 7 * ${n} + var(--gap) * ${n - 1} - ${BAR_INSET * 2}px)`;
-
-// 이 달에 보이는 모든 일정 구간 → [{ reason, from, to }]  (from/to 는 'YYYY-MM-DD')
-// 서버가 '이름 + 기간' 그대로 돌려주므로 날짜별 사유를 이어 붙이던 추측이 필요 없다.
-// 덕분에 이름이 같아도 기간이 다르면 각각 다른 막대로 그려진다.
-function spansForMonth(){
-  return planSpans.map(s => ({ reason: s.name, from: s.from, to: s.to }));
-}
 
 // 한 주(7칸)에 걸치는 막대 조각들 → 겹치지 않게 위아래 줄(lane)을 배정한다.
 // 정기전 칸(skip)에서는 막대를 끊는다 — 그 칸은 색칠로 이미 꽉 차 있어 침범하면 안 된다.
@@ -785,11 +786,13 @@ const vibTick = () => { try { navigator.vibrate && navigator.vibrate(6); } catch
 
 const RANGE_MAX = 90;   // 한 번에 등록할 수 있는 최대 일수 (실수로 몇 년치를 채우는 걸 막는다)
 
-function msg(t, kind){
-  const el = $('#dsMsg');
-  el.textContent = t;
+// 안내 한 줄 — 날짜 상세 시트 · 정기전 편성 창 · 일괄 삭제 칸이 각자 하나씩 갖는다. kind = 'ok' | 'err'
+const msgLine = sel => (t, kind) => {
+  const el = $(sel);
+  el.textContent = t || '';
   el.className = 'msg' + (kind ? ' ' + kind : '');
-}
+};
+const msg = msgLine('#dsMsg'), regMsg = msgLine('#regMsg'), regDelMsg = msgLine('#regDelMsg');
 
 // ══ 참석 / 불참 ══
 // 모임과 정기전이 같은 길을 쓴다 — 다른 건 어느 표에 쓰느냐뿐이라 여기 한 곳에 모아 둔다.
@@ -1167,15 +1170,15 @@ async function delPlan(id){
 function renderAgg(key){
   const reasons = planSpans
     .filter(s => s.from <= key && key <= s.to)
-    .map(s => [s.name, s.cnt]);
+    .map(s => s.reason);
   let html = '';
 
   if (reasons.length) {
     // 서버가 주는 목록은 이름만 있고 누구 것인지는 없다(익명). 그래서 내 일정과 이름을 맞춰
-    // 내가 등록한 줄에만 삭제 버튼을 붙인다. 인원수는 쓸모가 없어 빼고 그 자리를 버튼에 준다.
+    // 내가 등록한 줄에만 삭제 버튼을 붙인다.
     const mine = plansOn(key);
     html += `<div class="agg"><div class="agghd">📌 등록된 일정</div>`
-      + reasons.map(([t]) => {
+      + reasons.map(t => {
           const p = mine.find(x => String(x.name).trim() === t);
           const right = p
             ? `<button class="del" data-id="${esc(p.id)}" title="내 일정 삭제" aria-label="'${esc(t)}' 일정 삭제">&times;</button>`
@@ -1198,12 +1201,7 @@ async function saveEvent(){
   const note = $('#dsNote').value.trim() || null;
   msg('저장 중...');
   try {
-    const rows = await sbFetch('/rest/v1/club_events?on_conflict=team_id,event_date', {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
-      body: JSON.stringify({ team_id: currentTeam, event_date: key, round_no: null, note })
-    });
-    if (!rows || !rows.length) throw new Error('권한이 없습니다. 팀장만 등록할 수 있습니다.');
+    await putEvents([{ event_date: key, note }]);
     await afterEventChange();
     openDay(key);              // 시트 내용 갱신 — msg 를 지우므로 안내는 그 뒤에 띄운다
     const n = roundOf(key);
@@ -1219,7 +1217,7 @@ async function delEvent(){
   if (!confirm(`${label(key)}${n ? ` 제${n}회` : ''} 정기전을 지울까요?\n(뒤따르는 정기전의 회차가 하나씩 당겨집니다)`)) return;
   msg('삭제 중...');
   try {
-    await sbFetch(`/rest/v1/club_events?team_id=eq.${currentTeam}&event_date=eq.${key}`, { method: 'DELETE' });
+    await dropEvents(key, key);
     await afterEventChange();
     openDay(key);
     msg('삭제했습니다. 뒤따르는 회차가 하나씩 당겨졌습니다.', 'ok');
@@ -1270,12 +1268,6 @@ function regDates(){
     if (hit) out.push(ymd(dt));
   }
   return out;
-}
-
-function regMsg(t, kind){
-  const el = $('#regMsg');
-  el.textContent = t || '';
-  el.className = 'msg' + (kind ? ' ' + kind : '');
 }
 
 // 미리보기 — 몇 회가 언제부터 언제까지 잡히는지 등록 전에 보여 준다.
@@ -1372,19 +1364,8 @@ async function regApply(){
   regMsg('저장 중...');
   try {
     // 규칙을 바꿨을 때 예전 일정이 남지 않도록, 범위를 통째로 비우고 새로 넣는다
-    await sbFetch(`/rest/v1/club_events?team_id=eq.${currentTeam}`
-      + `&event_date=gte.${from}&event_date=lte.${to}`, { method: 'DELETE' });
-    // 회차는 넣지 않는다 — 날짜 순서가 곧 회차라서, 범위 뒤에 남은 정기전도 저절로 이어진다
-    const rows = dates.map(d => ({ team_id: currentTeam, event_date: d, round_no: null, note: null }));
-    // 한 번에 다 보내면 URL·본문이 커진다 → 100행씩 끊어 넣는다
-    for (let i = 0; i < rows.length; i += 100) {
-      const part = await sbFetch('/rest/v1/club_events?on_conflict=team_id,event_date', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify(rows.slice(i, i + 100))
-      });
-      if (!part || !part.length) throw new Error('권한이 없습니다. 팀장만 등록할 수 있습니다.');
-    }
+    await dropEvents(from, to);
+    await putEvents(dates.map(d => ({ event_date: d })));
     regSaveCfg();
     await afterEventChange();              // 여러 달이 한꺼번에 바뀌었다 — 캐시를 전부 버리고 다시 읽는다
     regMsg(`${dates.length}회 정기전을 등록했습니다. (제${start}회 ~ 제${endNo}회)`, 'ok');
@@ -1448,12 +1429,6 @@ async function regApply(){
 // 두 칸 모두 오늘이 최소값이다 (input 의 min 과 아래 검사 두 겹 — 직접 입력도 막아야 한다).
 const regDelCount = (a, b) => eventSeq ? [...eventSeq.keys()].filter(k => k >= a && k <= b).length : 0;
 
-function regDelMsg(t, kind){
-  const el = $('#regDelMsg');
-  el.textContent = t || '';
-  el.className = 'msg' + (kind ? ' ' + kind : '');
-}
-
 // 고른 기간이 쓸 만한지 보고, 쓸 만하면 몇 회가 지워지는지 미리 알려 준다.
 // 문제가 있으면 그 이유를 그대로 돌려줘서 삭제 버튼과 미리보기가 같은 말을 하게 한다.
 function regDelCheck(){
@@ -1485,8 +1460,7 @@ async function regDelApply(){
 
   regDelMsg('삭제 중...');
   try {
-    await sbFetch(`/rest/v1/club_events?team_id=eq.${currentTeam}`
-      + `&event_date=gte.${r.a}&event_date=lte.${r.b}`, { method: 'DELETE' });
+    await dropEvents(r.a, r.b);
     await afterEventChange();       // 여러 달이 한꺼번에 비었다 — 캐시를 버리고 다시 읽는다
     regDelSyncPrev();
     regDelMsg(`정기전 ${r.n}회를 지웠습니다.`, 'ok');
@@ -1528,17 +1502,8 @@ async function regToggleDay(key){
   regEditBusy = true;
   const was = !!events[key];
   try {
-    if (was) {
-      await sbFetch(`/rest/v1/club_events?team_id=eq.${currentTeam}&event_date=eq.${key}`, { method: 'DELETE' });
-    } else {
-      // 회차는 넣지 않는다 — 날짜 순서가 곧 회차다
-      const rows = await sbFetch('/rest/v1/club_events?on_conflict=team_id,event_date', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify({ team_id: currentTeam, event_date: key, round_no: null, note: null })
-      });
-      if (!rows || !rows.length) throw new Error('권한이 없습니다. 팀장만 등록할 수 있습니다.');
-    }
+    if (was) await dropEvents(key, key);
+    else await putEvents([{ event_date: key }]);
     await afterEventChange();     // 회차가 뒤로 줄줄이 밀리므로 다시 읽고 다시 그린다
     regEditSay('');
   } catch(e){
@@ -1550,25 +1515,11 @@ async function regToggleDay(key){
 
 // ══ 소속 팀 스위처 ══
 function renderTeamBar(){
-  const bar = $('#teamBar'), sel = $('#teamSel');
-  if (!bar || !sel) return;
-  if (!getAuth()) { bar.style.display = 'none'; return; }
-  bar.style.display = 'flex';
-  if (!myTeams.length) {
-    sel.innerHTML = '<option value="">소속 팀 없음</option>';
-    sel.disabled = true;
-  } else {
-    sel.innerHTML = myTeams.map(t =>
-      `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
-    sel.disabled = myTeams.length < 2;
-  }
-  sel.onchange = async () => {
-    if (!sel.value) return;
-    currentTeam = sel.value; tSet(currentTeam);
-    const me = myTeams.find(t => t.id === currentTeam);
-    isTeamLeader = !!(me && me.is_admin);
+  drawTeamBar(!!getAuth(), myTeams, currentTeam, async id => {
+    currentTeam = id; tSet(currentTeam);
+    isTeamLeader = leaderOf(currentTeam);
     await refresh();
-  };
+  });
 }
 
 // ══ 설정 모달 ══
@@ -1581,36 +1532,11 @@ const { open: openTeamModal } = initTeamModal({
   afterChange: async () => { renderTeamBar(); await refresh(); }
 });
 
-// 점수 음성은 세 화면이 같은 값을 쓴다 (점수판에서만 실제로 소리가 나지만 설정은 어디서든 바꿀 수 있게)
-const LS_VOICE = 'dangScoreVoice';
-const getVoice = () => { try { const v = localStorage.getItem(LS_VOICE); return v == null ? true : JSON.parse(v); } catch(e){ return true; } };
-const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b)); } catch(e){} };
-
-(function initSettings(){
-  const modal = $('#setModal'); if (!modal) return;
-  const vbtn = $('#setVoice');
-  const themeBtns = modal.querySelectorAll('#setTheme button');
-  const sync = () => {
-    vbtn.classList.toggle('on', getVoice());
-    const cur = getTheme();
-    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === cur));
-  };
-  const open = () => { sync(); modal.classList.add('on'); };
-  const close = () => modal.classList.remove('on');
-  $('#btnSettings').onclick = open;
-  $('#setClose').onclick = close;
-  modal.onclick = e => { if (e.target === modal) close(); };
+initSettingsModal({
   // 로그인 전에는 팀을 고를 수 없다 → 로그인이 있는 내 정보 화면으로 (기록실과 같은 처리)
-  $('#setTeam').onclick = () => { close(); if (getAuth()) openTeamModal(); else location.href = '../record/?tab=me'; };
-  $('#setMe').onclick = () => { location.href = '../record/?tab=me'; };   // 내 정보 화면은 기록실에만 있다
-  vbtn.onclick = () => { const nv = !getVoice(); setVoice(nv); vbtn.classList.toggle('on', nv); };
-  themeBtns.forEach(b => b.onclick = () => {
-    const t = b.dataset.t;
-    // '시스템'은 값을 지워서 표현한다 — 문자열로 저장하면 다른 화면이 못 알아본다
-    try { if (t === 'system') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, t); } catch(e){}
-    applyTheme(t); sync();
-  });
-})();
+  onTeam: () => { if (getAuth()) openTeamModal(); else location.href = '../record/?tab=me'; },
+  onMe: () => { location.href = '../record/?tab=me'; }   // 내 정보 화면은 기록실에만 있다
+});
 initPushSwitch(() => getAuth()?.uid || null);
 
 $('#dsClose').onclick = () => $('#daySheet').classList.remove('on');
@@ -1637,9 +1563,7 @@ $('#dsDel').onclick = delEvent;
 
 $('#btnLogout').onclick = async () => {
   if (!confirm('로그아웃할까요?')) return;
-  // 알림 구독은 계정에 묶인다 — 끊고 나가야 다음 사람의 알림 투표가 내 이름으로 가지 않는다
-  await pushDetach();
-  try { localStorage.removeItem(LS_AUTH); localStorage.removeItem(LS_TEAM); } catch(e){}
+  await logout();   // 알림 구독을 이 계정에서 떼고 로그인·소속 팀을 지운다
   location.href = '../score/';
 };
 
@@ -1650,8 +1574,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ══ 알림에서 들어온 경우 ══
-// 알림 버튼(참석/불참)은 안드로이드에만 있다. iOS 는 알림을 누르면 여기로 오는데,
-// 그때 ?meetup=<id> 또는 ?event=<id> 를 달고 온다 → 그 날짜의 상세를 열어 준다.
+// 투표 알림을 누르면 ?meetup=<id> 또는 ?event=<id> 를 달고 여기로 온다 → 그 날짜의 상세를 열어 준다.
 async function openFromLink(){
   const q = new URLSearchParams(location.search);
   const mtId = q.get('meetup'), evId = q.get('event');
@@ -1669,8 +1592,7 @@ async function openFromLink(){
     // 다른 팀·다른 달의 일정일 수 있다 — 그 팀과 그 달로 옮겨 놓고 연다
     if (r.team_id && r.team_id !== currentTeam) {
       currentTeam = r.team_id; tSet(currentTeam);
-      const me = myTeams.find(t => t.id === currentTeam);
-      isTeamLeader = !!(me && me.is_admin);
+      isTeamLeader = leaderOf(currentTeam);
       renderTeamBar();
     }
     const [y, mo] = date.split('-').map(Number);
@@ -1680,8 +1602,7 @@ async function openFromLink(){
   } catch(e){ /* 못 찾으면 그냥 이번 달을 보여 준다 */ }
 }
 
-// ══ 시작 ══
-applyTheme(getTheme());
+// ══ 시작 ══ (테마는 initSettingsModal 이 이미 입혔다)
 registerSW();
 logVisit('calendar', () => getAuth()?.uid);   // 관리자 메뉴의 방문 기록 (30분 넘게 비웠다 들어올 때만 센다)
 initAdminEntry(() => getAuth()?.uid, () => { location.href = '../record/?tab=admin'; });   // 관리자 메뉴는 기록실에 있다

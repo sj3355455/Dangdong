@@ -1,7 +1,7 @@
-import { sbFetch } from './supabase.js';
-import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
+import { sbFetch, patchAuth } from './supabase.js';
+import { registerSW, initSettingsModal, initTeamModal, fetchMyTeams, renderTeamBar as drawTeamBar,
          ymd, todayYmd, ddmy, rangeRowHtml, bindRangePicker, syncRangeDisp,
-         pushDetach, initPushSwitch, logVisit, initAdminEntry } from './common.js';
+         logout, initPushSwitch, logVisit, initAdminEntry } from './common.js';
 
 let DATA = { updated: '', players: [], games: [] };
 let RAW_GAMES = [];
@@ -153,22 +153,18 @@ function getFilteredData() {
   return filteredDataCache;
 }
 
-const SB_URL = 'https://ezwassqurbmzcjfmtjop.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6d2Fzc3F1cmJtemNqZm10am9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMjMxOTIsImV4cCI6MjA5OTc5OTE5Mn0.O6eHOO4-yxW7HVmNVjOkakrcoEeF5tORylhG1j79BeU';
 const LS_AUTH = 'dangScoreAuth';
 
+// 요청은 전부 sbFetch 로 — 토큰이 만료됐으면 알아서 갱신하고 한 번 더 보낸다
 async function fetchGames() {
   if (!currentTeam) return []; // 소속 팀이 없는 사용자는 다른 팀의 게임 정보를 조회하지 않음
-  const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };
-  try {
-    const auth = getAuth();
-    if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
-  } catch(e) {}
-  
-  const res = await fetch(SB_URL + '/rest/v1/games?select=id,played_at,players&order=played_at.asc&team_id=eq.' + currentTeam,
-    { headers: headers });
-  if (!res.ok) throw Object.assign(new Error('fetch error'), { status: res.status });
-  return await res.json();
+  return await sbFetch('/rest/v1/games?select=id,played_at,players&order=played_at.asc&team_id=eq.' + currentTeam) || [];
+}
+
+// 머리의 '최종 업데이트 · 총 N경기 · 선수 N명' 줄
+function updateSub(){
+  const sub = document.getElementById('sub');
+  if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
 }
 
 // 수지 변경 이력. sql/handicap-history.sql 을 아직 안 돌린 DB에서도 홈 탭이 통째로 죽지 않게
@@ -186,43 +182,27 @@ async function fetchHandicapHistory(){
 async function loadTeams(){
   const auth = getAuth();
   if (!auth || !auth.uid) { myTeams = []; renderTeamBar(); return; }
-  try {
-    const rows = await sbFetch('/rest/v1/rpc/my_teams', { method: 'POST', body: JSON.stringify({}) });
-    myTeams = Array.isArray(rows) ? rows : [];
-    const remembered = tGet();
-    if (remembered && myTeams.some(t => t.id === remembered)) currentTeam = remembered;
-    else currentTeam = myTeams[0] ? myTeams[0].id : null;
-    tSet(currentTeam);
-  } catch(e){ /* my_teams 미배포 등 → 전역 폴백 */ }
+  try { ({ teams: myTeams, current: currentTeam } = await fetchMyTeams()); }
+  catch(e){ /* my_teams 미배포 등 → 전역 폴백 */ }
   renderTeamBar();
+}
+
+// 팀을 바꾸거나 팀 설정을 고친 뒤 — 그 팀 기록을 다시 읽고 보던 탭을 다시 그린다
+async function reloadAndShow(){
+  await reloadData();
+  const on = document.querySelector('.tab.on');
+  show(on ? on.dataset.v : 'rank');
+  updateSub();
 }
 
 // 헤더 소속 팀 스위처
 function renderTeamBar(){
-  const bar = document.getElementById('teamBar');
-  const sel = document.getElementById('teamSel');
-  if (!bar || !sel) return;
-  const auth = getAuth();
-  if (!auth) { bar.style.display = 'none'; return; }
-  bar.style.display = 'flex';
-  if (!myTeams.length) {
-    sel.innerHTML = '<option value="">소속 팀 없음</option>';
-    sel.disabled = true;
-  } else {
-    sel.innerHTML = myTeams.map(t =>
-      `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
-    sel.disabled = myTeams.length < 2;
-  }
-  sel.onchange = async () => {
-    if (!sel.value) return;
-    currentTeam = sel.value; tSet(currentTeam);
+  drawTeamBar(!!getAuth(), myTeams, currentTeam, async id => {
+    currentTeam = id; tSet(currentTeam);
     const sub = document.getElementById('sub');
     if (sub) sub.textContent = '팀 전환 중...';
-    await reloadData();
-    const cur = document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.v : 'rank';
-    show(cur);
-    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
-  };
+    await reloadAndShow();
+  });
 }
 
 // ══ 팀 설정 모달 — 공통 모듈(common.js)로 이동. 앱별 차이(콜백)만 주입. ══
@@ -232,26 +212,12 @@ const { open: openTeamModal } = initTeamModal({
   setCurrentTeam: id => { currentTeam = id; tSet(currentTeam); },
   getMyTeams: () => myTeams,
   reloadTeams: loadTeams,
-  afterChange: async () => {
-    await reloadData();
-    const cur = document.querySelector('.tab.on') ? document.querySelector('.tab.on').dataset.v : 'rank';
-    show(cur);
-  }
+  afterChange: reloadAndShow
 });
 
 async function fetchMembers() {
   if (!currentTeam) return []; // 소속 팀이 없으면 다른 팀의 회원 정보가 조회되지 않도록 격리
-  const headers = { apikey: SB_KEY, 'Content-Type': 'application/json' };
-  try {
-    const auth = getAuth();
-    if (auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
-  } catch(e) {}
-  
-  const res = await fetch(SB_URL + '/rest/v1/team_members?select=user_id,profiles(id,display_name,handicap)&team_id=eq.' + currentTeam, {
-    headers: headers
-  });
-  if (!res.ok) throw new Error('fetch error');
-  const rows = await res.json();
+  const rows = await sbFetch('/rest/v1/team_members?select=user_id,profiles(id,display_name,handicap)&team_id=eq.' + currentTeam);
   // team_members 는 profiles 를 중첩해서 반환한다({user_id, profiles:{...}}).
   // processData 의 수지 매칭은 평탄한 {id, display_name, handicap} 구조를 기대하므로 평탄화한다.
   // (이걸 안 하면 매칭이 전부 실패해 프로필의 실제 수지가 반영되지 않고 0으로 남는다.)
@@ -264,21 +230,13 @@ async function fetchMembers() {
 
 // ══ 관리자 기능 ══
 // 서버(RLS)가 실제 권한을 강제한다. 여기서는 UI 노출 여부만 판단.
+// 관리자인지는 설정 창의 관리자 메뉴 버튼(initAdminEntry)이 묻는 김에 같이 받아 온다 — 아래 initDashboard.
 let IS_ADMIN = false;
-async function fetchAdmin(){
-  const auth = getAuth();
-  if (!auth || !auth.uid || !auth.token) return false;
-  try {
-    const d = await sbFetch('/rest/v1/profiles?select=is_admin&id=eq.' + auth.uid);
-    return !!(d && d[0] && d[0].is_admin);
-  } catch(e){ return false; }   // is_admin 컬럼이 아직 없으면 조용히 비활성화
-}
 // Prefer: return=representation — RLS에 막히면 빈 배열이 와서 실패를 감지할 수 있다
 const REP = { headers: { Prefer: 'return=representation' } };
 const adminApi = {
   updateGame: (id, players) => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify({ players }) }, REP)),
   deleteGame: id => sbFetch('/rest/v1/games?id=eq.' + id, Object.assign({ method: 'DELETE' }, REP)),
-  updateProfile: (id, fields) => sbFetch('/rest/v1/profiles?id=eq.' + id, Object.assign({ method: 'PATCH', body: JSON.stringify(fields) }, REP)),
   // 이름 변경을 한 번에: 프로필 + 그 사람이 뛴 모든 경기의 저장된 이름을 서버에서 갱신 (본인/관리자만)
   renamePlayer: (id, name, handicap) => sbFetch('/rest/v1/rpc/rename_player', { method: 'POST', body: JSON.stringify({ target: id, new_name: name, new_handicap: handicap }) })
 };
@@ -354,32 +312,33 @@ function processData(games, members, keep) {
   // 이름은 경기에 저장된 값을 그대로 쓴다. (이름 변경 시 rename_player 함수가
   //  프로필과 모든 경기의 저장 이름을 한 번에 갱신하므로 매번 매칭할 필요가 없다.)
 
+  const p2 = n => String(n).padStart(2, '0');
   for (const g of (games || [])) {
     if (!g) continue;
     const dt = new Date(g.played_at);
-    const pad = n => String(n).padStart(2, '0');
-    const dateStr = dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate());
-    const datetimeStr = dateStr + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()) + ':' + pad(dt.getSeconds());
+    const dateStr = ymd(dt);
+    const datetimeStr = dateStr + ' ' + p2(dt.getHours()) + ':' + p2(dt.getMinutes()) + ':' + p2(dt.getSeconds());
     const pls = Array.isArray(g.players) ? g.players : [];
     const isTeam = pls.length > 0 && pls[0].isTeam;
-    const typeStr = isTeam ? '팀전' : (pls.length + '인');
-    const nameStr = typeStr;
+    const typeStr = gameTypeOf(g);
 
     dataGames.unshift({
       id: String(g.id || datetimeStr),
       date: dateStr,
       datetime: datetimeStr,
       type: typeStr,
-      name: nameStr,
-      players: pls.map(p => ({
-        name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
-        rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
-        timeMs: p.timeMs ?? p.time_ms ?? 0,
-        target: p.target, score: p.score, innings: p.innings, ballInn: ballInnOf(p),
-        highRun: p.highRun ?? p.high_run ?? 0, misses: missOf(p, ballInnOf(p)), cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0,
-        // 파울은 나중에 추가된 항목 — 예전 기록에는 없으므로 0이 아니라 null(기록 없음)로 둔다
-        fouls: p.fouls ?? null
-      }))
+      players: pls.map(p => {
+        const bInn = ballInnOf(p);
+        return {
+          name: p.name || p.id || "알 수 없음", ranking: p.win ? 1 : 2,
+          rank: p.rank != null ? p.rank : (p.win ? 1 : 2),
+          timeMs: p.timeMs ?? p.time_ms ?? 0,
+          target: p.target, score: p.score, innings: p.innings, ballInn: bInn,
+          highRun: p.highRun ?? p.high_run ?? 0, misses: missOf(p, bInn), cushMade: p.cushMade ?? p.cush_made ?? 0, cushInn: p.cushInn ?? p.cush_inn ?? 0,
+          // 파울은 나중에 추가된 항목 — 예전 기록에는 없으므로 0이 아니라 null(기록 없음)로 둔다
+          fouls: p.fouls ?? null
+        };
+      })
     });
 
     // 게임 내 각 선수의 평균순위(분수). 동순위는 공동 점유 구간의 평균: 공동 2등 = 2.5, 공동 3등 = 3.5
@@ -394,43 +353,16 @@ function processData(games, members, keep) {
       if (keep && !keep(g, p)) continue;
       const pName = p.name || p.id || "알 수 없음";
       // 회원은 계정 id로 묶어 이름이 바뀌어도 같은 사람으로 집계. 게스트는 이름으로 묶는다.
-      const key = p.id ? ('id:' + p.id) : ('nm:' + pName);
-      if (!pmap[key]) {
-        pmap[key] = {
-          name: pName,
-          handicap: isTeam ? 0 : p.target,
-          games: 0,
-          wins: 0,
-          modes: {},   // 모드별 집계: {'2인':{games,wins,rankSum}, '3인':..., '4인':..., '팀전':...}
-          history: [],
-          adjPtsSum: 0,
-          id: p.id || null
-        };
-      }
-      const st = pmap[key];
+      const key = playerKeyOf(p);
+      const st = pmap[key] || (pmap[key] = { name: pName, handicap: isTeam ? 0 : p.target, history: [], id: p.id || null });
       if (!isTeam) st.handicap = Math.max(st.handicap, p.target);
-      st.games++;
-      if (p.win) st.wins++;
 
-      const pIdx = g.players.indexOf(p);
-      const pRank = fracRank(pIdx);
-      
-      let pt = 0;
-      if (isTeam) {
-        pt = (3.5 - pRank) / 2 * 100;
-      } else {
-        const N = g.players.length;
-        if (N > 1) pt = (N - pRank) / (N - 1) * 100;
-      }
-      st.adjPtsSum += pt;
+      const pRank = fracRank(pls.indexOf(p));
+      // 보정 승률 점수 — 1등 100 · 꼴등 0 (팀전은 두 팀이라 1등 100 · 2등 0)
+      const N = pls.length;
+      const pt = isTeam ? (3.5 - pRank) / 2 * 100 : (N > 1 ? (N - pRank) / (N - 1) * 100 : 0);
 
-      const M = st.modes[typeStr] || (st.modes[typeStr] = { games: 0, wins: 0, rankSum: 0, adjPtsSum: 0 });
-      M.games++;
-      if (p.win) M.wins++;
-      M.rankSum += pRank;
-      M.adjPtsSum += pt;
-
-      const opp = g.players.filter(x => (x.name || x.id) !== pName).map(x => x.name || x.id).join(', ');
+      const opp = pls.filter(x => (x.name || x.id) !== pName).map(x => x.name || x.id).join(', ');
       const innings = p.innings || p.turn_count || 0;
       const bInn = ballInnOf(p, innings);
       const average = bInn ? (p.score / bInn) : 0;
@@ -471,82 +403,18 @@ function processData(games, members, keep) {
     }
   }
 
+  // 지표는 경기 이력에서 낸다 — 통합과 모드별(2인·3인·4인·팀전) 모두.
+  // 선수 상세 화면과 같은 함수(calcStatsForHistory)라 순위표와 상세가 늘 같은 값을 말한다.
   for (const p of pArr) {
-    p.winRate = p.games > 0 ? (p.wins / p.games) * 100 : 0;
-    p.adjRate = p.games > 0 ? (p.adjPtsSum / p.games) : 0;
-
-    for (const mk in p.modes) {
-      const M = p.modes[mk];
-      M.winRate = M.games > 0 ? (M.wins / M.games) * 100 : 0;
-      M.avgRank = M.games > 0 ? (M.rankSum / M.games) : null;
-      M.adjRate = M.games > 0 ? (M.adjPtsSum / M.games) : 0;
-    }
-
-    // 실력 지표: 전체(통합) 누적과 모드별 누적을 함께 계산한다.
-    const blankAcc = () => ({ inn:0, binn:0, score:0, hr:0, miss:0, cm:0, ci:0, time:0, shots:0, avgs:[],
-                              fBinn:0, fMiss:0, fGross:0, fFoul:0 });   // f* = 파울이 기록된 경기만 (평균 타수·파울률용)
-    const tot = blankAcc();
-    const byMode = {};   // 모드별 실력 지표 누적
-
-    for (const h of p.history) {
-      const add = a => {
-        a.inn += h.inning;      // 총 이닝 — 인터벌용
-        a.binn += h.ballInn;    // 알 이닝 — 에버·득점률·평균타수용
-        a.score += h.score;
-        a.miss += h.miss;
-        // 평균 타수·파울률은 파울이 기록된 경기만 모은다 — 파울 수를 모르면 분자(파울 차감 전 득점)를 복원할 수 없다
-        if (h.foul != null) { a.fBinn += h.ballInn; a.fMiss += h.miss; a.fGross += h.score + h.foul; a.fFoul += h.foul; }
-        if (h.highRun > a.hr) a.hr = h.highRun;
-        a.cm += h.cushMade;
-        a.ci += h.cushInn;
-        if (h.ballInn > 0) a.avgs.push(h.score / h.ballInn);   // 경기별 에버리지 (기복 계산용)
-        if (h.timeMs > 0) {
-          a.time += h.timeMs;
-          a.shots += Math.max(1, h.score + h.inning);
-        }
-      };
-      add(tot);
-      add(byMode[h.type] || (byMode[h.type] = blankAcc()));
-    }
-
-    // 누적 → 지표 변환 (통합/모드 공통 규칙)
-    const finalize = (dst, a) => {
-      // 에버 = 총득점 / 알 이닝 (마무리 쿠션만 친 이닝은 분모에서 뺀다)
-      dst.avgAvg = a.binn > 0 ? (a.score / a.binn) : 0;
-      dst.bestHr = a.hr;
-      dst.hitRate = a.binn > 0 ? ((a.binn - a.miss) / a.binn) * 100 : 0;
-      // 평균 타수 = (파울 차감 전 득점) / 득점한 알 이닝. 파울이 기록되기 전 경기는 아예 뺀다.
-      // 파울 수를 모르면 분자를 복원할 수 없어 실제보다 낮게 나오기 때문. 해당 경기가 없으면 null.
-      dst.streakAvg = (a.fBinn - a.fMiss) > 0 ? (a.fGross / (a.fBinn - a.fMiss)) : null;
-      // 파울률 = 파울 / 총 타격수. 타격은 두 종류뿐이라 이렇게 센다:
-      //   · 득점한 타격 = 파울 차감 전 득점(fGross)  — 1점당 1타격
-      //   · 실패한 타격 = 알 이닝 수(fBinn)          — 알 이닝은 공타 아니면 파울로 끝난다
-      //
-      // '공타'를 분모로 쓰면 안 된다. 공타는 빗맞힌 타격 수가 아니라 '한 점도 못 낸 이닝 수'다
-      // (score/app.js 의 closeInning: isMiss && tp===0 일 때만 센다). 그래서 3점 뽑고 실패한 이닝의
-      // 마지막 타격이 통째로 빠지고, 반대로 무득점 이닝의 파울은 공타로도 세여 이중 계상된다.
-      //
-      // 한계: 목표를 채우며 끝난 이닝은 실패 타격이 없는데도 fBinn 에 들어가므로 분모가 경기당 최대
-      // 1 만큼 크다(≈ 실제보다 3% 낮게 나옴). 완주 여부는 저장된 값으로 팀전에서 가려낼 수 없어
-      // (score 는 개인 점수, target 은 팀 목표) 보정하지 않는다 — 모드별로 다르게 틀리는 게 더 나쁘다.
-      dst.foulRate = (a.fGross + a.fBinn) > 0 ? (a.fFoul / (a.fGross + a.fBinn)) * 100 : null;
-      // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
-      dst.avgInterval = a.shots > 0 ? (a.time / a.shots) / 1000 : null;
-      // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
-      dst.cushRate = a.ci > 0 ? (a.cm / a.ci) * 100 : null;
-      // 기복 = 경기별 에버리지의 변동계수(%). 2경기 미만이면 null
-      dst.volatility = volatilityPct(a.avgs);
-    };
-    finalize(p, tot);
-    for (const mk in p.modes) {
-      if (byMode[mk]) finalize(p.modes[mk], byMode[mk]);
-    }
+    Object.assign(p, calcStatsForHistory(p.history));
+    p.modes = {};
+    for (const mk of new Set(p.history.map(h => h.type)))
+      p.modes[mk] = calcStatsForHistory(p.history.filter(h => h.type === mk));
   }
 
   const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
   return {
-    updated: now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()),
+    updated: ymd(now) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()),
     players: pArr,
     games: dataGames
   };
@@ -1315,15 +1183,11 @@ function renderRank(){
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
   if (!recent) bindRangePicker(el, 'p-period', { max: todayYmd(), allowClear: true, aria: '조회 기간' });
 
-  const refreshRankSub = () => {
-    const sub = document.getElementById('sub');
-    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
-  };
   const applyRankRange = () => {
     rankFrom = el.querySelector('.p-period-from').value;
     rankTo = el.querySelector('.p-period-to').value;
     DATA = getFilteredData();
-    refreshRankSub();
+    updateSub();
     show('rank');
   };
   if (!recent) {
@@ -1437,30 +1301,33 @@ function chart(vals, labels, opt){
       stroke-linejoin="round" stroke-linecap="round"/>${dots}${xs}</svg></div>`;
 }
 
+// 선수 상세의 추이 그래프 — 하루치 경기를 calcStatsForHistory 로 묶어 val 로 한 점을 뽑는다.
+// val 이 null 이면 그날 점은 뺀다(평균 타수는 파울이 기록된 경기가 없는 날엔 계산 불가).
 const METRICS = [
-  {k:'avg', t:'에버리지', modes:MODE_TABS, dec:2},
-  {k:'streak', t:'평균 타수', modes:MODE_TABS, dec:2},
-  {k:'hit', t:'득점률', modes:MODE_TABS, max:100, suffix:'%', dec:0},
-  {k:'adj', t:'보정 승률', modes:MODE_TABS, max:100, suffix:'%', dec:1},
-  {k:'games', t:'경기수', modes:MODE_TABS, dec:0},
-  {k:'cush', t:'쿠션 성공률', modes:MODE_TABS, max:100, suffix:'%', dec:0},
-  {k:'hr', t:'하이런', modes:MODE_TABS, dec:0},
-  {k:'winRate', t:'승률', modes:['2인','팀전'], max:100, suffix:'%', dec:0},
-  {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1, invert:true, min:1, max:4}
+  {k:'avg', t:'에버리지', modes:MODE_TABS, dec:2, val:s=>s.avgAvg, desc:'평균 에버리지 (총 득점 / 알 이닝)'},
+  {k:'streak', t:'평균 타수', modes:MODE_TABS, dec:2, val:s=>s.streakAvg, desc:'평균 타수 (파울 차감 전 득점 / 득점한 알 이닝)'},
+  {k:'hit', t:'득점률', modes:MODE_TABS, max:100, suffix:'%', dec:0, val:s=>s.hitRate, desc:'평균 득점률 (알 이닝 중 점수를 낸 이닝 비율)'},
+  {k:'adj', t:'보정 승률', modes:MODE_TABS, max:100, suffix:'%', dec:1, val:s=>s.adjRate, desc:'평균 보정 승률'},
+  {k:'games', t:'경기수', modes:MODE_TABS, dec:0, val:s=>s.games, desc:'총 경기수'},
+  {k:'cush', t:'쿠션 성공률', modes:MODE_TABS, max:100, suffix:'%', dec:0, val:s=>s.cushRate ?? 0, desc:'쿠션 성공률'},
+  {k:'hr', t:'하이런', modes:MODE_TABS, dec:0, val:s=>s.bestHr, desc:'최고 하이런'},
+  {k:'winRate', t:'승률', modes:['2인','팀전'], max:100, suffix:'%', dec:0, val:s=>s.winRate, desc:'평균 승률'},
+  {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1, invert:true, min:1, max:4, val:s=>s.avgRank ?? 0, desc:'평균 순위'}
 ];
 
+// 경기 이력(processData 가 만든 history 줄들) → 지표 한 벌. 순위표(통합·모드별)와 선수 상세가 함께 쓴다.
 function calcStatsForHistory(h) {
-  let games = h.length;
-  let wins = h.filter(r => r.win).length;
-  let fBallInn = 0, fMiss = 0, fGross = 0;   // 파울이 기록된 경기만 (평균 타수용)
-  let sumInnings = 0, sumBallInn = 0, sumScore = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
+  const games = h.length;
+  const wins = h.filter(r => r.win).length;
+  // f* = 파울이 기록된 경기만 (평균 타수·파울률용) — 파울 수를 모르면 분자(파울 차감 전 득점)를 복원할 수 없다
+  let fBallInn = 0, fMiss = 0, fGross = 0, fFoul = 0;
+  let sumBallInn = 0, sumScore = 0, totalMisses = 0, maxHr = 0, cushMade = 0, cushInn = 0, sumTime = 0, sumShots = 0, sumAdjPt = 0, rankSum = 0;
   const avgs = [];   // 경기별 에버리지 (기복 계산용)
 
   h.forEach(r => {
-    sumInnings += (r.inning || 0);      // 총 이닝 — 인터벌용
-    sumBallInn += (r.ballInn || 0);     // 알 이닝 — 에버·득점률·평균타수용
+    sumBallInn += (r.ballInn || 0);     // 알 이닝 — 에버·득점률·평균타수의 분모 (마무리 쿠션만 친 이닝은 빠져 있다)
     sumScore += (r.score || 0);
-    if (r.foul != null) { fBallInn += (r.ballInn || 0); fMiss += (r.miss || 0); fGross += (r.score || 0) + r.foul; }
+    if (r.foul != null) { fBallInn += (r.ballInn || 0); fMiss += (r.miss || 0); fGross += (r.score || 0) + r.foul; fFoul += r.foul; }
     totalMisses += (r.miss || 0);
     if ((r.highRun || 0) > maxHr) maxHr = r.highRun;
     cushMade += (r.cushMade || 0);
@@ -1470,7 +1337,7 @@ function calcStatsForHistory(h) {
     if (r.ballInn > 0) avgs.push(r.score / r.ballInn);
     if (r.timeMs > 0) {
       sumTime += r.timeMs;
-      sumShots += Math.max(1, r.score + r.inning);
+      sumShots += Math.max(1, r.score + r.inning);   // 총 이닝(알 + 쿠션) — 인터벌용
     }
   });
 
@@ -1478,12 +1345,30 @@ function calcStatsForHistory(h) {
     games,
     wins,
     winRate: games > 0 ? (wins / games) * 100 : 0,
+    // 에버 = 총득점 / 알 이닝
     avgAvg: sumBallInn > 0 ? (sumScore / sumBallInn) : 0,
     bestHr: maxHr,
     hitRate: sumBallInn > 0 ? ((sumBallInn - totalMisses) / sumBallInn) * 100 : 0,
+    // 평균 타수 = (파울 차감 전 득점) / 득점한 알 이닝. 파울이 기록되기 전 경기는 아예 뺀다.
+    // 파울 수를 모르면 분자를 복원할 수 없어 실제보다 낮게 나오기 때문. 해당 경기가 없으면 null.
     streakAvg: (fBallInn - fMiss) > 0 ? (fGross / (fBallInn - fMiss)) : null,
+    // 파울률 = 파울 / 총 타격수. 타격은 두 종류뿐이라 이렇게 센다:
+    //   · 득점한 타격 = 파울 차감 전 득점(fGross)  — 1점당 1타격
+    //   · 실패한 타격 = 알 이닝 수(fBallInn)       — 알 이닝은 공타 아니면 파울로 끝난다
+    //
+    // '공타'를 분모로 쓰면 안 된다. 공타는 빗맞힌 타격 수가 아니라 '한 점도 못 낸 이닝 수'다
+    // (score/app.js 의 closeInning: isMiss && tp===0 일 때만 센다). 그래서 3점 뽑고 실패한 이닝의
+    // 마지막 타격이 통째로 빠지고, 반대로 무득점 이닝의 파울은 공타로도 세여 이중 계상된다.
+    //
+    // 한계: 목표를 채우며 끝난 이닝은 실패 타격이 없는데도 fBallInn 에 들어가므로 분모가 경기당 최대
+    // 1 만큼 크다(≈ 실제보다 3% 낮게 나옴). 완주 여부는 저장된 값으로 팀전에서 가려낼 수 없어
+    // (score 는 개인 점수, target 은 팀 목표) 보정하지 않는다 — 모드별로 다르게 틀리는 게 더 나쁘다.
+    foulRate: (fGross + fBallInn) > 0 ? (fFoul / (fGross + fBallInn)) * 100 : null,
+    // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
     cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
+    // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
     avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
+    // 기복 = 경기별 에버리지의 변동계수(%). 2경기 미만이면 null
     volatility: volatilityPct(avgs),
     avgRank: games > 0 ? (rankSum / games) : null,
     adjRate: games > 0 ? (sumAdjPt / games) : 0
@@ -1506,31 +1391,16 @@ function computeTendency(name){
   const blank = () => ({ ready:false, axes: LABELS.map(a => ({ ...a, pos:0, ok:false })) });
   if (!target || target.games < 4 || pool.length < 3) return blank();
 
-  // 선수별 원지표
-  const metricsOf = p => {
-    let sMade = 0, sCushInn = 0; const avgs = [];
-    for (const h of p.history){
-      sMade += (h.cushMade||0); sCushInn += (h.cushInn||0);
-      if (h.ballInn > 0) avgs.push(h.score / h.ballInn);   // 경기별 에버리지
-    }
-    // ② 쿠션↔알: 마무리 쿠션 성공 에버 ÷ 전체 에버리지 (쿠션 1·2개 게임 보정)
-    const cushRatio = (sCushInn > 0 && p.avgAvg > 0) ? (sMade / sCushInn) / p.avgAvg : null;
-    // ③ 안정↔기복: 경기별 에버리지의 변동계수(표준편차 ÷ 평균)
-    let volatility = null;
-    if (avgs.length >= 2){
-      const m = avgs.reduce((a,b)=>a+b,0) / avgs.length;
-      if (m > 0){
-        const sd = Math.sqrt(avgs.reduce((a,b)=>a+(b-m)**2,0) / avgs.length);
-        volatility = sd / m;
-      }
-    }
-    return {
-      streak: p.streakAvg,   // 평균 타수
-      hit:    p.hitRate,     // 득점률
-      cushRatio,             // 쿠션 마무리 상대 효율
-      volatility             // 에버리지 변동계수
-    };
-  };
+  // 선수별 원지표 — processData 가 이미 낸 통산 지표를 그대로 쓴다.
+  // (축마다 팀 안의 z-score 로 바꾸므로 % 단위든 비율이든 결과는 같다)
+  const metricsOf = p => ({
+    streak: p.streakAvg,   // 평균 타수
+    hit:    p.hitRate,     // 득점률
+    // ② 쿠션↔알: 마무리 쿠션 성공률 ÷ 전체 에버리지 (쿠션 1·2개 게임 보정)
+    cushRatio: (p.cushRate != null && p.avgAvg > 0) ? p.cushRate / p.avgAvg : null,
+    // ③ 안정↔기복: 경기별 에버리지의 변동계수
+    volatility: p.volatility
+  });
 
   // ④ 오픈↔디펜스: '내 바로 다음 차례' 선수가 그 경기에서 평소보다 잘 쳤나(오픈) 못 쳤나(디펜스).
   // 저장된 선수 배열 = 좌석/턴 순서라 다음 사람 = players[(i+1)%N]. 다음 사람의 모든 이닝은 내가 남긴
@@ -1621,8 +1491,10 @@ function showPlayer(name){
     const btn = document.getElementById('btnMyRec');
     if(btn) btn.classList.add('on');
   }
-  let p = DATA.players.find(v=>v.name===name);
-  if (!p) p = { name, id: null, handicap: 0, total_games: 0, win_rate: 0, avg: 0, hr: 0 };
+  // 통산 기록에서 찾는다 — 순위 탭에 걸린 기간과 상관없이 이 화면의 기간 칸이 따로 거른다.
+  // (DATA 에서 찾으면 '최근 N경기'로 넘어왔을 때 '전체 기간'이라 적어 놓고 옛 기간만 보여 줬다)
+  const p = getFullProcessData().players.find(v=>v.name===name)
+         || { name, id: null, handicap: 0, history: [] };
   let playerMode = '통합';
   let chartCur = 'avg';
   // 순위를 '최근 N경기'로 보다 넘어왔으면 순위 탭의 기간은 걸려 있지 않은 셈이라 전체 기간으로 연다
@@ -1675,13 +1547,12 @@ function showPlayer(name){
   bindRangePicker(el, 'pd-period', { max: todayYmd(), allowClear: true, aria: '조회 기간' });
   let lastW = 0;
 
-  const renderMode = () => {
-    let hPeriod = [...p.history];
-    if (playerFrom || playerTo) {
-      hPeriod = hPeriod.filter(r => inRange(r.date, playerFrom, playerTo));
-    }
+  // 지금 고른 기간·모드에 걸리는 경기들 (history[0] 이 가장 최근)
+  const curHist = () => p.history.filter(r =>
+    (!(playerFrom || playerTo) || inRange(r.date, playerFrom, playerTo)) && (playerMode === '통합' || r.type === playerMode));
 
-    const h = playerMode === '통합' ? hPeriod : hPeriod.filter(r => r.type === playerMode);
+  const renderMode = () => {
+    const h = curHist();
 
     if (h.length === 0) {
       el.querySelector('#pStats').innerHTML = '<div class="empty" style="width:100%; text-align:center; padding: 20px 0; color:var(--muted)">이 기간 동안 치러진 경기가 없습니다.</div>';
@@ -1707,87 +1578,38 @@ function showPlayer(name){
 
     el.querySelector('#chartArea').style.display = 'block';
 
-      const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
-      el.querySelector('#pMetricSel').innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
-      
-      if (!availableMetrics.find(m => m.k === chartCur)) {
-        chartCur = availableMetrics[0].k;
-      }
-      el.querySelector('#pMetricSel').value = chartCur;
+    const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
+    const sel = el.querySelector('#pMetricSel');
+    sel.innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
+    if (!availableMetrics.find(m => m.k === chartCur)) chartCur = availableMetrics[0].k;
+    sel.value = chartCur;
+    sel.onchange = e => draw(e.target.value);
 
-      el.querySelector('#pMetricSel').onchange = (e) => {
-        chartCur = e.target.value;
-        const currentH = playerMode === '통합' ? [...hPeriod] : hPeriod.filter(r => r.type === playerMode);
-        draw(chartCur, currentH);
-      };
-
-      draw(chartCur, h);
+    draw(chartCur);
   };
 
-  const draw = (key, h) => {
+  // 추이 그래프 — 하루 한 점. 그날 친 경기들을 한 묶음으로 지표를 낸다.
+  const draw = key => {
     chartCur = key;
     const m = METRICS.find(v=>v.k===key);
     const box = el.querySelector('#cbox');
     lastW = box.clientWidth || innerWidth-64;
 
-    const hAsc = [...h].reverse();
-    const groups = {}; 
-    
-    hAsc.forEach(r => {
-      const gKey = r.date.substring(5, 10);   // 일별(MM-DD)로 통일
-      if (!groups[gKey]) groups[gKey] = { games: 0, sumInning: 0, sumScore: 0, sumMiss: 0, fBallInn: 0, fMiss: 0, fGross: 0, sumAdjPt: 0, maxHr: 0, cushMade: 0, cushInn: 0, wins: 0, rankSum: 0 };
-      groups[gKey].games++;
-      groups[gKey].sumInning += (r.ballInn || 0);   // 차트 지표(에버·평균타수·득점률)는 모두 알 이닝 기준
-      groups[gKey].sumScore += (r.score || 0);
-      if (r.foul != null) {   // 평균 타수는 파울이 기록된 경기만
-        groups[gKey].fBallInn += (r.ballInn || 0);
-        groups[gKey].fMiss += (r.miss || 0);
-        groups[gKey].fGross += (r.score || 0) + r.foul;
-      }
-      groups[gKey].sumMiss += (r.miss || 0);
-      groups[gKey].sumAdjPt += (r.adjPt || 0);
-      if ((r.highRun || 0) > groups[gKey].maxHr) groups[gKey].maxHr = r.highRun;
-      if (r.cushInn > 0) {
-         groups[gKey].cushMade += (r.cushMade || 0);
-         groups[gKey].cushInn += r.cushInn;
-      }
-      if (r.win) groups[gKey].wins++;
-      if (r.rank) groups[gKey].rankSum += r.rank;
-    });
-
-    const allLabels = Object.keys(groups);
-    const rawVals = allLabels.map(lbl => {
-      const g = groups[lbl];
-      if (key === 'avg') return g.sumInning ? g.sumScore / g.sumInning : 0;
-      if (key === 'streak') return (g.fBallInn - g.fMiss) > 0 ? g.fGross / (g.fBallInn - g.fMiss) : null;
-      if (key === 'hit') return g.sumInning ? (g.sumInning - g.sumMiss) / g.sumInning * 100 : 0;
-      if (key === 'adj') return g.games ? g.sumAdjPt / g.games : 0;
-      if (key === 'games') return g.games;
-      if (key === 'hr') return g.maxHr;
-      if (key === 'cush') return g.cushInn ? (g.cushMade / g.cushInn) * 100 : 0;
-      if (key === 'winRate') return g.games ? (g.wins / g.games) * 100 : 0;
-      if (key === 'avgRank') return g.games ? (g.rankSum / g.games) : 0;
-      return 0;
-    });
-    // 값이 없는 날은 점 자체를 뺀다 (평균 타수는 파울이 기록된 경기가 없는 날엔 계산 불가)
-    const labels = allLabels.filter((_, i) => rawVals[i] != null);
-    const vals = rawVals.filter(v => v != null);
+    const days = new Map();   // 날짜 → 그날 경기들 (오래된 날부터)
+    for (const r of [...curHist()].reverse()) {
+      if (!days.has(r.date)) days.set(r.date, []);
+      days.get(r.date).push(r);
+    }
+    const labels = [], vals = [];
+    for (const [date, rs] of days) {
+      const v = m.val(calcStatsForHistory(rs));
+      if (v == null) continue;          // 값이 없는 날은 점 자체를 뺀다
+      labels.push(date.slice(5));       // MM-DD
+      vals.push(v);
+    }
 
     box.innerHTML = chart(vals, labels, {...m, W: lastW});
-    
-    const groupText = '일별';
-    let desc = m.t;
-    if (key === 'avg') desc = `해당 ${groupText} 평균 에버리지 (총 득점 / 알 이닝)`;
-    else if (key === 'streak') desc = `해당 ${groupText} 평균 타수 (파울 차감 전 득점 / 득점한 알 이닝)`;
-    else if (key === 'hit') desc = `해당 ${groupText} 평균 득점률 (알 이닝 중 점수를 낸 이닝 비율)`;
-    else if (key === 'adj') desc = `해당 ${groupText} 평균 보정 승률`;
-    else if (key === 'games') desc = `해당 ${groupText} 총 경기수`;
-    else if (key === 'hr') desc = `해당 ${groupText} 최고 하이런`;
-    else if (key === 'cush') desc = `해당 ${groupText} 쿠션 성공률`;
-    else if (key === 'winRate') desc = `해당 ${groupText} 평균 승률`;
-    else if (key === 'avgRank') desc = `해당 ${groupText} 평균 순위`;
-
-    el.querySelector('#cdesc').textContent = desc;
+    el.querySelector('#cdesc').textContent = '해당 일별 ' + m.desc;
     const sc = box.querySelector('.cscroll');
     if(sc && sc.scrollWidth > sc.clientWidth){
       sc.scrollLeft = sc.scrollWidth;
@@ -1834,16 +1656,8 @@ function showPlayer(name){
   document.getElementById('view').replaceChildren(el);
   renderMode();
 
-  chartRO = new ResizeObserver(es=>{ 
-    const w = es[0].contentRect.width; 
-    if(Math.abs(w - lastW) > 2) {
-      let hPeriod = [...p.history];
-      if (playerFrom || playerTo) {
-        hPeriod = hPeriod.filter(r => inRange(r.date, playerFrom, playerTo));
-      }
-      const h = playerMode === '통합' ? hPeriod : hPeriod.filter(r => r.type === playerMode);
-      draw(chartCur, h); 
-    }
+  chartRO = new ResizeObserver(es=>{
+    if(Math.abs(es[0].contentRect.width - lastW) > 2) draw(chartCur);
   });
   chartRO.observe(el.querySelector('#cbox'));
   scrollTo(0,0);
@@ -1865,23 +1679,20 @@ function renderMe() {
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">수지 (목표 점수)</label>
     <select id="meHandicap" class="field">
       <option value="">선택하세요</option>
-      ${[50, 80, 100, 120, 150, 200, 250, 300, 400, 500].map(v => `<option value="${v/10}">${v}</option>`).join('')}
+      ${HD_OPTIONS.map(v => `<option value="${v/10}">${v}</option>`).join('')}
     </select>
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; margin-top:12px; opacity:0.8;">비밀번호 변경 (변경할 때만 입력)</label>
     <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
     <div id="meMsg" style="margin-bottom:16px; font-size:0.95rem; font-weight:bold; height:20px;"></div>
     <button id="meSave" class="bigbtn">저장하기</button>
-    <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--border); color:#f44336;">로그아웃</button>
+    <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--line); color:#f44336;">로그아웃</button>
   </div>`;
   const myData = (DATA && DATA.players) ? DATA.players.find(p => p.name === auth.name) : null;
   const myHandicap = myData ? myData.handicap : '';
   d.querySelector('#meName').value = auth.name || '';
   d.querySelector('#meHandicap').value = myHandicap;
 
-  fetch(SB_URL + '/rest/v1/profiles?id=eq.' + auth.uid, {
-    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token }
-  })
-  .then(r=>r.json())
+  sbFetch('/rest/v1/profiles?select=display_name,handicap&id=eq.' + auth.uid)
   .then(rows => { if(rows && rows.length > 0) { if (rows[0].display_name) d.querySelector('#meName').value = rows[0].display_name; if (rows[0].handicap) d.querySelector('#meHandicap').value = rows[0].handicap; } }).catch(()=>{});
   d.querySelector('#meSave').onclick = async () => {
     const btn = d.querySelector('#meSave'), msg = d.querySelector('#meMsg'), name = d.querySelector('#meName').value.trim(), hd = d.querySelector('#meHandicap').value.trim(), pwd = d.querySelector('#mePwd').value;
@@ -1890,27 +1701,16 @@ function renderMe() {
       if (!name) { msg.textContent = '이름을 입력하세요.'; msg.style.color = '#f44336'; btn.disabled = false; return; }
       // 이름·수지 변경 + 내가 뛴 모든 경기의 저장 이름을 서버에서 한 번에 갱신
       await adminApi.renamePlayer(auth.uid, name, hd ? parseInt(hd,10) : null);
-      auth.name = name; localStorage.setItem(LS_AUTH, JSON.stringify(auth));
-      if(pwd) {
-        const authRes = await fetch(SB_URL + '/auth/v1/user', {
-          method: 'PUT',
-          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: pwd })
-        });
-        if(!authRes.ok) throw 0;
-      }
+      patchAuth({ name });   // 위 요청이 토큰을 갱신했을 수 있다 — 저장본에 이름만 고쳐 넣는다
+      if(pwd) await sbFetch('/auth/v1/user', { method: 'PUT', body: JSON.stringify({ password: pwd }) });
       msg.textContent = '✅ 성공적으로 저장되었습니다.'; msg.style.color = '#4CAF50'; d.querySelector('#mePwd').value = '';
       try { await reloadData(); } catch(e){}   // 바뀐 이름을 순위·경기 화면에 즉시 반영
     } catch(e) { msg.textContent = '❌ 저장 실패. 다시 로그인해 보세요.'; msg.style.color = '#f44336'; }
     btn.disabled = false;
   };
   
-  d.querySelector('#meLogout').onclick = () => {
-    // 소속 팀도 함께 지운다 — 이게 남으면 로그아웃 상태로도 그 팀 id 로 조회를 시도하는데,
-    // games 가 팀 단위로 잠긴 뒤로는 그 요청이 빈 결과가 아니라 권한 오류로 떨어진다.
-    // (다른 로그아웃 경로 두 곳은 원래 둘 다 지우고 있었다)
-    localStorage.removeItem(LS_AUTH);
-    localStorage.removeItem(LS_TEAM);
+  d.querySelector('#meLogout').onclick = async () => {
+    await logout();   // 알림 구독을 이 계정에서 떼고 로그인·소속 팀을 지운다 (다른 로그아웃 버튼과 같다)
     location.href = '../score/';
   };
   return d;
@@ -2560,7 +2360,7 @@ function renderGames(){
     const win = g.players.filter(p=>p.ranking===1).map(p=>p.name).join(', ');
     const all = g.players.map(p=>p.name).join(', ');
     return `<tr onclick="showGame('${g.id}')" style="cursor:pointer">
-      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.name||g.type)}</td>
+      <td class="name">${esc(g.date)}</td><td class="name">${esc(g.type)}</td>
       <td class="name">${esc(all)}</td><td class="name win">🏆 ${esc(win)}</td></tr>`;
   };
 
@@ -2603,15 +2403,11 @@ function renderGames(){
     gamesIO.observe(more);
   }
 
-  const refreshGamesSub = () => {
-    const sub = document.getElementById('sub');
-    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
-  };
   const applyGamesRange = () => {
     rankFrom = el.querySelector('.pg-period-from').value;
     rankTo = el.querySelector('.pg-period-to').value;
     DATA = getFilteredData();
-    refreshGamesSub();
+    updateSub();
     show('games');
   };
   el.querySelector('.pg-period-from').onchange = applyGamesRange;
@@ -2659,7 +2455,7 @@ function showGame(id){
   const el = $(`<div>
     <button class="back">← 경기 목록으로</button>
     <div class="card">
-      <h2 style="margin:0 0 4px">🎱 ${esc(g.name||g.type)}</h2>
+      <h2 style="margin:0 0 4px">🎱 ${esc(g.type)}</h2>
       <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}</div>
       <div class="scroll">
         <table class="statgrid">
@@ -2687,7 +2483,7 @@ async function initDashboard() {
     const [games, members, adm, hdcp] = await Promise.all([
       fetchGames(),
       fetchMembers().catch(() => []),
-      fetchAdmin(),
+      adminP,
       fetchHandicapHistory()
     ]);
     RAW_GAMES = games;
@@ -2695,7 +2491,7 @@ async function initDashboard() {
     IS_ADMIN = adm;
     RAW_HDCP = hdcp;
     DATA = getFilteredData();
-    if (sub) sub.textContent = '최종 업데이트 ' + DATA.updated + ' · 총 ' + DATA.games.length + '경기 · 선수 ' + DATA.players.length + '명';
+    updateSub();
     const t = new URLSearchParams(location.search).get('tab') || 'home';
     if (t === 'me') { show('home'); openMeModal(); }   // 점수판에서 넘어온 내 정보 딥링크 → 팝업
     else if (t === 'admin') { if (IS_ADMIN) renderAdminMenu(); else show('home'); }   // 점수판·캘린더 설정의 관리자 메뉴 버튼
@@ -2732,9 +2528,7 @@ function show(v){
       logoutBtn.style.display = '';
       logoutBtn.onclick = async () => {
         if(!confirm('로그아웃할까요? 처음 화면으로 돌아갑니다.')) return;
-        // 알림 구독은 계정에 묶인다 — 끊고 나가야 다음 사람의 알림 투표가 내 이름으로 가지 않는다
-        await pushDetach();
-        try { localStorage.removeItem(LS_AUTH); localStorage.removeItem(LS_TEAM); } catch(e){}
+        await logout();   // 알림 구독을 이 계정에서 떼고 로그인·소속 팀을 지운다
         location.href = '../score/';
       };
     } else {
@@ -2751,34 +2545,11 @@ function show(v){
 }
 document.querySelectorAll('.tab').forEach(t=>{ if(t.id!=='btnSettings') t.onclick=()=>show(t.dataset.v); });
 
-// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══ — 테마 헬퍼는 common.js 에서 import
-const LS_VOICE = 'dangScoreVoice';
-const getVoice = () => { try { const v = localStorage.getItem(LS_VOICE); return v == null ? true : JSON.parse(v); } catch(e){ return true; } };
-const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b)); } catch(e){} };
-(function initSettings(){
-  const modal = document.getElementById('setModal'); if (!modal) return;
-  const vbtn = document.getElementById('setVoice');
-  const themeBtns = modal.querySelectorAll('#setTheme button');
-  const sync = () => {
-    vbtn.classList.toggle('on', getVoice());
-    const cur = getTheme();
-    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === cur));
-  };
-  const open = () => { sync(); modal.classList.add('on'); };
-  const close = () => modal.classList.remove('on');
-  document.getElementById('btnSettings').onclick = open;
-  document.getElementById('setClose').onclick = close;
-  modal.onclick = e => { if (e.target === modal) close(); };
-  document.getElementById('setTeam').onclick = () => { close(); if (getAuth()) openTeamModal(); else openMeModal(); };
-  document.getElementById('setMe').onclick = () => { close(); openMeModal(); };
-  vbtn.onclick = () => { const nv = !getVoice(); setVoice(nv); vbtn.classList.toggle('on', nv); };
-  themeBtns.forEach(b => b.onclick = () => {
-    const t = b.dataset.t;
-    try { if (t === 'system') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, t); } catch(e){}
-    applyTheme(t); sync();
-  });
-  applyTheme(getTheme());
-})();
+// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══ — 공통 모듈
+initSettingsModal({
+  onTeam: () => { if (getAuth()) openTeamModal(); else openMeModal(); },   // 로그인 전엔 로그인 안내가 있는 내 정보로
+  onMe: openMeModal
+});
 initPushSwitch(() => getAuth()?.uid || null);
 
 // 내 정보 설정 모달 닫기 (× 버튼 / 배경 클릭)
@@ -2789,12 +2560,13 @@ initPushSwitch(() => getAuth()?.uid || null);
   m.onclick = e => { if (e.target === m) closeMeModal(); };
 })();
 
+// 설정 창의 관리자 메뉴 버튼 — 관리자인지 묻는 김에 받은 답을 initDashboard 가 그대로 쓴다
+const adminP = initAdminEntry(() => getAuth()?.uid, renderAdminMenu);
 initDashboard();
 
 // ══ 서비스 워커 등록 + 자동 업데이트 ══ (공통 모듈)
 registerSW();
 logVisit('record', () => getAuth()?.uid);   // 관리자 메뉴의 방문 기록 (30분 넘게 비웠다 들어올 때만 센다)
-initAdminEntry(() => getAuth()?.uid, renderAdminMenu);
 
 
 // ══ 관리자 메뉴: 회원 정보 수정 전용 화면 ══

@@ -1,6 +1,6 @@
-import { sbFetch, sbAuth } from '../record/supabase.js';
-import { registerSW, getTheme, applyTheme, LS_THEME, initTeamModal,
-         pushAttach, pushDetach, initPushSwitch, logVisit, initAdminEntry } from '../record/common.js';
+import { sbFetch, sbAuth, patchAuth } from '../record/supabase.js';
+import { registerSW, initSettingsModal, getVoice, setVoice, initTeamModal, fetchMyTeams, renderTeamBar as drawTeamBar,
+         pushAttach, logout, initPushSwitch, logVisit, initAdminEntry } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
 const show = id => document.querySelectorAll('.screen').forEach(el => el.style.display = el.id === id ? 'flex' : 'none');
@@ -28,11 +28,8 @@ const ZNAMES = ['⚪ 흰 공', '🟡 노란 공', '⚪ 흰 공', '🟡 노란 �
 const TZNAMES = ['우리 팀', '상대 팀'];
 
 const api = {
-  members: () => sbFetch('/rest/v1/profiles?select=id,display_name,handicap&order=display_name'),
   teamRoster: teamId => sbFetch('/rest/v1/team_members?select=profiles(id,display_name,handicap)&team_id=eq.' + teamId),
-  myTeamsRpc: () => sbFetch('/rest/v1/rpc/my_teams', { method: 'POST', body: JSON.stringify({}) }),
   joinTeam: code => sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) }),
-  createTeam: name => sbFetch('/rest/v1/rpc/create_team', { method: 'POST', body: JSON.stringify({ team_name: name }) }),
   myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
   createProfile: (uid, name, handicap) => sbFetch('/rest/v1/profiles', { method: 'POST', body: JSON.stringify({ id: uid, display_name: name, handicap: handicap || null }) }),
   submitGame: payload => sbFetch('/rest/v1/games', { method: 'POST', body: JSON.stringify(payload) })
@@ -118,19 +115,19 @@ function translateAuthError(m){
   if (/fetch|Network/i.test(m)) return '인터넷 연결을 확인해 주세요';
   return '문제가 발생했어요. 다시 시도해 주세요';
 }
-$('#btnGuest').onclick = () => { show('setup'); toast('게스트 모드 — 기록은 저장되지 않아요'); };
+$('#btnGuest').onclick = () => { syncSetup(); show('setup'); toast('게스트 모드 — 기록은 저장되지 않아요'); };
+$('#btnLogout').onclick = async () => {
+  if (!confirm('처음 화면으로 돌아갈까요?')) return;
+  await logout();   // 알림 구독을 이 계정에서 떼고 로그인·소속 팀을 지운다
+  auth = null; currentTeam = null; myTeams = [];
+  exitFS(); show('auth');
+};
 
 // 내 소속 팀 목록을 불러오고 현재 팀을 확정한다. (실패 시 전역 폴백 유지)
 async function loadTeams(){
   if (!auth || !auth.uid) { myTeams = []; renderTeamBar(); return; }
-  try {
-    const rows = await api.myTeamsRpc();
-    myTeams = Array.isArray(rows) ? rows : [];
-    const remembered = lsGet(LS_TEAM, null);
-    if (remembered && myTeams.some(t => t.id === remembered)) currentTeam = remembered;
-    else currentTeam = myTeams[0] ? myTeams[0].id : null;
-    lsSet(LS_TEAM, currentTeam);
-  } catch(e){ /* my_teams 함수 미배포 등 → 전역 폴백 */ }
+  try { ({ teams: myTeams, current: currentTeam } = await fetchMyTeams()); }
+  catch(e){ /* my_teams 함수 미배포 등 → 전역 폴백 */ }
   renderTeamBar();
 }
 
@@ -150,7 +147,7 @@ async function loadMembers(){
     if (auth && auth.uid) {
       const me = members.find(m => m.id === auth.uid);
       if (me && me.display_name && me.display_name !== auth.name) {
-        auth.name = me.display_name; lsSet(LS_AUTH, auth);
+        auth = patchAuth({ name: me.display_name }) || auth;   // 갱신된 토큰을 옛 사본으로 덮지 않게
       }
     }
   } catch(e){ /* 완전 실패 시 캐시 유지 */ }
@@ -163,24 +160,11 @@ try { localStorage.removeItem('dangClubEvents'); } catch(e){}
 
 // 설정 화면 상단의 소속 팀 스위처
 function renderTeamBar(){
-  const bar = $('#teamBar'), sel = $('#teamSel');
-  if (!bar || !sel) return;
-  if (!auth) { bar.style.display = 'none'; return; }
-  bar.style.display = 'flex';
-  if (!myTeams.length) {
-    sel.innerHTML = '<option value="">소속 팀 없음</option>';
-    sel.disabled = true;
-  } else {
-    sel.innerHTML = myTeams.map(t =>
-      `<option value="${esc(t.id)}"${t.id === currentTeam ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
-    sel.disabled = myTeams.length < 2;   // 팀이 하나면 표시만 (전환 불가)
-  }
-  sel.onchange = async () => {
-    if (!sel.value) return;
-    currentTeam = sel.value; lsSet(LS_TEAM, currentTeam);
+  drawTeamBar(!!auth, myTeams, currentTeam, async id => {
+    currentTeam = id; lsSet(LS_TEAM, currentTeam);
     await loadMembers(); syncSetup();
     toast('소속 팀 전환됨');
-  };
+  });
 }
 
 // 팀 설정 모달 — 공통 모듈(common.js)로 이동. 앱별 차이(콜백)만 주입.
@@ -295,30 +279,13 @@ function fillSelect(i, isUserAction = false){
   // 본인은 '상대' 슬롯 목록에선 제외하되, 본인이 배정된 '나' 슬롯에선 유지(이름 자동 채움용)
   const listMembers = members.filter(m => !auth || m.id !== auth.uid || prefs.pids[i] === auth.uid);
   
-  sel.innerHTML = listMembers.map(m => `<option value="${esc(m.id)}">${esc(m.display_name)}</option>`).join('') +
+  // 아직 아무도 안 고른 자리는 숨긴 빈 옵션을 맨 앞에 둔다 — 그냥 두면 브라우저가 첫 선수를
+  // 골라 놓고 applySel 이 그 사람으로 저장해 버린다. ('선수 선택…' 같은 글자는 넣지 않는다)
+  const blank = !cur && !prefs.names[i] ? '<option value="" style="display:none;"></option>' : '';
+  sel.innerHTML = blank + listMembers.map(m => `<option value="${esc(m.id)}">${esc(m.display_name)}</option>`).join('') +
     `<option value="${MANUAL}">✏️ 직접 입력</option>`;
-    
-  // 현재 값이 있으면 선택하고, 없으면 빈 값(아무것도 선택안됨) 유지
-  // option value="" 가 없더라도 강제로 첫번째나 빈 값을 지정
-  if (cur) {
-    sel.value = cur;
-  } else if (prefs.names[i]) {
-    sel.value = MANUAL;
-  } else {
-    // 아무것도 선택되지 않았을 때의 처리를 위해 빈 옵션을 숨겨서 추가해둘 수도 있지만
-    // select 요소의 value를 임의로 지정해둔다 (브라우저가 첫번째 옵션을 보여주긴 함)
-    // 그러나 "선수 선택.."이라는 글자는 보이지 않음
-  }
-  
-  // 첫 로드 시(isUserAction=false) sel.value가 강제로 첫번째 옵션으로 지정되었다면
-  // 현재 prefs에 그 값이 없으므로(cur가 빈값) applySel에서 덮어쓰게 될 수 있음.
-  // 따라서 빈 값일 땐 일단은 빈 문자열로 두는 보이지 않는 option 하나가 필요할 수 있음.
-  // 사용자가 '선수선택..' 글자를 싫어하는 것이므로 빈 라벨 옵션을 추가.
-  if (!cur && !prefs.names[i]) {
-    sel.insertAdjacentHTML('afterbegin', '<option value="" style="display:none;"></option>');
-    sel.value = '';
-  }
-  
+  sel.value = cur || (prefs.names[i] ? MANUAL : '');
+
   applySel(i, isUserAction);
 }
 
@@ -393,17 +360,6 @@ function normalizeMyBall(){
 
 function syncSetup(modeChanged = false){
   normalizeMyBall();
-  const lo = $('#btnLogout');
-  if (lo) lo.onclick = async () => {
-    if (!confirm('처음 화면으로 돌아갈까요?')) return;
-    // 알림 구독은 계정에 묶인다 — 끊지 않고 나가면 다음 사람이 로그인해도
-    // 알림의 참/불참 버튼은 이전 계정 이름으로 투표한다. auth 를 지우기 전에 끊는다.
-    await pushDetach();
-    auth = null; localStorage.removeItem(LS_AUTH);
-    localStorage.removeItem(LS_TEAM); currentTeam = null; myTeams = [];
-    exitFS(); show('auth');
-  };
-
   renderTeamBar();
 
   document.querySelectorAll('#gameTypeSeg button').forEach(b => {
@@ -428,22 +384,16 @@ window.openTargetPopup = function(i) {
   $('#tvalEdit').textContent = prefs.targets[i];
   $('#targetOvl').classList.add('on');
 };
-$('#btnTargetMinus').onclick = (e) => {
+const stepTarget = d => e => {
   e.preventDefault(); e.stopPropagation();
-  let t = curTargetEdit;
-  prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] - 1));
+  const t = curTargetEdit;
+  prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + d));
   $('#tvalEdit').textContent = prefs.targets[t];
   if($('#tval'+t)) $('#tval'+t).textContent = prefs.targets[t];
   lsSet(LS_PREFS, prefs); vib(8);
 };
-$('#btnTargetPlus').onclick = (e) => {
-  e.preventDefault(); e.stopPropagation();
-  let t = curTargetEdit;
-  prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + 1));
-  $('#tvalEdit').textContent = prefs.targets[t];
-  if($('#tval'+t)) $('#tval'+t).textContent = prefs.targets[t];
-  lsSet(LS_PREFS, prefs); vib(8);
-};
+$('#btnTargetMinus').onclick = stepTarget(-1);
+$('#btnTargetPlus').onclick = stepTarget(1);
 
 window.setCushGoal = function(n){
   prefs.cushGoal = n;
@@ -533,10 +483,9 @@ $('#btnStart').onclick = () => {
   const err = $('#sErr'); err.textContent = '';
   const isTeam = prefs.gameType === '팀전';
   const N = isTeam ? 4 : parseInt(prefs.gameType.replace('인',''), 10);
-  const totalPlayers = N;
-  
+
   let pNames = [], pPids = [], pTargets = [];
-  for(let i=0; i<totalPlayers; i++){
+  for(let i=0; i<N; i++){
     const nm = $('#name'+i) ? $('#name'+i).value.trim() : prefs.names[i];
     if(!nm && prefs.pids[i]) pNames.push(members.find(x => x.id === prefs.pids[i])?.display_name || '');
     else pNames.push(nm || '');
@@ -544,7 +493,7 @@ $('#btnStart').onclick = () => {
   }
   
   const uniqueKeys = new Set();
-  for(let i=0; i<totalPlayers; i++){
+  for(let i=0; i<N; i++){
     if(!pNames[i]) return err.textContent = '모든 선수를 선택하거나 이름을 입력하세요';
     const key = pPids[i] ? 'id:' + pPids[i] : 'nm:' + pNames[i];
     if(uniqueKeys.has(key)) return err.textContent = '중복된 선수가 있습니다. 각기 다른 선수를 선택해주세요.';
@@ -564,16 +513,8 @@ $('#btnStart').onclick = () => {
   S = {
     type: prefs.gameType,
     names: [...pNames], pids: [...pPids], targets: [...pTargets],
-    sc: Array(N).fill(0), indSc: Array(N).fill(0),
-    inn: Array(N).fill(0), ballInn: Array(N).fill(0), br: Array(N).fill(0), miss: Array(N).fill(0), fouls: Array(N).fill(0),
-    done: Array(N).fill(false),
-    cush: Array(N).fill(0), indCush: Array(N).fill(0), cushInn: Array(N).fill(0),
-    finished: Array(N).fill(false), rank: Array(N).fill(0), cushGoalAt: Array(N).fill(null),
-    round: prefs.cushGoal ?? 1, lastInning: false, winners: [],
-    tp: 0, tpPts: 0, turn: 0, first: 0, tc: 0,
-    timeMs: Array(N).fill(0), turnStart: Date.now(),
-    timeLimitMs: (prefs.timeLimit ?? 0) * 60000, timeUp: false,
-    hist: [], fin: false, saved: false, t0: Date.now()
+    first: 0, timeLimitMs: (prefs.timeLimit ?? 0) * 60000,
+    ...freshCounters(N, 0)
   };
   save(); buildGameZones(); render(); show('game'); reqFS();
   toast(`${isTeam ? TZNAMES[S.first] : S.names[S.first]} 선공으로 시작!`);
@@ -586,8 +527,7 @@ const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('
 const vib = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} };
 
 // 점수 음성 안내: 탭할 때마다 현재 점수를 한국어로 읽어준다 (메뉴에서 켜고 끔)
-const LS_VOICE = 'dangScoreVoice';
-let voiceOn = lsGet(LS_VOICE, true);
+let voiceOn = getVoice();
 const KD = ['','일','이','삼','사','오','육','칠','팔','구'];
 const koNum = n => {
   if (n < 0) return '마이너스 ' + koNum(-n);
@@ -605,6 +545,22 @@ const speak = txt => {
   } catch(e){}
 };
 function save(){ lsSet(LS_STATE, S); }
+
+// 한 경기의 진행 기록 — 새 경기와 '점수 초기화'가 같은 출발점을 쓴다.
+// (따로 적어 두면 한쪽에만 새 항목이 늘어, 초기화한 뒤에도 개인 점수·알 이닝·파울이 남는다)
+function freshCounters(N, turn){
+  const z = () => Array(N).fill(0);
+  return {
+    sc: z(), indSc: z(), inn: z(), ballInn: z(), br: z(), miss: z(), fouls: z(),
+    done: Array(N).fill(false), cush: z(), indCush: z(), cushInn: z(),
+    finished: Array(N).fill(false), rank: z(), cushGoalAt: Array(N).fill(null),
+    round: prefs.cushGoal ?? 1, lastInning: false, winners: [],
+    tp: 0, tpPts: 0, turn, tc: 0,
+    timeMs: z(), turnStart: Date.now(), timeUp: false,
+    paused: false, pausedMs: 0, pauseStart: null,
+    hist: [], fin: false, saved: false, t0: Date.now()
+  };
+}
 
 let wl = null;
 async function wakeLock(){ try { wl = await navigator.wakeLock.request('screen'); } catch(e){} }
@@ -649,20 +605,24 @@ window.togglePause = function(){
     S.turnStart = null;
     S.paused = true;
     S.pauseStart = now;
-    $('#gameZones').classList.add('paused');
-    if ($('#pauseOverlay')) $('#pauseOverlay').style.opacity = '1';
-    $('#btnPause').innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   } else {
     // 재개: 정지 구간을 누적 정지시간에 더하고, 턴 타이머를 다시 시작
     S.pausedMs = (S.pausedMs || 0) + (now - (S.pauseStart || now));
     S.paused = false;
     S.turnStart = now;
-    $('#gameZones').classList.remove('paused');
-    if ($('#pauseOverlay')) $('#pauseOverlay').style.opacity = '0';
-    $('#btnPause').innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
   }
+  setPausedUI(S.paused);
   save();
 };
+
+// 일시정지 화면 — 점수 칸을 어둡게 막고, 버튼은 누르면 될 일(▶ 재개 / ‖ 정지)을 보여 준다
+const ICON_PLAY  = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const ICON_PAUSE = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+function setPausedUI(on){
+  $('#gameZones').classList.toggle('paused', on);
+  $('#pauseOverlay').style.opacity = on ? '1' : '0';
+  $('#btnPause').innerHTML = on ? ICON_PLAY : ICON_PAUSE;
+}
 
 function buildGameZones() {
   if (!S) return;
@@ -675,14 +635,12 @@ function buildGameZones() {
     if (isTeam && S.names) {
       zname = `${i%2 === 0 ? 'A팀' : 'B팀'} ${S.names[i]}`;
     }
-    let tgt = (S.targets && S.targets[i]) ? S.targets[i] : 15;
-    
     gameHtml += `
       <div class="zone" id="zone${i}">
         <button class="minusbtn" id="mbtn${i}">파울</button>
         <span class="runbadge" id="run${i}">+0</span>
         <div class="zname">
-          <div class="zname-text"><span id="gball${i}"></span><span id="gname${i}">${esc(zname)}</span></div>
+          <div class="zname-text"><span id="gball${i}" style="margin-right:4px"></span><span id="gname${i}">${esc(zname)}</span></div>
           <span class="turnchip">치는 중</span>
         </div>
         <div class="zscore" id="gsc${i}">0</div>
@@ -832,6 +790,9 @@ function tapZone(i){
 //                        쿠션만 친 이닝은 알을 칠 수 없으므로 공타로 세지 않는다.
 // inn 은 총 턴 수로 남겨 둔다 — 다인전 후구 판정(이닝 경계)이 이 값에 의존한다.
 function ballInn(i){ return (S.ballInn && S.ballInn[i]) || 0; }
+// 선수 개인 점수·쿠션 — 팀전은 sc/cush 가 팀 공유값이라 개인 몫은 indSc/indCush 에 따로 센다
+const indScore  = i => (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
+const indCushOf = i => (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
 
 function closeInning(i, isMiss){
   // 턴이 끝날 때 마무리 쿠션 단계면 이번 이닝에 쿠션을 쳐볼 수 있었다는 뜻.
@@ -975,7 +936,6 @@ let zoneCache = [];
 
 function render(){
   if (!S) return;
-  const isTeam = S.type === '팀전';
   const N = S.sc.length;
   for(let i=0; i<N; i++) {
     const c = zoneCache[i];
@@ -1005,10 +965,7 @@ function render(){
     el.classList.toggle('y', !isWhite);
     
     const ballSpan = c ? c.gball : $('#gball'+i);
-    if (ballSpan) {
-      ballSpan.textContent = isWhite ? '⚪ ' : '🟡 ';
-      ballSpan.style.marginRight = '4px';
-    }
+    if (ballSpan) ballSpan.textContent = isWhite ? '⚪ ' : '🟡 ';
     
     const gscEl = c ? c.gsc : $('#gsc'+i);
     const gstatEl = c ? c.gstat : $('#gstat'+i);
@@ -1027,8 +984,7 @@ function render(){
       }
       // 에버 분모는 알 이닝(= 총 이닝 − 쿠션 이닝). 이 분기는 아직 알을 치는 중이라 현재 턴도 알 이닝으로 센다.
       const curInn = Math.max(1, ballInn(i) + (S.turn === i ? 1 : 0));
-      const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];   // 팀전은 sc가 팀 공유값 → 개인 에버는 indSc로
-      const ev = (indS / curInn).toFixed(3);
+      const ev = (indScore(i) / curInn).toFixed(3);
       const curHr = (S.turn === i && S.tp > S.br[i]) ? S.tp : S.br[i];
       if (gstatEl) gstatEl.textContent = `에버 ${ev} · 하이런 ${curHr}`;
     }
@@ -1095,13 +1051,11 @@ function saveGame(){
   const pl = [];
   for (let i = 0; i < N; i++) {
     const rank = S.rank[i] || lastRank;
-    const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
-    const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
     pl.push({
       id: S.pids[i] || null, name: S.names[i], win: rank === 1, rank,
-      score: indS, target: S.targets[i], innings: S.inn[i],
+      score: indScore(i), target: S.targets[i], innings: S.inn[i],
       ballInn: ballInn(i),   // 알 이닝 — 에버·득점률·평균 타수의 분모
-      highRun: S.br[i], misses: S.miss[i], fouls: (S.fouls && S.fouls[i]) || 0, cushMade: indC,
+      highRun: S.br[i], misses: S.miss[i], fouls: (S.fouls && S.fouls[i]) || 0, cushMade: indCushOf(i),
       cushInn: S.cushInn[i], timeMs: (S.timeMs && S.timeMs[i]) || 0, isTeam
     });
   }
@@ -1143,8 +1097,7 @@ function win(winnerIdx){
   let html = '<tr><th>선수</th><th>점수</th><th>에버</th><th>하이런</th></tr>';
   for(let i=0; i<N; i++){
     const nm = isTeam ? `${i%2===0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
-    const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
-    const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
+    const indS = indScore(i), indC = indCushOf(i);
     // 이미 등수가 확정된 선수는 그때의 쿠션 개수로 표시(꼴등 연장으로 S.round 가 올라간 경우 대비)
     const cushGoal = (S.cushGoalAt && S.cushGoalAt[i] != null) ? S.cushGoalAt[i] : S.round;
     const scStr = (S.done[i] && cushGoal > 0) ? `쿠션 ${indC}/${cushGoal}` : `${indS}/${S.targets[i]}`;
@@ -1200,35 +1153,24 @@ function displayRanks(){
   return out;
 }
 
-// 아직 순위가 확정되지 않은 유닛(개인전=선수, 팀전=팀 대표 0/1)을 달성 비율로 순위 매김.
+// 아직 순위가 확정되지 않은 유닛을 위의 잠정 순위 그대로 확정한다.
 // 이미 정식 완주해 순위가 있는 선수는 그대로 두고, 나머지를 그 뒤 등수로 채운다.
-function rankRemainingByRatio(){
-  const N = S.sc.length;
-  const isTeam = S.type === '팀전' && N === 4;
-  const reps = isTeam ? [0, 1] : [...Array(N).keys()];
-  const pending = reps.filter(r => !S.rank[r] && !(isTeam && S.rank[r + 2]));
-  if (!pending.length) return;
-  const nextRank = nextRankValue();
-  pending.forEach(r => {
-    // 표준 경쟁 순위: 나보다 확실히 앞선 유닛 수 + 다음 등수 (동률은 공동)
-    const better = pending.filter(o => progAhead(o, r)).length;
-    const rk = nextRank + better;
-    S.rank[r] = rk;
-    if (isTeam) S.rank[r + 2] = rk;
-  });
+function rankRemainingByRatio(){ S.rank = displayRanks(); }
+
+// 지금 점수로 경기를 끝낸다 — 남은 선수는 달성 비율로 순위를 매기고 1등을 승자로 세운다
+function finishByRatio(){
+  rankRemainingByRatio();
+  S.finished = S.finished.map(() => true);
+  S.lastInning = false;
+  S.winners = S.rank.flatMap((r, i) => r === 1 ? [i] : []);
+  S.fin = true;
+  save();
+  showEarlyResult();
 }
 // 시간제한 종료: 이닝 경계에서 호출되므로 추가 이닝 마감 없이 현재 점수로 순위 확정
 function endGameByTime(){
   if (!S || S.fin) return;
-  const N = S.sc.length;
-  rankRemainingByRatio();
-  S.finished = S.finished.map(() => true);
-  S.lastInning = false;
-  S.winners = [];
-  for (let i = 0; i < N; i++) if (S.rank[i] === 1) S.winners.push(i);
-  S.fin = true;
-  save();
-  showEarlyResult();
+  finishByRatio();
   // 시간초과 종료: 실수/연장 대비로 되돌리기·계속하기 제공.
   // 저장은 '경기 종료'를 누를 때만(되돌리기/계속하기 후 재종료 시 중복 저장 방지).
   $('#btnWinUndo').style.display = '';
@@ -1255,20 +1197,8 @@ function rewindToRoundEnd(){
 
 function endGameEarly(){
   if (!S || S.fin) return;
-  const N = S.sc.length;
-
   rewindToRoundEnd();   // 한 바퀴가 끝난 시점까지 되감아 반쪽 이닝을 기록에서 뺀다
-
-  rankRemainingByRatio();
-
-  S.finished = S.finished.map(() => true);
-  S.lastInning = false;
-  S.winners = [];
-  for (let i = 0; i < N; i++) if (S.rank[i] === 1) S.winners.push(i);
-  S.fin = true;
-  save();
-
-  showEarlyResult();
+  finishByRatio();
   saveGame();
 }
 function showEarlyResult(){
@@ -1289,9 +1219,7 @@ function showEarlyResult(){
   const order = [...Array(N).keys()].sort((a, b) => (S.rank[a] - S.rank[b]) || (a - b));
   for (const i of order){
     const nm = isTeam ? `${i % 2 === 0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
-    const indS = (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
-    const indC = (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
-    const scStr = (S.done[i] && S.round > 0) ? `${S.targets[i]} + 쿠션${indC}` : `${indS} / ${S.targets[i]}`;
+    const scStr = (S.done[i] && S.round > 0) ? `${S.targets[i]} + 쿠션${indCushOf(i)}` : `${indScore(i)} / ${S.targets[i]}`;
     // 알 달성률, 그리고 알을 다 뺀 사람은 쿠션 진행을 따로 붙인다 (예: 100.0% + 쿠션 2/3)
     const pct = (ballRatio(i) * 100).toFixed(1) + '%' + (S.done[i] && S.round > 0 ? ` + 쿠션 ${cushMade(i)}/${S.round}` : '');
     const medal = S.rank[i] === 1 ? '🏆 ' : '';
@@ -1354,12 +1282,14 @@ if ($('#btnWinResume')) $('#btnWinResume').onclick = () => {
 $('#btnMenu').onclick = () => $('#menuOvl').classList.add('on');
 $('#btnMenuClose').onclick = () => $('#menuOvl').classList.remove('on');
 
-const updVoiceBtn = () => { const b = $('#btnVoice'); if (b) b.textContent = voiceOn ? '🔊 점수 음성: 켜짐' : '🔇 점수 음성: 꺼짐'; };
+// 음성 켬/끔 — 게임 메뉴 버튼과 설정 창 스위치가 같은 값을 바꾼다
+const updVoiceBtn = () => { $('#btnVoice').textContent = voiceOn ? '🔊 점수 음성: 켜짐' : '🔇 점수 음성: 꺼짐'; };
+function voiceChanged(on){
+  voiceOn = on; updVoiceBtn();
+  if (on) speak('음성 안내를 켰습니다'); else { try { speechSynthesis.cancel(); } catch(e){} }
+}
 updVoiceBtn();
-if ($('#btnVoice')) $('#btnVoice').onclick = () => {
-  voiceOn = !voiceOn; lsSet(LS_VOICE, voiceOn); updVoiceBtn();
-  if (voiceOn) speak('음성 안내를 켰습니다'); else { try { speechSynthesis.cancel(); } catch(e){} }
-};
+$('#btnVoice').onclick = () => { setVoice(!voiceOn); voiceChanged(!voiceOn); };
 $('#btnEndGame').onclick = () => {
   if(confirm('지금까지 뺀 알의 비율로 순위를 정하고(알을 다 뺀 사람끼리는 마무리 쿠션 수로) 경기를 기록할까요?')){
     $('#menuOvl').classList.remove('on');
@@ -1374,19 +1304,14 @@ $('#btnMenuNew').onclick = () => {
 $('#btnMenuRestart').onclick = () => {
   if(confirm('점수를 모두 0으로 초기화할까요?')){
     $('#menuOvl').classList.remove('on');
-    const N = S.sc.length;
-    Object.assign(S, { sc:Array(N).fill(0), inn:Array(N).fill(0), br:Array(N).fill(0), miss:Array(N).fill(0),
-                       done:Array(N).fill(false), cush:Array(N).fill(0), cushInn:Array(N).fill(0),
-                       finished:Array(N).fill(false), round:prefs.cushGoal ?? 1, lastInning:false, winners:[],
-                       tp:0, turn:S.first, tc:0, timeMs:Array(N).fill(0), turnStart:Date.now(),
-                       hist:[], fin:false, saved:false, t0:Date.now(), timeUp:false });
+    Object.assign(S, freshCounters(S.sc.length, S.first));
+    setPausedUI(false);
     save(); buildGameZones(); render(); toast('점수가 초기화되었습니다.');
   }
 };
 document.querySelectorAll('.ovl').forEach(o => o.addEventListener('pointerdown', e => { if (e.target === o) o.classList.remove('on'); }));
-$('#targetOvl').addEventListener('pointerdown', e => { if (e.target === $('#targetOvl')) $('#targetOvl').classList.remove('on'); });
 $('#btnTargetClose').onclick = () => $('#targetOvl').classList.remove('on');
-if ($('#btnTimeClose')) $('#btnTimeClose').onclick = () => $('#timeOvl').classList.remove('on');
+$('#btnTimeClose').onclick = () => $('#timeOvl').classList.remove('on');
 
 // ══ Queue & Init ══
 function queueAdd(p){ const q = lsGet(LS_QUEUE, []); q.push(p); lsSet(LS_QUEUE, q); }
@@ -1448,8 +1373,7 @@ function init(){
   if (S && S.sc && !S.fin) {
     buildGameZones(); render(); show('game'); queueFlush();
     if (S.paused) {
-      $('#gameZones').classList.add('paused');
-      $('#btnPause').textContent = '►';
+      setPausedUI(true);
       // 앱이 백그라운드/종료돼 있던 동안은 일시정지 구간에 포함시켜 시계에서 계속 제외
       S.pauseStart = Date.now();
     }
@@ -1457,34 +1381,12 @@ function init(){
     syncSetup(); show('setup');
   }
 }
-// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══ — 테마 헬퍼는 common.js 에서 import
-(function initSettings(){
-  const modal = $('#setModal'); if (!modal) return;
-  const vbtn = $('#setVoice');
-  const themeBtns = modal.querySelectorAll('#setTheme button');
-  const sync = () => {
-    vbtn.classList.toggle('on', voiceOn);
-    const cur = getTheme();
-    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === cur));
-  };
-  const open = () => { sync(); modal.classList.add('on'); };
-  const close = () => modal.classList.remove('on');
-  $('#btnSettings').onclick = open;
-  $('#setClose').onclick = close;
-  modal.onclick = e => { if (e.target === modal) close(); };
-  $('#setTeam').onclick = () => { close(); if (auth) openTeamModal(); else toast('로그인이 필요합니다'); };
-  $('#setMe').onclick = () => { location.href = '../record/?tab=me'; };
-  vbtn.onclick = () => {
-    voiceOn = !voiceOn; lsSet(LS_VOICE, voiceOn); updVoiceBtn(); vbtn.classList.toggle('on', voiceOn);
-    if (voiceOn) speak('음성 안내를 켰습니다'); else { try { speechSynthesis.cancel(); } catch(e){} }
-  };
-  themeBtns.forEach(b => b.onclick = () => {
-    const t = b.dataset.t;
-    try { if (t === 'system') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, t); } catch(e){}
-    applyTheme(t); sync();
-  });
-  applyTheme(getTheme());
-})();
+// ══ 설정 모달 (팀 설정 / 내 정보 설정 / 음향 / 테마) ══ — 공통 모듈
+initSettingsModal({
+  onTeam: () => { if (auth) openTeamModal(); else toast('로그인이 필요합니다'); },
+  onMe: () => { location.href = '../record/?tab=me'; },   // 내 정보 화면은 기록실에만 있다
+  onVoice: voiceChanged
+});
 
 window.addEventListener('online', queueFlush);
 init();

@@ -1,4 +1,4 @@
-// 당동 공통 모듈 — score/ 와 record/ 가 공유 (테마 · 서비스워커 등록 · 팀 설정 모달)
+// 당동 공통 모듈 — score/ · record/ · calendar/ 가 공유 (테마 · 설정 창 · 팀 · 서비스워커 · 알림)
 import { sbFetch } from './supabase.js';
 
 const $id = id => document.getElementById(id);
@@ -11,6 +11,78 @@ export function applyTheme(t){
   const r = document.documentElement;
   if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t);
   else r.removeAttribute('data-theme');
+}
+
+// ── 점수 음성 켬/끔 ── 세 화면이 같은 값을 쓴다 (소리는 점수판에서만 나지만 설정은 어디서든 바꾼다)
+const LS_VOICE = 'dangScoreVoice';
+export const getVoice = () => { try { const v = localStorage.getItem(LS_VOICE); return v == null ? true : JSON.parse(v); } catch(e){ return true; } };
+export const setVoice = b => { try { localStorage.setItem(LS_VOICE, JSON.stringify(b)); } catch(e){} };
+
+/* ══ 설정 창 (⚙️) ══ — 세 화면에 같은 마크업(#setModal)이 있다.
+   앱마다 다른 건 '팀 설정'·'내 정보 설정'을 눌렀을 때 갈 곳과, 음성을 바꿨을 때 할 일뿐이다.
+   opt: { onTeam(), onMe(), onVoice(on) }  — 셋 다 창을 닫은 뒤에 불린다(onVoice 는 창을 닫지 않는다) */
+export function initSettingsModal(opt){
+  const modal = $id('setModal'); if (!modal) return;
+  const vbtn = $id('setVoice');
+  const themeBtns = modal.querySelectorAll('#setTheme button');
+  const sync = () => {
+    vbtn.classList.toggle('on', getVoice());
+    const cur = getTheme();
+    themeBtns.forEach(b => b.classList.toggle('on', b.dataset.t === cur));
+  };
+  const close = () => modal.classList.remove('on');
+  $id('btnSettings').onclick = () => { sync(); modal.classList.add('on'); };
+  $id('setClose').onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
+  $id('setTeam').onclick = () => { close(); opt.onTeam(); };
+  $id('setMe').onclick = () => { close(); opt.onMe(); };
+  vbtn.onclick = () => {
+    const on = !getVoice();
+    setVoice(on); vbtn.classList.toggle('on', on);
+    if (opt.onVoice) opt.onVoice(on);
+  };
+  themeBtns.forEach(b => b.onclick = () => {
+    const t = b.dataset.t;
+    // '시스템'은 값을 지워서 표현한다 — 문자열로 저장하면 다른 화면이 못 알아본다
+    try { if (t === 'system') localStorage.removeItem(LS_THEME); else localStorage.setItem(LS_THEME, t); } catch(e){}
+    applyTheme(t); sync();
+  });
+  applyTheme(getTheme());
+}
+
+// ── 소속 팀 ── 세 화면이 localStorage 의 같은 열쇠로 '지금 보는 팀'을 나눠 쓴다
+const LS_TEAM = 'dangCurrentTeam';
+
+// 내 소속 팀 목록과 지금 볼 팀. 기억해 둔 팀이 목록에 없으면(나갔거나 처음이면) 첫 팀으로.
+// 실패하면 던진다 — 부르는 쪽이 지금 상태를 그대로 두고 넘어간다(my_teams 미배포·오프라인).
+export async function fetchMyTeams(){
+  const rows = await sbFetch('/rest/v1/rpc/my_teams', { method: 'POST', body: '{}' });
+  const teams = Array.isArray(rows) ? rows : [];
+  let current = null;
+  try { current = JSON.parse(localStorage.getItem(LS_TEAM)); } catch(e){}
+  if (!teams.some(t => t.id === current)) current = teams[0] ? teams[0].id : null;
+  try { localStorage.setItem(LS_TEAM, JSON.stringify(current)); } catch(e){}
+  return { teams, current };
+}
+
+// 머리의 소속 팀 스위처(#teamBar / #teamSel). 팀이 하나뿐이면 보여 주기만 한다. onPick(id) = 바꿨을 때 할 일
+export function renderTeamBar(authed, teams, current, onPick){
+  const bar = $id('teamBar'), sel = $id('teamSel');
+  if (!bar || !sel) return;
+  if (!authed) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  sel.innerHTML = teams.length
+    ? teams.map(t => `<option value="${esc(t.id)}"${t.id === current ? ' selected' : ''}>${esc(t.name)}</option>`).join('')
+    : '<option value="">소속 팀 없음</option>';
+  sel.disabled = teams.length < 2;
+  sel.onchange = () => { if (sel.value) onPick(sel.value); };
+}
+
+// 로그아웃 — 알림 구독을 먼저 끊는다(아래 pushDetach 설명). 소속 팀도 지운다 — 남아 있으면
+// 로그아웃 상태로 그 팀 id 로 조회를 시도해 빈 결과가 아니라 권한 오류로 떨어진다.
+export async function logout(){
+  await pushDetach();
+  try { localStorage.removeItem('dangScoreAuth'); localStorage.removeItem(LS_TEAM); } catch(e){}
 }
 
 // ══ 기간 선택기 (기록실 조회 기간 · 캘린더 일정 기간이 함께 쓴다) ══
@@ -417,8 +489,10 @@ export async function pushAttach(uid){
 export async function pushDetach(){
   if (!pushUsable()) return;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
+    // ready 가 아니라 getRegistration — 서비스워커가 막힌 환경에선 ready 가 끝나지 않아 로그아웃이 멈춘다.
+    // 등록이 없으면 구독도 있을 수 없으니 그냥 넘어간다.
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
     if (!sub) return;
     await sbFetch('/rest/v1/push_subscriptions_beta?endpoint=eq.' + encodeURIComponent(sub.endpoint),
       { method: 'DELETE', headers: { Prefer: 'return=minimal' } }).catch(()=>{});
@@ -429,16 +503,19 @@ export async function pushDetach(){
 /* ══ 설정 창의 '👑 관리자 메뉴' 버튼 ══
    점수판·기록실·캘린더 설정 창에 같은 버튼(#setAdmin)이 숨어 있고, 사이트 관리자(profiles.is_admin)일 때만 보인다.
    여기서 숨기는 건 화면뿐이다 — 관리자 메뉴가 부르는 서버 함수들이 각자 is_admin() 으로 다시 막는다.
-   onOpen = 눌렀을 때 할 일. 관리자 메뉴는 기록실에만 있어서 점수판·캘린더는 기록실로 넘긴다. */
-export function initAdminEntry(getUid, onOpen){
+   onOpen = 눌렀을 때 할 일. 관리자 메뉴는 기록실에만 있어서 점수판·캘린더는 기록실로 넘긴다.
+   돌려주는 값 = 관리자인가(Promise<boolean>) — 기록실이 같은 값을 한 번 더 묻지 않고 그대로 쓴다. */
+export async function initAdminEntry(getUid, onOpen){
   const btn = $id('setAdmin');
-  if (!btn) return;
-  btn.onclick = () => { const m = $id('setModal'); if (m) m.classList.remove('on'); onOpen(); };
+  if (btn) btn.onclick = () => { const m = $id('setModal'); if (m) m.classList.remove('on'); onOpen(); };
   const uid = getUid();
-  if (!uid) return;
-  sbFetch('/rest/v1/profiles?select=is_admin&id=eq.' + encodeURIComponent(uid))
-    .then(d => { if (d && d[0] && d[0].is_admin) btn.style.display = ''; })
-    .catch(() => {});   // is_admin 컬럼이 없거나 오프라인이면 그냥 숨긴 채로 둔다
+  if (!uid) return false;
+  try {
+    const d = await sbFetch('/rest/v1/profiles?select=is_admin&id=eq.' + encodeURIComponent(uid));
+    const admin = !!(d && d[0] && d[0].is_admin);
+    if (admin && btn) btn.style.display = '';
+    return admin;
+  } catch(e){ return false; }   // is_admin 컬럼이 없거나 오프라인이면 그냥 숨긴 채로 둔다
 }
 
 /* ══ 방문 기록 (관리자 메뉴의 '방문 기록') ══
@@ -488,8 +565,7 @@ export function initPushSwitch(getUid){
 
   // 이 브라우저에서는 알림을 아예 받을 수 없을 때 — 숨기지 않고 이유를 보여 준다.
   // 아이폰은 Safari 에서 '홈 화면에 추가'로 설치한 앱으로 열어야만 푸시를 쓸 수 있다.
-  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-  if (!supported) {
+  if (!pushUsable()) {
     btn.disabled = true; mark(false);
     say(/iPhone|iPad/.test(navigator.userAgent)
       ? "아이폰은 Safari 공유 버튼 → '홈 화면에 추가'로 설치한 앱에서만 알림을 켤 수 있어요."
@@ -595,7 +671,7 @@ function ensureTeamModalHTML(){
 }
 
 export function initTeamModal(ctx){
-  const modal = ensureTeamModalHTML();
+  const modal = ensureTeamModalHTML();   // 없으면 만들어 붙이므로 늘 있다
 
   // 팀장일 때만: 초대코드 표시/변경 + 팀원 내보내기
   async function renderLeaderSection(){
@@ -639,97 +715,93 @@ export function initTeamModal(ctx){
   }
 
   function open(){
-    if (!modal) return;
     $id('tmCode').value = ''; $id('tmName').value = ''; $id('tmMsg').textContent = '';
     modal.style.display = 'flex';
     renderLeaderSection();
   }
-  function close(){ if (modal) modal.style.display = 'none'; }
+  function close(){ modal.style.display = 'none'; }
 
-  if (modal) {
-    $id('tmClose').onclick = close;
-    modal.onclick = e => { if (e.target === modal) close(); };
+  $id('tmClose').onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
 
-    $id('tmJoin').onclick = async () => {
-      const msg = $id('tmMsg');
-      const code = ($id('tmCode').value || '').trim().toUpperCase();
-      if (!code) { msg.textContent = '참여 코드를 입력하세요'; return; }
-      msg.textContent = '참가하는 중...';
-      try {
-        const tid = await sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) });
-        ctx.setCurrentTeam(tid);
-        await ctx.reloadTeams(); await ctx.afterChange();
-        close(); if (ctx.notify) ctx.notify('팀에 참여했어요!');
-      } catch(e){ msg.textContent = /invalid_code/.test(e.message) ? '참여 코드가 올바르지 않아요' : '참가에 실패했어요'; }
-    };
+  $id('tmJoin').onclick = async () => {
+    const msg = $id('tmMsg');
+    const code = ($id('tmCode').value || '').trim().toUpperCase();
+    if (!code) { msg.textContent = '참여 코드를 입력하세요'; return; }
+    msg.textContent = '참가하는 중...';
+    try {
+      const tid = await sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) });
+      ctx.setCurrentTeam(tid);
+      await ctx.reloadTeams(); await ctx.afterChange();
+      close(); if (ctx.notify) ctx.notify('팀에 참여했어요!');
+    } catch(e){ msg.textContent = /invalid_code/.test(e.message) ? '참여 코드가 올바르지 않아요' : '참가에 실패했어요'; }
+  };
 
-    $id('tmCreate').onclick = async () => {
-      const msg = $id('tmMsg');
-      const name = ($id('tmName').value || '').trim();
-      if (!name) { msg.textContent = '팀 이름을 입력하세요'; return; }
-      msg.textContent = '만드는 중...';
-      try {
-        const r = await sbFetch('/rest/v1/rpc/create_team', { method: 'POST', body: JSON.stringify({ team_name: name }) });
-        const t = Array.isArray(r) ? r[0] : r;
-        ctx.setCurrentTeam(t.id);
-        await ctx.reloadTeams(); await ctx.afterChange();
-        $id('tmName').value = '';
-        $id('tmMsg').innerHTML = `✅ "${esc(t.name)}" 팀 생성 완료<br>참여 코드: <b style="font-size:1.05rem">${esc(t.join_code)}</b><br><span style="color:var(--muted)">이 코드를 부원에게 공유하세요.</span>`;
-      } catch(e){
-        if (/name_taken|duplicate|unique/i.test(e.message)) msg.textContent = '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요';
-        else if (/not_authenticated/i.test(e.message)) msg.textContent = '로그인이 만료되었습니다. 다시 로그인해 주세요';
-        else msg.textContent = '팀 만들기에 실패했어요 (' + (e.message || '오류') + ')';
-      }
-    };
+  $id('tmCreate').onclick = async () => {
+    const msg = $id('tmMsg');
+    const name = ($id('tmName').value || '').trim();
+    if (!name) { msg.textContent = '팀 이름을 입력하세요'; return; }
+    msg.textContent = '만드는 중...';
+    try {
+      const r = await sbFetch('/rest/v1/rpc/create_team', { method: 'POST', body: JSON.stringify({ team_name: name }) });
+      const t = Array.isArray(r) ? r[0] : r;
+      ctx.setCurrentTeam(t.id);
+      await ctx.reloadTeams(); await ctx.afterChange();
+      $id('tmName').value = '';
+      $id('tmMsg').innerHTML = `✅ "${esc(t.name)}" 팀 생성 완료<br>참여 코드: <b style="font-size:1.05rem">${esc(t.join_code)}</b><br><span style="color:var(--muted)">이 코드를 부원에게 공유하세요.</span>`;
+    } catch(e){
+      if (/name_taken|duplicate|unique/i.test(e.message)) msg.textContent = '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요';
+      else if (/not_authenticated/i.test(e.message)) msg.textContent = '로그인이 만료되었습니다. 다시 로그인해 주세요';
+      else msg.textContent = '팀 만들기에 실패했어요 (' + (e.message || '오류') + ')';
+    }
+  };
 
-    $id('tmRegen').onclick = async () => {
-      const msg = $id('tmMsg');
-      const code = ($id('tmCurCode').value || '').trim().toUpperCase();
-      if (!code) { msg.textContent = '초대 코드를 입력하세요'; return; }
-      msg.textContent = '변경 중...';
-      try {
-        const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: ctx.getCurrentTeam(), new_code: code }) });
-        $id('tmCurCode').value = saved;
-        msg.textContent = '초대 코드가 변경되었습니다.';
-      } catch(e){
-        if (/not_authorized/.test(e.message)) msg.textContent = '팀장 권한이 없어 코드를 변경할 수 없어요';
-        else if (/code_taken|duplicate|unique/i.test(e.message)) msg.textContent = '이미 사용 중인 참여 코드입니다. 다른 코드를 입력해 주세요';
-        else msg.textContent = '코드 변경에 실패했어요';
-      }
-    };
+  $id('tmRegen').onclick = async () => {
+    const msg = $id('tmMsg');
+    const code = ($id('tmCurCode').value || '').trim().toUpperCase();
+    if (!code) { msg.textContent = '초대 코드를 입력하세요'; return; }
+    msg.textContent = '변경 중...';
+    try {
+      const saved = await sbFetch('/rest/v1/rpc/set_join_code', { method: 'POST', body: JSON.stringify({ p_team_id: ctx.getCurrentTeam(), new_code: code }) });
+      $id('tmCurCode').value = saved;
+      msg.textContent = '초대 코드가 변경되었습니다.';
+    } catch(e){
+      if (/not_authorized/.test(e.message)) msg.textContent = '팀장 권한이 없어 코드를 변경할 수 없어요';
+      else if (/code_taken|duplicate|unique/i.test(e.message)) msg.textContent = '이미 사용 중인 참여 코드입니다. 다른 코드를 입력해 주세요';
+      else msg.textContent = '코드 변경에 실패했어요';
+    }
+  };
 
-    $id('tmRename').onclick = async () => {
-      const msg = $id('tmMsg');
-      const name = ($id('tmTeamName').value || '').trim();
-      if (!name) { msg.textContent = '팀 이름을 입력하세요'; return; }
-      msg.textContent = '변경 중...';
-      try {
-        await sbFetch('/rest/v1/rpc/rename_team', { method: 'POST', body: JSON.stringify({ p_team_id: ctx.getCurrentTeam(), new_name: name }) });
-        await ctx.reloadTeams();   // 스위처 이름 갱신
-        renderLeaderSection();
-        msg.textContent = '팀 이름이 변경되었습니다.';
-      } catch(e){ msg.textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '이름 변경에 실패했어요'; }
-    };
+  $id('tmRename').onclick = async () => {
+    const msg = $id('tmMsg');
+    const name = ($id('tmTeamName').value || '').trim();
+    if (!name) { msg.textContent = '팀 이름을 입력하세요'; return; }
+    msg.textContent = '변경 중...';
+    try {
+      await sbFetch('/rest/v1/rpc/rename_team', { method: 'POST', body: JSON.stringify({ p_team_id: ctx.getCurrentTeam(), new_name: name }) });
+      await ctx.reloadTeams();   // 스위처 이름 갱신
+      renderLeaderSection();
+      msg.textContent = '팀 이름이 변경되었습니다.';
+    } catch(e){ msg.textContent = /name_taken|duplicate|unique/i.test(e.message) ? '이미 사용 중인 팀 이름입니다. 다른 이름을 입력해 주세요' : '이름 변경에 실패했어요'; }
+  };
 
-    // 팀 나가기 — 현재 팀에서 본인 소속 해제 (팀장은 최고참에게 자동 위임 후 나감)
-    const leaveBtn = $id('tmLeave');
-    if (leaveBtn) leaveBtn.onclick = async () => {
-      const cur = ctx.getCurrentTeam();
-      const me = ctx.getMyTeams().find(t => t.id === cur);
-      if (!cur || !me) return;
-      if (!confirm(`"${me.name}" 팀에서 나가시겠어요?`)) return;
-      const msg = $id('tmMsg');
-      msg.textContent = '나가는 중...';
-      try {
-        await sbFetch('/rest/v1/rpc/leave_team', { method: 'POST', body: JSON.stringify({ p_team_id: cur }) });
-        ctx.setCurrentTeam(null);            // reloadTeams 가 남은 팀 중 하나(또는 없음)로 재설정
-        await ctx.reloadTeams(); await ctx.afterChange();
-        renderLeaderSection();
-        msg.textContent = '팀에서 나갔습니다.';
-        if (ctx.notify) ctx.notify('팀에서 나갔어요');
-      } catch(e){ msg.textContent = '나가기에 실패했어요'; }
-    };
-  }
+  // 팀 나가기 — 현재 팀에서 본인 소속 해제 (팀장은 최고참에게 자동 위임 후 나감)
+  $id('tmLeave').onclick = async () => {
+    const cur = ctx.getCurrentTeam();
+    const me = ctx.getMyTeams().find(t => t.id === cur);
+    if (!cur || !me) return;
+    if (!confirm(`"${me.name}" 팀에서 나가시겠어요?`)) return;
+    const msg = $id('tmMsg');
+    msg.textContent = '나가는 중...';
+    try {
+      await sbFetch('/rest/v1/rpc/leave_team', { method: 'POST', body: JSON.stringify({ p_team_id: cur }) });
+      ctx.setCurrentTeam(null);            // reloadTeams 가 남은 팀 중 하나(또는 없음)로 재설정
+      await ctx.reloadTeams(); await ctx.afterChange();
+      renderLeaderSection();
+      msg.textContent = '팀에서 나갔습니다.';
+      if (ctx.notify) ctx.notify('팀에서 나갔어요');
+    } catch(e){ msg.textContent = '나가기에 실패했어요'; }
+  };
 
   return { open };
 }
