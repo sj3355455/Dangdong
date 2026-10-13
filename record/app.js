@@ -23,12 +23,14 @@ function stopHome(){
 // 정기전/일반 경기 구분(정기전만 보기 필터·⭐ 표시·소속 정정)은 없앴다(2026-10).
 // 모든 경기는 그냥 경기다. games.event_id 컬럼은 DB 에 남아 있지만 읽지 않는다.
 
-// ── 최소 경기 수 필터 (순위 탭) ──
-// 한두 판만 친 사람이 에버리지·승률 맨 위에 올라오는 걸 걸러내는 용도.
-// 데이터를 다시 집계하지 않고 이미 뽑힌 순위 줄만 걸러낸다 — 지금 보고 있는 모드의
-// 경기 수(통합이면 통산, 3인전이면 3인전 경기 수)를 기준으로 한다.
-const MIN_GAMES_STEPS = [1, 3, 5, 10];   // 버튼을 누를 때마다 이 순서로 돌아간다
-let minGames = 1;                        // 1 = 제한 없음
+// ── 순위 탭 집계 범위: 기간 / 최근 N경기 ──
+// 'period' 는 달력으로 고른 기간 안의 경기를 모두 센다(rankFrom~rankTo).
+// 'recent' 는 사람마다 가장 최근 N경기만 센다 — 날짜가 아니라 경기 순서로 자르므로
+// 자주 치는 사람과 가끔 치는 사람이 같은 경기 수로 견줘진다. N경기를 못 채운 사람은 순위에서 빠진다.
+// 모드(3인·4인 등)를 고르면 그 모드 경기만 놓고 최근 N경기를 센다.
+const RECENT_STEPS = [5, 10, 20];
+let rankScope = 'period';   // 'period' | 'recent'
+let recentN = 10;
 
 // ── 소속 팀 컨텍스트 (점수판과 localStorage 공유) ──
 const LS_TEAM = 'dangCurrentTeam';
@@ -85,33 +87,51 @@ function missOf(p, bInn){
   }
   return Math.max(0, Math.min(miss, bInn));
 }
-// 최소 경기 수 버튼 — 누를 때마다 1 → 3 → 5 → 10 → 1 로 돈다.
-// 셀렉트가 아니라 버튼인 이유는 옆의 표/포디움 전환 버튼과 생김새·조작을 맞추기 위해서다.
-// 도구 줄 폭이 빠듯하다 — 아이콘 없이 글자만 쓴다
-const minGamesLabel = () => minGames > 1 ? `✓ ${minGames}경기 이상` : '경기 수 무관';
-function minGamesBtnHtml(cls){
-  return `<button class="mbtn ${cls}-min ${minGames > 1 ? 'on' : ''}"
-      title="이 경기 수 이상 친 선수만 순위에 올립니다">${minGamesLabel()}</button>`;
-}
-function bindMinGames(el, cls, onChange){
-  const btn = el.querySelector('.'+cls+'-min');
-  if (!btn) return;
-  btn.onclick = () => {
-    const i = MIN_GAMES_STEPS.indexOf(minGames);
-    minGames = MIN_GAMES_STEPS[(i + 1) % MIN_GAMES_STEPS.length];
-    onChange();
-  };
-}
-
 let fullProcessCache = null;
 let filteredDataCache = null;
 let filteredCacheKey = '';
+let recentCache = { key: '', data: null };
 
 function clearProcessCache() {
   fullProcessCache = null;
   filteredDataCache = null;
   filteredCacheKey = '';
+  recentCache = { key: '', data: null };
   monthCache = { key: '', data: null };   // 홈 탭의 이번 달/지난 달 집계도 같이 버린다
+}
+
+// 경기 종류 — processData 의 typeStr 과 같은 규칙
+const gameTypeOf = g => {
+  const pls = Array.isArray(g.players) ? g.players : [];
+  return (pls.length > 0 && pls[0].isTeam) ? '팀전' : (pls.length + '인');
+};
+// 같은 사람으로 묶는 열쇠 — processData 의 pmap 키와 같은 규칙
+const playerKeyOf = p => p.id ? ('id:' + p.id) : ('nm:' + (p.name || p.id || '알 수 없음'));
+
+/* 사람마다 가장 최근 n경기만 담은 집계. mode 가 '통합'이 아니면 그 모드 경기 중에서 센다.
+   경기를 통째로 고르는 게 아니라 (경기, 선수) 짝을 고른다 — 같은 경기라도 A 에겐 최근 10경기 안이고
+   B 에겐 밖일 수 있다. 등수·보정 승률은 그 경기 전원의 순위로 내므로 다른 사람을 빼도 값이 같다. */
+function getRecentData(mode, n){
+  const key = mode + '|' + n + '|' + RAW_GAMES.length;
+  if (recentCache.key === key && recentCache.data) return recentCache.data;
+  const pick = new Map();   // 경기 → 그 경기에서 담을 선수 객체들
+  const cnt = {};
+  // RAW_GAMES 는 played_at 오름차순 → 뒤에서부터 훑어야 최근 경기부터 센다
+  for (let i = RAW_GAMES.length - 1; i >= 0; i--) {
+    const g = RAW_GAMES[i];
+    if (!g || !Array.isArray(g.players)) continue;
+    if (mode !== '통합' && gameTypeOf(g) !== mode) continue;
+    for (const p of g.players) {
+      const k = playerKeyOf(p);
+      if ((cnt[k] || 0) >= n) continue;
+      cnt[k] = (cnt[k] || 0) + 1;
+      (pick.get(g) || pick.set(g, new Set()).get(g)).add(p);
+    }
+  }
+  const games = RAW_GAMES.filter(g => pick.has(g));
+  const data = processData(games, RAW_MEMBERS, (g, p) => pick.get(g).has(p));
+  recentCache = { key, data };
+  return data;
 }
 
 function getFullProcessData() {
@@ -328,7 +348,8 @@ function attachGameAdmin(el, id){
   el.appendChild(bar);
 }
 
-function processData(games, members) {
+// keep(g, p) 를 주면 false 인 선수 몫은 그 경기에서 집계하지 않는다(최근 N경기용). 경기 목록은 그대로 둔다.
+function processData(games, members, keep) {
   const pmap = {};
   const dataGames = [];
   // 이름은 경기에 저장된 값을 그대로 쓴다. (이름 변경 시 rename_player 함수가
@@ -371,6 +392,7 @@ function processData(games, members) {
     };
 
     for (const p of pls) {
+      if (keep && !keep(g, p)) continue;
       const pName = p.name || p.id || "알 수 없음";
       // 회원은 계정 id로 묶어 이름이 바뀌어도 같은 사람으로 집계. 게스트는 이름으로 묶는다.
       const key = p.id ? ('id:' + p.id) : ('nm:' + pName);
@@ -709,9 +731,10 @@ function outlierOf(rows, COLS){
 }
 const isOut = (outs, p, k) => !!(outs.get(k) && outs.get(k).has(p));
 
-function rankRows(mode){
-  if(mode==='통합') return DATA.players.filter(p=>p.games>0 && p.id);
-  return DATA.players
+function rankRows(mode, D){
+  D = D || DATA;
+  if(mode==='통합') return D.players.filter(p=>p.games>0 && p.id);
+  return D.players
     .filter(p=>p.modes[mode] && p.modes[mode].games>0 && p.id)
     .map(p=>({name:p.name, handicap:p.handicap, ...p.modes[mode]}));
 }
@@ -833,8 +856,8 @@ function imgKit(W, H){
 // 저장 이미지 머리말의 조건 줄 — 지금 화면에 걸린 모드·필터·기간을 그대로 적는다
 function rankCondText(){
   const parts = [rankMode === '통합' ? '통산 기준' : rankMode + '전'];
-  if (minGames > 1) parts.push(minGames + '경기 이상');
-  parts.push((rankFrom || rankTo) ? `${ddmy(rankFrom) || '처음'} ~ ${ddmy(rankTo) || '오늘'}` : '전체 기간');
+  if (rankScope === 'recent') parts.push('개인별 최근 ' + recentN + '경기');
+  else parts.push((rankFrom || rankTo) ? `${ddmy(rankFrom) || '처음'} ~ ${ddmy(rankTo) || '오늘'}` : '전체 기간');
   return parts.join('  ·  ');
 }
 
@@ -1177,9 +1200,13 @@ function renderRank(){
   // 포디움은 올릴 수 있는 지표가 정해져 있다. 표에서 다른 열로 정렬해 둔 채 넘어왔으면
   // (이름순 포함) 그 모드의 기본 지표로 되돌린다.
   if(rankView==='podium' && !PODIUM_KEYS.includes(sortKey)){ sortKey = defSort(rankMode); sortAsc = bestIsLow(sortKey); }
-  // 최소 경기 수 — 집계는 그대로 두고 순위에 올릴 줄만 걸러낸다. 여기서 p.games 는
-  // 지금 보고 있는 모드의 경기 수다(rankRows 가 모드별 성적을 펼쳐 준다).
-  const rows = rankRows(rankMode).filter(p => (p.games || 0) >= minGames).sort((a,b)=>{
+  // 최근 N경기 — 사람마다 그 모드의 최근 N경기만 다시 집계하고, N경기를 못 채운 사람은 뺀다
+  // (여기서 p.games 는 지금 보고 있는 모드의 경기 수다 — rankRows 가 모드별 성적을 펼쳐 준다).
+  const recent = rankScope === 'recent';
+  const rows = (recent
+      ? rankRows(rankMode, getRecentData(rankMode, recentN)).filter(p => (p.games || 0) >= recentN)
+      : rankRows(rankMode)
+    ).sort((a,b)=>{
     let x=a[sortKey], y=b[sortKey], r;
     if(x==null && y==null) r = 0;
     else if(x==null) return 1;    // 값이 없는 사람은 정렬 방향과 무관하게 항상 아래로
@@ -1219,8 +1246,8 @@ function renderRank(){
   let inner;
   if(rows.length===0){
     // 필터로 다 걸러진 것과 기록 자체가 없는 것은 다른 상황이라 안내를 나눈다
-    inner = minGames > 1
-      ? `<div class="empty">${rankMode==='통합'?'':rankMode+'전 '}${minGames}경기 이상 친 선수가 없습니다</div>`
+    inner = recent
+      ? `<div class="empty">${rankMode==='통합'?'':rankMode+'전 '}${recentN}경기 이상 친 선수가 없습니다</div>`
       : `<div class="empty">아직 ${rankMode==='통합'?'':rankMode+'전 '}기록이 없습니다</div>`;
   } else if(rankView==='podium'){
     inner = podiumHtml(rows, rankOf, COLS);
@@ -1271,15 +1298,25 @@ function renderRank(){
       : '표 제목을 누르면 그 기준으로 정렬됩니다.'
         // 권장수지 빨간 글씨의 뜻 — 통합 표에만 권장수지 열이 있다
         + (rankMode === '통합' ? ` · <b>권장수지</b>가 빨간색이면 최근 승률도 같은 쪽(${REC_HOT_UP}% 이상 / ${REC_HOT_DOWN}% 이하)이라 수지를 고칠 때입니다.` : '');
+  // 집계 범위 — 기간이면 달력 칸, 경기 수면 같은 자리에 '최근 N경기' 셀렉트가 들어간다
+  const scopeBtns = `<div class="seg">
+      <button class="p-scope ${!recent?'on':''}" data-s="period">기간</button>
+      <button class="p-scope ${recent?'on':''}" data-s="recent">경기 수</button>
+    </div>`;
+  const scopeRow = !recent ? rangeRowHtml('p-period', rankFrom, rankTo, modeSel)
+    : `<div style="display:flex; align-items:center; gap:6px;">${modeSel}
+        <select class="field p-recent" aria-label="최근 경기 수" style="flex:1 1 0; min-width:0; height:34px; padding:0 26px 0 10px; font-size:0.9rem; border-radius:8px; margin:0;">` +
+        RECENT_STEPS.map(n => `<option value="${n}" ${n===recentN?'selected':''}>🎱 개인별 최근 ${n}경기</option>`).join('') +
+        `</select></div>`;
   const el = $(`<div class="card">
       <div style="margin-bottom:14px;">
-        ${rangeRowHtml('p-period', rankFrom, rankTo, modeSel)}
-        <div class="toolrow">${viewBtns}<div class="push tgrp">${minGamesBtnHtml('p-period')}</div></div>
+        ${scopeRow}
+        <div class="toolrow">${viewBtns}<div class="push tgrp">${scopeBtns}</div></div>
         ${metricSel}
       </div>
       ${inner}
       <div class="sub" style="margin:10px 0 0">${note}</div></div>`);
-  bindRangePicker(el, 'p-period', { max: todayYmd(), allowClear: true, aria: '조회 기간' });
+  if (!recent) bindRangePicker(el, 'p-period', { max: todayYmd(), allowClear: true, aria: '조회 기간' });
 
   const refreshRankSub = () => {
     const sub = document.getElementById('sub');
@@ -1292,10 +1329,18 @@ function renderRank(){
     refreshRankSub();
     show('rank');
   };
-  el.querySelector('.p-period-from').onchange = applyRankRange;
-  el.querySelector('.p-period-to').onchange = applyRankRange;
-  // 최소 경기 수는 집계(DATA)를 바꾸지 않으므로 다시 그리기만 하면 된다
-  bindMinGames(el, 'p-period', () => show('rank'));
+  if (!recent) {
+    el.querySelector('.p-period-from').onchange = applyRankRange;
+    el.querySelector('.p-period-to').onchange = applyRankRange;
+  } else {
+    el.querySelector('.p-recent').onchange = e => { recentN = +e.target.value; show('rank'); };
+  }
+  // 범위를 바꿔도 고른 기간(rankFrom/To)은 지우지 않는다 — 경기 탭이 같은 기간을 쓰고, 돌아오면 그대로 있다
+  el.querySelectorAll('.p-scope').forEach(b => b.onclick = () => {
+    if (rankScope === b.dataset.s) return;
+    rankScope = b.dataset.s;
+    show('rank');
+  });
 
   el.querySelector('.p-mode').onchange = (e) => {
     rankMode = e.target.value;
@@ -1575,8 +1620,9 @@ function showPlayer(name){
   if (!p) p = { name, id: null, handicap: 0, total_games: 0, win_rate: 0, avg: 0, hr: 0 };
   let playerMode = '통합';
   let chartCur = 'avg';
-  let playerFrom = rankFrom;
-  let playerTo = rankTo;
+  // 순위를 '최근 N경기'로 보다 넘어왔으면 순위 탭의 기간은 걸려 있지 않은 셈이라 전체 기간으로 연다
+  let playerFrom = rankScope === 'recent' ? '' : rankFrom;
+  let playerTo = rankScope === 'recent' ? '' : rankTo;
 
   // 권장수지 — 순위표와 똑같은 값(통산 최근 경기 기준)이라 기간·모드를 바꿔도 흔들리지 않는다.
   // 그래서 아래 성적 칸이 아니라 지금 수지 옆, 한 번만 그리는 머리말에 붙인다.
