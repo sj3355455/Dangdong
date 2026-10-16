@@ -1,9 +1,16 @@
 import { sbFetch, patchAuth } from './supabase.js';
 import { registerSW, initSettingsModal, initTeamModal, fetchMyTeams, renderTeamBar as drawTeamBar,
          ymd, todayYmd, ddmy, rangeRowHtml, bindRangePicker, syncRangeDisp,
+         getBall, setBall, ballOfGame, HD3_OPTIONS, fetchRoster, saveHandicap3,
          logout, initPushSwitch, logVisit, initAdminEntry } from './common.js';
 
 let DATA = { updated: '', players: [], games: [] };
+// ── 3구 / 4구 ── 기록실 전체가 고른 쪽 경기만 센다. 서버에서 받은 건 ALL_* 에 그대로 두고,
+// 화면이 쓰는 RAW_* 는 applyBall() 이 골라 담는다. 그래서 집계 코드는 3구/4구를 몰라도 된다.
+// 수지도 공 종류마다 따로다 — 3구면 RAW_MEMBERS 의 handicap 자리에 handicap3(목표 점수 그대로)을 넣는다.
+let BALL = getBall();
+const is3 = () => BALL === '3구';
+let ALL_GAMES = [], ALL_MEMBERS = [];
 let RAW_GAMES = [];
 let RAW_MEMBERS = [];
 let rankFrom = '';   // 조회 시작일 (YYYY-MM-DD, ''=제한 없음)
@@ -215,18 +222,51 @@ const { open: openTeamModal } = initTeamModal({
   afterChange: reloadAndShow
 });
 
+// 수지 선택칸에 값 넣기 — 선택지에 없는 값(관리자가 직접 적은 22 등)이면 그 값을 선택지로 끼워 넣는다.
+// 그냥 넣으면 빈칸으로 보이고, 그대로 저장하면 수지가 지워진다.
+function setSelVal(sel, v){
+  if (v == null || v === '') { sel.value = ''; return; }
+  if (![...sel.options].some(o => Number(o.value) === Number(v)) ) sel.insertAdjacentHTML('beforeend', `<option value="${Number(v)}">${Number(v)}</option>`);
+  sel.value = String(Number(v));
+}
+
+// 원본 명단의 한 사람 (4구 handicap · 3구 handicap3 둘 다 들어 있다)
+const memberOf = id => ALL_MEMBERS.find(m => m.id === id);
+
+// 프로필 한 사람 — handicap3 칸이 아직 없는 DB(sql/handicap3.sql 전)면 그 칸만 빼고 다시 읽는다
+async function fetchProfile(uid){
+  const q = cols => sbFetch('/rest/v1/profiles?select=' + cols + '&id=eq.' + encodeURIComponent(uid));
+  let rows;
+  try { rows = await q('display_name,handicap,handicap3'); }
+  catch(e){ if (e.status !== 400) throw e; rows = await q('display_name,handicap'); }
+  return (rows && rows[0]) || null;
+}
+
+// 팀 명단 → 평탄한 [{id, display_name, handicap, handicap3}] (processData 의 수지 매칭이 이 모양을 기대한다)
 async function fetchMembers() {
   if (!currentTeam) return []; // 소속 팀이 없으면 다른 팀의 회원 정보가 조회되지 않도록 격리
-  const rows = await sbFetch('/rest/v1/team_members?select=user_id,profiles(id,display_name,handicap)&team_id=eq.' + currentTeam);
-  // team_members 는 profiles 를 중첩해서 반환한다({user_id, profiles:{...}}).
-  // processData 의 수지 매칭은 평탄한 {id, display_name, handicap} 구조를 기대하므로 평탄화한다.
-  // (이걸 안 하면 매칭이 전부 실패해 프로필의 실제 수지가 반영되지 않고 0으로 남는다.)
-  return (rows || []).map(r => (r && r.profiles) ? {
-    id: r.profiles.id,
-    display_name: r.profiles.display_name,
-    handicap: r.profiles.handicap
-  } : r).filter(Boolean);
+  return await fetchRoster(currentTeam);
 }
+
+// 받아 둔 경기·명단에서 지금 공 종류(BALL)의 몫만 골라 화면용 RAW_* 에 담고 집계를 새로 한다
+function applyBall(){
+  RAW_GAMES = ALL_GAMES.filter(g => ballOfGame(g) === BALL);
+  RAW_MEMBERS = is3() ? ALL_MEMBERS.map(m => ({ ...m, handicap: m.handicap3 ?? null })) : ALL_MEMBERS;
+  clearProcessCache();
+  DATA = getFilteredData();
+  syncBallSeg();
+}
+const syncBallSeg = () => document.querySelectorAll('#ballSeg button').forEach(b => b.classList.toggle('on', b.dataset.b === BALL));
+syncBallSeg();
+
+// 3구/4구 토글 — 점수판과 같은 값을 바꾼다. 보던 탭을 그대로 다시 그린다(선수 상세 중이면 순위로)
+document.querySelectorAll('#ballSeg button').forEach(b => b.onclick = () => {
+  if (BALL === b.dataset.b) return;
+  BALL = b.dataset.b; setBall(BALL);
+  applyBall(); updateSub();
+  const on = document.querySelector('.tab.on');
+  show(on && on.dataset.v ? on.dataset.v : 'rank');
+});
 
 // ══ 관리자 기능 ══
 // 서버(RLS)가 실제 권한을 강제한다. 여기서는 UI 노출 여부만 판단.
@@ -241,11 +281,10 @@ const adminApi = {
   renamePlayer: (id, name, handicap) => sbFetch('/rest/v1/rpc/rename_player', { method: 'POST', body: JSON.stringify({ target: id, new_name: name, new_handicap: handicap }) })
 };
 async function reloadData(){
-  clearProcessCache();
-  RAW_GAMES = await fetchGames();
-  RAW_MEMBERS = await fetchMembers().catch(() => RAW_MEMBERS);
+  ALL_GAMES = await fetchGames();
+  ALL_MEMBERS = await fetchMembers().catch(() => ALL_MEMBERS);
   RAW_HDCP = await fetchHandicapHistory();   // 수지를 고친 직후면 이력이 한 줄 늘어 있다
-  DATA = getFilteredData();
+  applyBall();
 }
 const NO_PERM = '권한이 없습니다. 관리자 계정으로 로그인했는지 확인하세요.';
 
@@ -327,6 +366,7 @@ function processData(games, members, keep) {
       date: dateStr,
       datetime: datetimeStr,
       type: typeStr,
+      ball: ballOfGame(g),
       players: pls.map(p => {
         const bInn = ballInnOf(p);
         return {
@@ -425,7 +465,9 @@ const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>
 const getAuth = () => { try { return JSON.parse(localStorage.getItem(LS_AUTH)); } catch(e) { return null; } }
 
 const COL_NAME = {k:'name', t:'이름', txt:1};
-const COL_HDCP = {k:'handicap', t:'수지', fmt:v=>v ? v*10 : '—'};
+// 수지 표시 — 4구는 저장값 ×10(15 → 150), 3구는 목표 점수 그대로(20 → 20)
+const hdShow = v => v ? (is3() ? v : v * 10) : '—';
+const COL_HDCP = {k:'handicap', t:'수지', fmt:hdShow};
 // 수지 선택지 (표시값). 저장값은 이 값의 1/10 이고, 그게 곧 2인 기준 게임 목표점수다.
 const HD_OPTIONS = [50, 80, 100, 120, 150, 200, 250, 300, 400, 500];
 const snapHd = v => HD_OPTIONS.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
@@ -468,7 +510,12 @@ const COLS_MULTI = [ // 3인 · 4인: 다자전
   ...COLS_SKILL,
 ];
 const MODE_TABS = ['통합','2인','3인','4인','팀전'];
-const colsFor = m => m==='통합' ? COLS_ALL : (m==='2인'||m==='팀전') ? COLS_VS : COLS_MULTI;
+// 3구는 마무리 쿠션·파울이 없고, 권장수지는 아직 기준이 없다 → 그 열들을 뺀다
+const NOT_IN_3 = new Set(['foulRate', 'cushRate', 'recHd']);
+const colsFor = m => {
+  const cols = m==='통합' ? COLS_ALL : (m==='2인'||m==='팀전') ? COLS_VS : COLS_MULTI;
+  return is3() ? cols.filter(c => !NOT_IN_3.has(c.k)) : cols;
+};
 const defSort = m => m==='통합' ? 'avgAvg' : 'winRate';
 const cell = (p, c) => p[c.k]==null ? '—' : (c.fmt ? c.fmt(p[c.k]) : p[c.k]);
 // 값이 낮을수록 잘한 지표. 표에서 제목을 처음 눌렀을 때와 포디움의 1등이 여기에 달려 있다.
@@ -722,7 +769,7 @@ function imgKit(W, H){
 
 // 저장 이미지 머리말의 조건 줄 — 지금 화면에 걸린 모드·필터·기간을 그대로 적는다
 function rankCondText(){
-  const parts = [rankMode === '통합' ? '통산 기준' : rankMode + '전'];
+  const parts = [BALL, rankMode === '통합' ? '통산 기준' : rankMode + '전'];
   if (rankScope === 'recent') parts.push('최근 ' + recentN + '경기');
   else parts.push((rankFrom || rankTo) ? `${ddmy(rankFrom) || '처음'} ~ ${ddmy(rankTo) || '오늘'}` : '전체 기간');
   return parts.join('  ·  ');
@@ -1096,7 +1143,8 @@ function renderRank(){
 
   // 권장수지는 통합 성적으로만 낸다. 3인·4인은 게임 목표점수가 인원수만큼 줄어들어
   // (score/app.js 의 scaledTarget) 같은 이닝 기준을 그대로 댈 수 없기 때문이다.
-  if (rankMode === '통합') attachRecHd(rows);
+  // 3구는 권장수지 기준(목표 이닝)을 아직 정하지 않았다 — 열도 colsFor 에서 빠진다.
+  if (rankMode === '통합' && !is3()) attachRecHd(rows);
   
   const modeSel = `<select class="field p-mode" style="flex:0 0 auto; width:84px; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">` +
     MODE_TABS.map(m => `<option value="${m}" ${m===rankMode?'selected':''}>${m}</option>`).join('') +
@@ -1158,7 +1206,7 @@ function renderRank(){
       ? '표 제목을 누르면 정렬됩니다. · <b>평균순위</b>는 동순위를 분수로 계산합니다(공동 2등 = 2.5등).'
       : '표 제목을 누르면 그 기준으로 정렬됩니다.'
         // 권장수지 빨간 글씨의 뜻 — 통합 표에만 권장수지 열이 있다
-        + (rankMode === '통합' ? ` · <b>권장수지</b>가 빨간색이면 최근 승률도 같은 쪽(${REC_HOT_UP}% 이상 / ${REC_HOT_DOWN}% 이하)이라 수지를 고칠 때입니다.` : '');
+        + (rankMode === '통합' && !is3() ? ` · <b>권장수지</b>가 빨간색이면 최근 승률도 같은 쪽(${REC_HOT_UP}% 이상 / ${REC_HOT_DOWN}% 이하)이라 수지를 고칠 때입니다.` : '');
   // 집계 범위 — 기간이면 달력 칸, 경기 수면 같은 자리에 '최근 [N]경기' 칸이 들어간다.
   // 겉모양은 달력 칸과 맞추고, 숫자만 직접 적는다.
   const scopeBtns = `<div class="seg">
@@ -1465,7 +1513,8 @@ function computeTendency(name){
 
 function renderTendency(name){
   const t = computeTendency(name);
-  const rows = t.axes.map(a => {
+  // 3구엔 마무리 쿠션이 없다 → '쿠션↔알' 축은 뺀다
+  const rows = t.axes.filter(a => !(is3() && a.L === '쿠션')).map(a => {
     const pct = ((a.pos + 1) / 2 * 100).toFixed(1);
     const side = !a.ok ? '' : (a.pos < -0.15 ? 'L' : a.pos > 0.15 ? 'R' : '');
     return `<div>
@@ -1504,10 +1553,11 @@ function showPlayer(name){
   // 권장수지 — 순위표와 똑같은 값(통산 최근 경기 기준)이라 기간·모드를 바꿔도 흔들리지 않는다.
   // 그래서 아래 성적 칸이 아니라 지금 수지 옆, 한 번만 그리는 머리말에 붙인다.
   // handicap 도 넘긴다 — 승률 확신 표시(recHot)가 지금 수지와 견줘 방향을 본다
+  // (3구는 권장수지를 아직 내지 않는다)
   const recRow = [{ id: p.id, handicap: p.handicap }];
-  attachRecHd(recRow);
+  if (!is3()) attachRecHd(recRow);
   const recHd = recRow[0].recHd;
-  const nowHd = (p.handicap || 0) * 10;
+  const nowHd = (p.handicap || 0) * (is3() ? 1 : 10);
   const recStr = recHd == null ? '' :
     ' · 권장수지 <span' + (recRow[0].recHot ? ' class="rec-hot"' : '') + '>' + recHd +
     (recHd > nowHd ? '<span class="up">↑</span>' : recHd < nowHd ? '<span class="dn">↓</span>' : '') + '</span>';
@@ -1516,7 +1566,7 @@ function showPlayer(name){
     <button class="back">← 순위로</button>
     <div class="card">
       <h2 style="margin:0">${esc(p.name)}</h2>
-      <div class="sub" style="margin:2px 0 10px">수지 ${nowHd}${recStr}</div>
+      <div class="sub" style="margin:2px 0 10px">${BALL} 수지 ${nowHd || '—'}${recStr}</div>
       <div style="margin-bottom:12px;">
         ${rangeRowHtml('pd-period', playerFrom, playerTo, `<select class="field ptab" style="flex:0 0 auto; width:84px; height:34px; padding:0 26px 0 8px; font-size:0.9rem; border-radius:8px; margin:0;">
             ${MODE_TABS.map(m=>`<option value="${m}" ${m===playerMode?'selected':''}>${m}</option>`).join('')}
@@ -1538,7 +1588,7 @@ function showPlayer(name){
     <div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🗒️ 경기 이력</h3>
       <div class="scroll"><table>
         <thead><tr><th class="name">날짜</th><th class="name">상대</th><th>점수</th>
-          <th>알이닝</th><th>에버</th><th>하이런</th><th>결과</th></tr></thead>
+          <th>${is3() ? '이닝' : '알이닝'}</th><th>에버</th><th>하이런</th><th>결과</th></tr></thead>
         <tbody id="pHist"></tbody></table></div></div>
   </div>`);
 
@@ -1578,7 +1628,7 @@ function showPlayer(name){
 
     el.querySelector('#chartArea').style.display = 'block';
 
-    const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode));
+    const availableMetrics = METRICS.filter(m => m.modes.includes(playerMode) && !(is3() && m.k === 'cush'));
     const sel = el.querySelector('#pMetricSel');
     sel.innerHTML = availableMetrics.map(m => `<option value="${m.k}">${m.t}</option>`).join('');
     if (!availableMetrics.find(m => m.k === chartCur)) chartCur = availableMetrics[0].k;
@@ -1632,20 +1682,27 @@ function showPlayer(name){
   };
 
   if (IS_ADMIN && p.id) {
+    // 수지는 화면의 p.handicap(지금 공 종류 값)이 아니라 원본 명단에서 4구·3구를 따로 읽는다 —
+    // 3구 화면에서 p.handicap 을 4구 칸에 넣으면 3구 값이 4구 수지를 덮어쓴다.
+    const mem = memberOf(p.id) || {};
     const adm = $(`<div class="card"><h3 style="font-size:1rem;margin:0 0 10px">🛠 관리자: 선수 정보 수정</h3>
-      <div class="sub" style="margin:0 0 8px">이름을 바꾸면 순위·기록에 새 이름으로 표시됩니다. 수지는 저장값 기준입니다 (예: 15 = 수지 150).</div>
+      <div class="sub" style="margin:0 0 8px">이름을 바꾸면 순위·기록에 새 이름으로 표시됩니다. 4구 수지는 저장값 기준(15 = 수지 150), 3구 수지는 목표 점수 그대로입니다.</div>
       <input id="admName" class="field" maxlength="10" value="${esc(p.name)}" placeholder="이름">
-      <input id="admHd" class="field" type="number" value="${p.handicap ?? ''}" placeholder="수지 저장값 (예: 15)">
+      <input id="admHd" class="field" type="number" value="${mem.handicap ?? ''}" placeholder="4구 수지 저장값 (예: 15)">
+      <input id="admHd3" class="field" type="number" value="${mem.handicap3 ?? ''}" placeholder="3구 수지 (예: 20)">
       <button class="mbtn on" id="admSave">저장</button>
     </div>`);
     adm.querySelector('#admSave').onclick = async e => {
       const name = adm.querySelector('#admName').value.trim();
       const hd = parseInt(adm.querySelector('#admHd').value, 10);
+      const hd3 = parseInt(adm.querySelector('#admHd3').value, 10);
       if (!name) return alert('이름을 입력하세요');
       e.target.disabled = true;
       try {
         if (!p.id) throw new Error('계정이 없는 선수(직접 입력)는 이름을 바꿀 수 없어요');
-        await adminApi.renamePlayer(p.id, name, isNaN(hd) ? null : hd);   // 프로필 + 모든 경기 이름 갱신
+        await adminApi.renamePlayer(p.id, name, isNaN(hd) ? null : hd);   // 프로필 + 모든 경기 이름 갱신 (4구 수지)
+        const nv3 = isNaN(hd3) ? null : hd3;
+        if (nv3 !== (mem.handicap3 ?? null)) await saveHandicap3(p.id, nv3);   // 3구 수지는 바뀌었을 때만
         await reloadData();
         alert('선수 정보가 수정되었습니다.');
         showPlayer(name);
@@ -1676,10 +1733,15 @@ function renderMe() {
   d.innerHTML = `<div>
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">이름</label>
     <input type="text" id="meName" class="field" placeholder="당신의 이름">
-    <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">수지 (목표 점수)</label>
+    <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">4구 수지</label>
     <select id="meHandicap" class="field">
       <option value="">선택하세요</option>
       ${HD_OPTIONS.map(v => `<option value="${v/10}">${v}</option>`).join('')}
+    </select>
+    <label style="display:block; font-size:0.9rem; margin-bottom:6px; opacity:0.8;">3구 수지 (목표 점수)</label>
+    <select id="meHandicap3" class="field">
+      <option value="">선택하세요</option>
+      ${HD3_OPTIONS.map(v => `<option value="${v}">${v}</option>`).join('')}
     </select>
     <label style="display:block; font-size:0.9rem; margin-bottom:6px; margin-top:12px; opacity:0.8;">비밀번호 변경 (변경할 때만 입력)</label>
     <input type="password" id="mePwd" class="field" placeholder="새 비밀번호 입력">
@@ -1687,25 +1749,37 @@ function renderMe() {
     <button id="meSave" class="bigbtn">저장하기</button>
     <button id="meLogout" class="obtn ghost" style="margin-top:12px; width:100%; border:1px solid var(--line); color:#f44336;">로그아웃</button>
   </div>`;
-  const myData = (DATA && DATA.players) ? DATA.players.find(p => p.name === auth.name) : null;
-  const myHandicap = myData ? myData.handicap : '';
+  // 우선 받아 둔 명단으로 채우고(4구·3구 따로), 프로필을 읽어 오면 그걸로 덮는다
+  const mine = memberOf(auth.uid) || {};
+  let saved3 = mine.handicap3 ?? null;   // 3구 수지는 바뀌었을 때만 저장한다
   d.querySelector('#meName').value = auth.name || '';
-  d.querySelector('#meHandicap').value = myHandicap;
+  d.querySelector('#meHandicap').value = mine.handicap ?? '';
+  setSelVal(d.querySelector('#meHandicap3'), saved3);
 
-  sbFetch('/rest/v1/profiles?select=display_name,handicap&id=eq.' + auth.uid)
-  .then(rows => { if(rows && rows.length > 0) { if (rows[0].display_name) d.querySelector('#meName').value = rows[0].display_name; if (rows[0].handicap) d.querySelector('#meHandicap').value = rows[0].handicap; } }).catch(()=>{});
+  fetchProfile(auth.uid).then(r => {
+    if (!r) return;
+    if (r.display_name) d.querySelector('#meName').value = r.display_name;
+    if (r.handicap) d.querySelector('#meHandicap').value = r.handicap;
+    if ('handicap3' in r) { saved3 = r.handicap3 ?? null; setSelVal(d.querySelector('#meHandicap3'), saved3); }
+  }).catch(()=>{});
   d.querySelector('#meSave').onclick = async () => {
     const btn = d.querySelector('#meSave'), msg = d.querySelector('#meMsg'), name = d.querySelector('#meName').value.trim(), hd = d.querySelector('#meHandicap').value.trim(), pwd = d.querySelector('#mePwd').value;
+    const hd3 = d.querySelector('#meHandicap3').value ? Number(d.querySelector('#meHandicap3').value) : null;
+    const fail = t => { msg.textContent = '❌ ' + t; msg.style.color = '#f44336'; };
     btn.disabled = true; msg.textContent = '저장 중...'; msg.style.color = 'var(--text)';
     try {
-      if (!name) { msg.textContent = '이름을 입력하세요.'; msg.style.color = '#f44336'; btn.disabled = false; return; }
-      // 이름·수지 변경 + 내가 뛴 모든 경기의 저장 이름을 서버에서 한 번에 갱신
+      if (!name) { fail('이름을 입력하세요.'); btn.disabled = false; return; }
+      // 이름·4구 수지 변경 + 내가 뛴 모든 경기의 저장 이름을 서버에서 한 번에 갱신
       await adminApi.renamePlayer(auth.uid, name, hd ? parseInt(hd,10) : null);
       patchAuth({ name });   // 위 요청이 토큰을 갱신했을 수 있다 — 저장본에 이름만 고쳐 넣는다
       if(pwd) await sbFetch('/auth/v1/user', { method: 'PUT', body: JSON.stringify({ password: pwd }) });
+    } catch(e) { fail('저장 실패. 다시 로그인해 보세요.'); btn.disabled = false; return; }
+    // 3구 수지는 따로 저장한다 — 실패해도 위에서 저장한 이름·4구 수지는 살아 있으니 이유만 알린다
+    try {
+      if (hd3 !== saved3) { await saveHandicap3(auth.uid, hd3); saved3 = hd3; }
       msg.textContent = '✅ 성공적으로 저장되었습니다.'; msg.style.color = '#4CAF50'; d.querySelector('#mePwd').value = '';
-      try { await reloadData(); } catch(e){}   // 바뀐 이름을 순위·경기 화면에 즉시 반영
-    } catch(e) { msg.textContent = '❌ 저장 실패. 다시 로그인해 보세요.'; msg.style.color = '#f44336'; }
+    } catch(e) { fail('3구 수지를 저장하지 못했습니다: ' + e.message); }
+    try { await reloadData(); } catch(e){}   // 바뀐 이름·수지를 순위·경기 화면에 즉시 반영
     btn.disabled = false;
   };
   
@@ -1858,7 +1932,7 @@ async function renderAdminMenu(){
       return `<div style="padding:12px; border-radius:10px; background:var(--bg); border:1px solid var(--line); display:flex; flex-direction:column; gap:6px;">
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <a class="adm-pl-name" data-uid="${esc(m.user_id)}" style="font-weight:700; font-size:1.05rem; color:var(--text); text-decoration:underline; cursor:pointer;">👤 ${esc(name)}</a>
-          <span style="font-size:0.8rem; color:var(--muted);">수지 ${m.handicap ? m.handicap*10 : '—'}</span>
+          <span style="font-size:0.8rem; color:var(--muted);">4구 수지 ${m.handicap ? m.handicap*10 : '—'}</span>
         </div>
         <div style="font-size:0.85rem; display:flex; flex-wrap:wrap; align-items:center; gap:4px;">
           <span style="color:var(--muted); font-size:0.8rem; margin-right:4px;">소속팀:</span>
@@ -2129,7 +2203,8 @@ function homeGrowCards(){
   const memName = {};
   for (const m of (RAW_MEMBERS || [])) if (m && m.id) memName[m.id] = m.display_name;
   const hd = {};
-  for (const h of RAW_HDCP) {
+  // 이력(handicap_history)은 4구 수지만 남는다 → 3구 화면에선 수지 상승 카드를 내지 않는다
+  for (const h of (is3() ? [] : RAW_HDCP)) {
     if (h.old_handicap == null || h.new_handicap == null) continue;
     if (!memName[h.player_id]) continue;                                  // 다른 팀 회원은 뺀다
     // changed_at 은 timestamptz(UTC 로 온다) — 문자열을 자르면 안 되고 로컬 날짜로 바꿔서 견준다.
@@ -2431,6 +2506,7 @@ function showGame(id){
     const same = g.players.filter(x => x.rank === p.rank).length;
     return (same > 1 ? '공동 ' : '') + (less + 1) + '등';
   };
+  const b4 = g.ball !== '3구';   // 3구 경기엔 마무리 쿠션·파울 칸이 없다
   const pRows = [...g.players].sort((a,b)=>a.rank-b.rank).map(p => {
     const avg = p.ballInn ? (p.score / p.ballInn).toFixed(3) : '0.000';   // 에버 분모는 알 이닝
     const medal = p.rank===1 ? ' 🏆' : '';
@@ -2443,10 +2519,10 @@ function showGame(id){
       <td>${p.ballInn}</td>
       <td>${avg}</td>
       <td>${itv}</td>
-      <td>${p.cushInn ? `${p.cushMade}/${p.cushInn}` : '—'}</td>
+      ${b4 ? `<td>${p.cushInn ? `${p.cushMade}/${p.cushInn}` : '—'}</td>` : ''}
       <td>${p.highRun}</td>
       <td>${p.misses}</td>
-      <td>${p.fouls == null ? '—' : p.fouls}</td>
+      ${b4 ? `<td>${p.fouls == null ? '—' : p.fouls}</td>` : ''}
     </tr>`;
   }).join('');
   // 게임 총 시간 = 선수별 소모 시간 합 (시간 기록이 있는 경기만)
@@ -2455,11 +2531,11 @@ function showGame(id){
   const el = $(`<div>
     <button class="back">← 경기 목록으로</button>
     <div class="card">
-      <h2 style="margin:0 0 4px">🎱 ${esc(g.type)}</h2>
+      <h2 style="margin:0 0 4px">🎱 ${esc(g.ball)} ${esc(g.type)}</h2>
       <div class="sub" style="margin:0 0 16px">${esc(g.datetime)}${totStr}</div>
       <div class="scroll">
         <table class="statgrid">
-          <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>알이닝</th><th>에버</th><th>인터벌</th><th>쿠션</th><th>하이런</th><th>공타</th><th>파울</th></tr></thead>
+          <thead><tr><th class="name">선수</th><th>순위</th><th>점수</th><th>${b4 ? '알이닝' : '이닝'}</th><th>에버</th><th>인터벌</th>${b4 ? '<th>쿠션</th>' : ''}<th>하이런</th><th>공타</th>${b4 ? '<th>파울</th>' : ''}</tr></thead>
           <tbody>${pRows}</tbody>
         </table>
       </div>
@@ -2486,11 +2562,11 @@ async function initDashboard() {
       adminP,
       fetchHandicapHistory()
     ]);
-    RAW_GAMES = games;
-    RAW_MEMBERS = members;
+    ALL_GAMES = games;
+    ALL_MEMBERS = members;
     IS_ADMIN = adm;
     RAW_HDCP = hdcp;
-    DATA = getFilteredData();
+    applyBall();
     updateSub();
     const t = new URLSearchParams(location.search).get('tab') || 'home';
     if (t === 'me') { show('home'); openMeModal(); }   // 점수판에서 넘어온 내 정보 딥링크 → 팝업
@@ -2583,10 +2659,18 @@ function renderAdminMemberEditPage(m){
       </div>
 
       <div style="margin-bottom:16px;">
-        <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px;">수지 (점수)</label>
+        <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px;">4구 수지</label>
         <select id="admMHd" class="field" style="margin:0;">
           <option value="">수지 선택</option>
           ${HD_OPTIONS.map(v => `<option value="${v/10}" ${m.handicap === v/10 ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px;">3구 수지 (목표 점수)</label>
+        <select id="admMHd3" class="field" style="margin:0;">
+          <option value="">수지 선택</option>
+          ${HD3_OPTIONS.map(v => `<option value="${v}">${v}</option>`).join('')}
         </select>
       </div>
 
@@ -2602,16 +2686,27 @@ function renderAdminMemberEditPage(m){
   el.querySelector('.back').onclick = () => renderAdminMenu();
   el.querySelector('#admMBackBtn').onclick = () => renderAdminMenu();
 
+  // 3구 수지는 관리자 회원 목록(admin_get_all_members)에 없어서 따로 읽어 온다
+  const sel3 = el.querySelector('#admMHd3');
+  let saved3 = null, loaded3 = false;
+  fetchProfile(m.user_id).then(r => {
+    if (r && 'handicap3' in r) { saved3 = r.handicap3 ?? null; setSelVal(sel3, saved3); }
+    loaded3 = true;
+  }).catch(() => { loaded3 = true; });
+
   el.querySelector('#admMSaveBtn').onclick = async () => {
     const msg = el.querySelector('#admMMsg');
     const newName = (el.querySelector('#admMName').value || '').trim();
     const hdVal = el.querySelector('#admMHd').value;
     const newHd = hdVal ? parseInt(hdVal, 10) : null;
+    const newHd3 = sel3.value ? Number(sel3.value) : null;
 
     if (!newName) { msg.textContent = '이름을 입력하세요.'; msg.style.color = '#f44336'; return; }
     msg.textContent = '저장 중...'; msg.style.color = 'var(--text)';
     try {
       await adminApi.renamePlayer(m.user_id, newName, newHd);
+      // 3구 수지 — 지금 값을 읽어 온 뒤에만, 바뀌었을 때만 쓴다 (못 읽은 채 저장하면 빈 값으로 지워진다)
+      if (loaded3 && newHd3 !== saved3) { await saveHandicap3(m.user_id, newHd3); saved3 = newHd3; }
       msg.textContent = '✅ 회원 정보가 성공적으로 수정되었습니다.'; msg.style.color = '#4CAF50';
       m.display_name = newName;
       m.handicap = newHd;

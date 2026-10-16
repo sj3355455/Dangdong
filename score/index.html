@@ -133,6 +133,8 @@ select.field{appearance:none;background-image:
 .minusbtn{display:none;position:absolute;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;
   padding:10px 18px;font-weight:800;font-size:1rem;backdrop-filter:blur(4px); z-index:11;}
 .zone.on .minusbtn{display:block}
+#game.b3 .minusbtn{display:none}   /* 3구는 파울이 없다 */
+.ballseg button.on{background:var(--accent);color:#fff}
 .minusbtn:active{background:var(--danger)}
 .zone .minusbtn{top:calc(12px + var(--sat));left:14px}
 @media (orientation:landscape){ .zone .minusbtn{top:auto;bottom:14px;left:14px} }
@@ -264,6 +266,12 @@ select.field{appearance:none;background-image:
     <button id="btnSettings" class="setgear" aria-label="설정" style="margin-left:auto;">⚙️</button>
   </div>
 
+  <!-- 3구/4구 — 기록실과 같은 값을 쓴다(common.js getBall). 3구는 마무리 쿠션·파울이 없다 -->
+  <div class="seg ballseg" id="ballSeg" style="margin-bottom:10px;">
+    <button data-b="4구">4구</button>
+    <button data-b="3구">3구</button>
+  </div>
+
   <div class="seg" id="gameTypeSeg" style="margin-bottom:16px;">
     <button data-v="2인">2인</button>
     <button data-v="3인">3인</button>
@@ -278,7 +286,7 @@ select.field{appearance:none;background-image:
     <div id="myBallSeg" style="flex:1; display:flex; gap:6px;"></div>
   </div>
 
-  <div class="firstseg" style="margin-top:8px;">
+  <div class="firstseg" id="cushRow" style="margin-top:8px;">
     <span class="cap">마무리 쿠션</span>
     <button id="cushSeg0" onclick="setCushGoal(0)">0개</button>
     <button id="cushSeg1" onclick="setCushGoal(1)">1개</button>

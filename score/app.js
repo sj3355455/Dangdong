@@ -1,5 +1,6 @@
 import { sbFetch, sbAuth, patchAuth } from '../record/supabase.js';
 import { registerSW, initSettingsModal, getVoice, setVoice, initTeamModal, fetchMyTeams, renderTeamBar as drawTeamBar,
+         getBall, setBall, fetchRoster,
          pushAttach, logout, initPushSwitch, logVisit, initAdminEntry } from '../record/common.js';
 
 const $ = s => document.querySelector(s);
@@ -21,14 +22,22 @@ let currentTeam = lsGet(LS_TEAM, null);  // 현재 기록 대상 팀 id (없으�
 let prefs = lsGet(LS_PREFS, { gameType:'2인', names:['','','',''], pids:[null,null,null,null], targets:[15,15,15,15], myBall:null, cushGoal:1, timeLimit:0 });
 if (prefs.cushGoal == null) prefs.cushGoal = 1;
 if (prefs.timeLimit == null) prefs.timeLimit = 0;
+if (!Array.isArray(prefs.targets3)) prefs.targets3 = [15,15,15,15];
 let S = lsGet(LS_STATE, null);
+
+// ── 3구 / 4구 ── 설정 화면에서 고른다. 기록실과 같은 값을 쓴다(common.js).
+// 목표 점수는 공 종류마다 따로 기억한다 — 4구 수지 15(=150)와 3구 15점은 전혀 다른 실력이다.
+// 3구는 마무리 쿠션·파울이 없다. 수지(handicap3)는 목표 점수를 그대로 저장한다.
+let ball = getBall();
+const is3 = () => ball === '3구';
+const T = () => is3() ? prefs.targets3 : prefs.targets;            // 지금 공 종류의 목표 점수 칸
+const hdOf = m => m ? (is3() ? m.handicap3 : m.handicap) : null;    // 그 선수의 지금 공 종류 수지
 
 const ZCOLORS = ['w','y','w','y'];
 const ZNAMES = ['⚪ 흰 공', '🟡 노란 공', '⚪ 흰 공', '🟡 노란 공'];
 const TZNAMES = ['우리 팀', '상대 팀'];
 
 const api = {
-  teamRoster: teamId => sbFetch('/rest/v1/team_members?select=profiles(id,display_name,handicap)&team_id=eq.' + teamId),
   joinTeam: code => sbFetch('/rest/v1/rpc/join_team', { method: 'POST', body: JSON.stringify({ code }) }),
   myProfile: uid => sbFetch('/rest/v1/profiles?select=display_name&id=eq.' + uid),
   createProfile: (uid, name, handicap) => sbFetch('/rest/v1/profiles', { method: 'POST', body: JSON.stringify({ id: uid, display_name: name, handicap: handicap || null }) }),
@@ -135,10 +144,8 @@ async function loadMembers(){
   try {
     let list = null;
     if (currentTeam) {
-      try {
-        const rows = await api.teamRoster(currentTeam);       // [{profiles:{...}}]
-        list = (rows || []).map(r => r.profiles).filter(Boolean);
-      } catch(e){ list = null; }                              // 로스터 실패 → 전역 폴백
+      try { list = await fetchRoster(currentTeam); }          // [{id, display_name, handicap, handicap3}]
+      catch(e){ list = null; }                                // 로스터 실패 → 전역 폴백
     }
     if (!list) list = (auth && auth.uid) ? [{ id: auth.uid, display_name: auth.name, handicap: null }] : [];
     list.sort((a, b) => (a.display_name || '').localeCompare(b.display_name || '', 'ko'));
@@ -209,7 +216,7 @@ function renderSetupCards(modeChanged = false) {
           </div>
           <div class="trow" style="justify-content:flex-start; gap:12px; align-items:center;">
             <span class="lbl">팀 목표 점수</span>
-            <b class="tval" id="tval${i}" style="font-size:1.2rem; line-height:1; padding-top:2px;">${prefs.targets[i]}</b>
+            <b class="tval" id="tval${i}" style="font-size:1.2rem; line-height:1; padding-top:2px;">${T()[i]}</b>
             <div style="flex:1;"></div>
             <button class="mbtn" onclick="openTargetPopup(${i})">변경</button>
           </div>
@@ -225,7 +232,7 @@ function renderSetupCards(modeChanged = false) {
           <input class="field" id="name${i}" maxlength="10" placeholder="${ZNAMES[i]} 선수">
           <div class="trow" style="justify-content:flex-start; gap:12px; align-items:center;">
             <span class="lbl">목표 점수</span>
-            <b class="tval" id="tval${i}" style="font-size:1.2rem; line-height:1; padding-top:2px;">${prefs.targets[i]}</b>
+            <b class="tval" id="tval${i}" style="font-size:1.2rem; line-height:1; padding-top:2px;">${T()[i]}</b>
             <div style="flex:1;"></div>
             <button class="mbtn" onclick="openTargetPopup(${i})">변경</button>
           </div>
@@ -307,28 +314,39 @@ function applySel(i, isUserAction){
   else if (v) {
     const m = members.find(x => x.id === v);
     prefs.pids[i] = v; prefs.names[i] = m ? m.display_name : '';
-    if (isUserAction) {
-      if (prefs.gameType === '팀전') {
-        const teamIdx = i % 2;
-        const p1 = prefs.pids[teamIdx];
-        const p2 = prefs.pids[teamIdx + 2];
-        const m1 = members.find(x => x.id === p1);
-        const m2 = members.find(x => x.id === p2);
-        let sum = 0, count = 0;
-        if (m1 && m1.handicap != null) { sum += parseInt(m1.handicap, 10); count++; }
-        if (m2 && m2.handicap != null) { sum += parseInt(m2.handicap, 10); count++; }
-        if (count > 0) {
-          prefs.targets[teamIdx] = Math.round(sum / count);
-          if($('#tval'+teamIdx)) $('#tval'+teamIdx).textContent = prefs.targets[teamIdx];
-        }
-      } else if (m && m.handicap != null) {
-        prefs.targets[i] = scaledTarget(parseInt(m.handicap, 10), prefs.gameType);
-        if($('#tval'+i)) $('#tval'+i).textContent = prefs.targets[i];
-      }
-    }
+    if (isUserAction) autoTarget(i);
   } else { prefs.pids[i] = null; prefs.names[i] = ''; }
   lsSet(LS_PREFS, prefs);
 }
+
+// 자리 i 의 목표 점수를 그 선수의 수지(지금 공 종류)로 맞춘다. 팀전은 두 선수 평균.
+// 수지를 모르는 선수면 그대로 둔다(직접 고친 값이 날아가지 않게).
+function autoTarget(i){
+  const t = T();
+  if (prefs.gameType === '팀전') {
+    const k = i % 2;
+    const hs = [prefs.pids[k], prefs.pids[k + 2]]
+      .map(id => hdOf(members.find(x => x.id === id))).filter(h => h != null).map(Number);
+    if (hs.length) t[k] = Math.round(hs.reduce((a, b) => a + b, 0) / hs.length);
+    if ($('#tval'+k)) $('#tval'+k).textContent = t[k];
+  } else {
+    const h = hdOf(members.find(x => x.id === prefs.pids[i]));
+    if (h != null) t[i] = scaledTarget(Number(h), prefs.gameType);
+    if ($('#tval'+i)) $('#tval'+i).textContent = t[i];
+  }
+}
+
+// 3구/4구 바꾸기 — 이미 앉혀 둔 선수들의 목표 점수를 새 공 종류의 수지로 다시 맞춘다
+document.querySelectorAll('#ballSeg button').forEach(b => {
+  b.onclick = () => {
+    if (ball === b.dataset.b) return;
+    ball = b.dataset.b; setBall(ball);
+    const slots = prefs.gameType === '팀전' ? [0, 1] : [0, 1, 2, 3];
+    slots.forEach(i => { if (prefs.pids[i] || prefs.pids[i + 2]) autoTarget(i); });
+    lsSet(LS_PREFS, prefs); vib(8);
+    syncSetup();
+  };
+});
 
 document.querySelectorAll('#gameTypeSeg button').forEach(b => {
   b.onclick = () => {
@@ -362,6 +380,8 @@ function syncSetup(modeChanged = false){
   normalizeMyBall();
   renderTeamBar();
 
+  document.querySelectorAll('#ballSeg button').forEach(b => b.classList.toggle('on', b.dataset.b === ball));
+  $('#cushRow').style.display = is3() ? 'none' : '';   // 3구는 마무리 쿠션이 없다
   document.querySelectorAll('#gameTypeSeg button').forEach(b => {
     if ((b.dataset.v || b.innerText) === prefs.gameType) b.classList.add('on');
     else b.classList.remove('on');
@@ -380,16 +400,16 @@ window.openTargetPopup = function(i) {
   curTargetEdit = i;
   // 공 색은 턴에 따라 바뀌므로 제목엔 선수 이름을 쓴다 (없으면 자리 번호)
   const who = prefs.gameType === '팀전' ? TZNAMES[i] : (prefs.names[i] || `${i + 1}번 선수`);
-  $('#targetOvlTitle').textContent = who + ' 목표 점수';
-  $('#tvalEdit').textContent = prefs.targets[i];
+  $('#targetOvlTitle').textContent = `${who} 목표 점수 (${ball})`;
+  $('#tvalEdit').textContent = T()[i];
   $('#targetOvl').classList.add('on');
 };
 const stepTarget = d => e => {
   e.preventDefault(); e.stopPropagation();
-  const t = curTargetEdit;
-  prefs.targets[t] = Math.max(1, Math.min(99, prefs.targets[t] + d));
-  $('#tvalEdit').textContent = prefs.targets[t];
-  if($('#tval'+t)) $('#tval'+t).textContent = prefs.targets[t];
+  const i = curTargetEdit, t = T();
+  t[i] = Math.max(1, Math.min(99, t[i] + d));
+  $('#tvalEdit').textContent = t[i];
+  if($('#tval'+i)) $('#tval'+i).textContent = t[i];
   lsSet(LS_PREFS, prefs); vib(8);
 };
 $('#btnTargetMinus').onclick = stepTarget(-1);
@@ -445,16 +465,9 @@ window.applyMyBall = function(i) {
     const other = i;
     const current = prefs.myBall;
 
-    // 1시드(혹은 개인전 선수) 스왑
-    const tempName = prefs.names[current];
-    const tempPid = prefs.pids[current];
-    const tempTarget = prefs.targets[current];
-    prefs.names[current] = prefs.names[other];
-    prefs.pids[current] = prefs.pids[other];
-    prefs.targets[current] = prefs.targets[other];
-    prefs.names[other] = tempName;
-    prefs.pids[other] = tempPid;
-    prefs.targets[other] = tempTarget;
+    // 1시드(혹은 개인전 선수) 스왑 — 목표 점수는 3구·4구 칸을 함께 바꾼다(선수를 따라가야 하므로)
+    const swap = arr => { const t = arr[current]; arr[current] = arr[other]; arr[other] = t; };
+    [prefs.names, prefs.pids, prefs.targets, prefs.targets3].forEach(swap);
     
     // 팀전일 경우 2시드 선수도 함께 스왑하여 팀 전체가 공 색깔을 바꾸도록 함
     if (prefs.gameType === '팀전') {
@@ -471,10 +484,7 @@ window.applyMyBall = function(i) {
   
   prefs.myBall = i;
   prefs.pids[i] = auth.uid;
-  if (prefs.gameType !== '팀전') {
-    const m = members.find(x => x.id === auth.uid);
-    if (m && m.handicap != null) prefs.targets[i] = scaledTarget(parseInt(m.handicap, 10), prefs.gameType);
-  }
+  if (prefs.gameType !== '팀전') autoTarget(i);
   lsSet(LS_PREFS, prefs);
   syncSetup(prefs.gameType === '팀전');
 }
@@ -500,21 +510,22 @@ $('#btnStart').onclick = () => {
     uniqueKeys.add(key);
   }
   
+  const t = T();
   if (isTeam) {
-    pTargets = [prefs.targets[0], prefs.targets[1], prefs.targets[0], prefs.targets[1]];
+    pTargets = [t[0], t[1], t[0], t[1]];
   } else {
-    for(let i=0; i<N; i++) pTargets.push(prefs.targets[i]);
+    for(let i=0; i<N; i++) pTargets.push(t[i]);
   }
-  
+
   prefs.names = pNames;
   prefs.pids = pPids;
   lsSet(LS_PREFS, prefs);
-  
+
   S = {
-    type: prefs.gameType,
+    type: prefs.gameType, ball,
     names: [...pNames], pids: [...pPids], targets: [...pTargets],
     first: 0, timeLimitMs: (prefs.timeLimit ?? 0) * 60000,
-    ...freshCounters(N, 0)
+    ...freshCounters(N, 0, is3() ? 0 : (prefs.cushGoal ?? 1))
   };
   save(); buildGameZones(); render(); show('game'); reqFS();
   toast(`${isTeam ? TZNAMES[S.first] : S.names[S.first]} 선공으로 시작!`);
@@ -548,13 +559,15 @@ function save(){ lsSet(LS_STATE, S); }
 
 // 한 경기의 진행 기록 — 새 경기와 '점수 초기화'가 같은 출발점을 쓴다.
 // (따로 적어 두면 한쪽에만 새 항목이 늘어, 초기화한 뒤에도 개인 점수·알 이닝·파울이 남는다)
-function freshCounters(N, turn){
+// round = 마무리 쿠션 개수. 3구는 늘 0 — 목표에 닿는 순간 달성이고 후구로 넘어간다.
+function freshCounters(N, turn, round){
   const z = () => Array(N).fill(0);
   return {
     sc: z(), indSc: z(), inn: z(), ballInn: z(), br: z(), miss: z(), fouls: z(),
     done: Array(N).fill(false), cush: z(), indCush: z(), cushInn: z(),
     finished: Array(N).fill(false), rank: z(), cushGoalAt: Array(N).fill(null),
-    round: prefs.cushGoal ?? 1, lastInning: false, winners: [],
+    plus: z(),   // 3구 연장으로 목표에 더해진 점수 (선수별)
+    round, lastInning: false, winners: [],
     tp: 0, tpPts: 0, turn, tc: 0,
     timeMs: z(), turnStart: Date.now(), timeUp: false,
     paused: false, pausedMs: 0, pauseStart: null,
@@ -651,6 +664,7 @@ function buildGameZones() {
   
   // insert zones into #gameZones
   $('#gameZones').innerHTML = gameHtml;
+  $('#game').classList.toggle('b3', isB3());   // 3구는 파울 버튼을 숨긴다(CSS)
   
   zoneCache = [];
   for(let i=0; i<N; i++){
@@ -684,6 +698,7 @@ function pushHist(){
     inn:[...S.inn], ballInn: S.ballInn ? [...S.ballInn] : null, br:[...S.br], miss:[...S.miss], fouls: S.fouls ? [...S.fouls] : null,
     done:[...S.done], cush:[...S.cush], indCush: S.indCush ? [...S.indCush] : [...S.cush], cushInn:[...S.cushInn],
     finished:[...S.finished], rank: S.rank ? [...S.rank] : [], cushGoalAt: S.cushGoalAt ? [...S.cushGoalAt] : null,
+    plus: S.plus ? [...S.plus] : null,
     round:S.round, lastInning:S.lastInning, winners:[...S.winners],
     tp:S.tp, tpPts:S.tpPts || 0, turn:S.turn, first:S.first, tc:S.tc, fin:S.fin,
     timeMs: S.timeMs ? [...S.timeMs] : [], turnStart: S.turnStart
@@ -731,8 +746,8 @@ function tapZone(i){
       S.tpPts = (S.tpPts || 0) + 1;   // tp 는 쿠션도 같이 세므로, '알 득점'만 따로 센다
       if (S.type === '팀전' && S.sc.length === 4) S.sc[(i+2)%4]++;
       vib(12); popScore(i);
-      const rem = S.targets[i] - S.sc[i];
-      if (S.sc[i] >= S.targets[i]) {
+      const rem = goal(i) - S.sc[i];
+      if (S.sc[i] >= goal(i)) {
         S.done[i] = true;
         // 이 이닝의 쿠션 카운트는 턴이 끝날 때 passTurnInner(647)에서 세므로 여기서 세면 이중 카운트가 된다.
         if (S.type === '팀전' && S.sc.length === 4) { const p = (i+2)%4; S.done[p] = true; }
@@ -741,8 +756,9 @@ function tapZone(i){
           const firstWin = S.winners.length === 0;
           markGoalReached(i);
           passTurnInner(false, true, true);
-          // 바로 끝나지 않으면(후구가 남으면) 쿠션 게임과 동일하게 후구 안내
-          if (!S.fin) speak(firstWin ? '후구' : '후구 성공');
+          // 바로 끝나지 않으면(후구가 남으면) 쿠션 게임과 동일하게 후구 안내.
+          // 이 이닝에서 바로 연장이 붙었으면(lastInning 이 풀림) '연장' 안내를 덮지 않는다.
+          if (!S.fin && S.lastInning) speak(firstWin ? '후구' : '후구 성공');
         } else {
           speak('마무리');
           toast(`🎯 마무리 쿠션!`);
@@ -768,7 +784,7 @@ function tapZone(i){
         markGoalReached(i);
         passTurnInner(false, true, true);
         // 바로 끝나지 않으면: 첫 달성은 "후구"(후구 기회 시작), 후구 중 달성은 "후구 성공"
-        if (!S.fin) speak(firstWin ? '후구' : '후구 성공');
+        if (!S.fin && S.lastInning) speak(firstWin ? '후구' : '후구 성공');
       } else {
         speak('쿠션 ' + koNum(S.cush[i]));
         toast(`🎯 쿠션 ${S.cush[i]}/${S.round}`);
@@ -790,6 +806,10 @@ function tapZone(i){
 //                        쿠션만 친 이닝은 알을 칠 수 없으므로 공타로 세지 않는다.
 // inn 은 총 턴 수로 남겨 둔다 — 다인전 후구 판정(이닝 경계)이 이 값에 의존한다.
 function ballInn(i){ return (S.ballInn && S.ballInn[i]) || 0; }
+// 지금 경기가 3구인가 (ball 이 없는 진행 중 경기는 이 기능 전에 시작한 4구다)
+const isB3 = () => !!S && S.ball === '3구';
+// 지금 목표 점수 — 3구 연장이 붙었으면 그만큼 더한다. 저장하는 목표(target)는 원래 값 그대로다.
+const goal = i => S.targets[i] + ((S.plus && S.plus[i]) || 0);
 // 선수 개인 점수·쿠션 — 팀전은 sc/cush 가 팀 공유값이라 개인 몫은 indSc/indCush 에 따로 센다
 const indScore  = i => (S.indSc && S.indSc[i] !== undefined) ? S.indSc[i] : S.sc[i];
 const indCushOf = i => (S.indCush && S.indCush[i] !== undefined) ? S.indCush[i] : S.cush[i];
@@ -880,14 +900,23 @@ function endInning() {
   // 공동 1등은 같은 등수로 확정하고, 뒤에 남은 선수들은 '계속치기'로 꼴등전을 이어간다.
   // (2인·팀전은 유닛이 둘뿐이라 동점 = 곧 공동 꼴등 → 기존과 같이 바로 연장)
   if (winUnits.size > 1 && pendingUnitCount(S.winners) === 0) {
-    S.round++;
     S.lastInning = false;
     S.winners = [];
-    // 연장 이닝은 선구 선수 몫으로 계상. 꼴등전 중이면 이미 끝난 선수 대신 남아 있는 다음 선수에게.
-    S.cushInn[S.finished[S.first] ? nextTurnIndex(S.first) : S.first]++;
     vib([40,40,40]);
     const tieLabel = activePlayerCount() < S.sc.length ? '공동 꼴등' : '동점';
-    toast(`${tieLabel}! 마무리 쿠션 ${S.round} — 연장`);
+    if (isB3()) {
+      // 3구는 마무리 쿠션이 없다 → 남아 있는 동점자 모두 목표 +1점으로 연장.
+      // (남은 유닛이 전부 동시 달성이라 여기 오므로, 아직 안 끝난 선수 = 동점자다)
+      if (!S.plus) S.plus = Array(S.sc.length).fill(0);
+      S.sc.forEach((_, i) => { if (!S.finished[i]) { S.plus[i]++; S.done[i] = false; } });
+      const p = S.plus[S.finished.indexOf(false)];
+      toast(`${tieLabel}! 목표 +${p}점 — 연장`);
+    } else {
+      S.round++;
+      // 연장 이닝은 선구 선수 몫으로 계상. 꼴등전 중이면 이미 끝난 선수 대신 남아 있는 다음 선수에게.
+      S.cushInn[S.finished[S.first] ? nextTurnIndex(S.first) : S.first]++;
+      toast(`${tieLabel}! 마무리 쿠션 ${S.round} — 연장`);
+    }
     speak('연장');
     return;
   }
@@ -906,14 +935,14 @@ window.undoTurn = function(){
 
 // 파울: 현재 치는 선수의 점수를 실제로 1점 깎고(음수 허용) 턴을 넘긴다.
 window.foul = function(i){
-  if (!S || S.fin || i !== S.turn || S.finished[i] || S.paused) return;
+  if (!S || S.fin || i !== S.turn || S.finished[i] || S.paused || isB3()) return;   // 3구는 파울이 없다
   pushHist();
   S.sc[i]--; if (S.indSc) S.indSc[i]--;
   // 파울 횟수는 '선수 개인' 기록 — 팀전이라도 짝꿍에게 미러링하지 않는다(아래 미러링 블록 참고)
   if (!S.fouls) S.fouls = Array(S.sc.length).fill(0);
   S.fouls[i]++;
   // 이미 목표를 달성해 마무리 쿠션 중이었는데 점수가 목표 밑으로 내려가면 완주 상태 해제
-  if (S.done[i] && S.sc[i] < S.targets[i]) {
+  if (S.done[i] && S.sc[i] < goal(i)) {
     S.done[i] = false;
     S.cush[i] = 0; if (S.indCush) S.indCush[i] = 0;
     S.lastInning = false;
@@ -979,7 +1008,7 @@ function render(){
       if (gstatEl) gstatEl.innerHTML = `<span style="color:var(--accent)">마무리 쿠션 단계</span>`;
     } else {
       if (gscEl) {
-        gscEl.innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${S.targets[i]}</span>`;
+        gscEl.innerHTML = `${S.sc[i]}<span style="font-size:0.45em;opacity:0.55;font-weight:700"> / ${goal(i)}</span>`;
         gscEl.style.fontSize = 'clamp(64px, 22vmin, 150px)';
       }
       // 에버 분모는 알 이닝(= 총 이닝 − 쿠션 이닝). 이 분기는 아직 알을 치는 중이라 현재 턴도 알 이닝으로 센다.
@@ -1000,7 +1029,7 @@ function render(){
   }
   
   if ($('#inning')) {
-    $('#inning').textContent = `${Math.max(...S.inn) + 1} 이닝`;
+    $('#inning').textContent = `${isB3() ? '3구 · ' : ''}${Math.max(...S.inn) + 1} 이닝`;
   }
 }
 
@@ -1053,10 +1082,13 @@ function saveGame(){
     const rank = S.rank[i] || lastRank;
     pl.push({
       id: S.pids[i] || null, name: S.names[i], win: rank === 1, rank,
-      score: indScore(i), target: S.targets[i], innings: S.inn[i],
+      score: indScore(i), target: S.targets[i], innings: S.inn[i],   // target 은 연장 전 원래 목표
       ballInn: ballInn(i),   // 알 이닝 — 에버·득점률·평균 타수의 분모
       highRun: S.br[i], misses: S.miss[i], fouls: (S.fouls && S.fouls[i]) || 0, cushMade: indCushOf(i),
-      cushInn: S.cushInn[i], timeMs: (S.timeMs && S.timeMs[i]) || 0, isTeam
+      cushInn: S.cushInn[i], timeMs: (S.timeMs && S.timeMs[i]) || 0, isTeam,
+      // 3구 표시 — 기록실이 이걸로 3구/4구를 가른다. 4구 기록은 예전 모양 그대로 둔다.
+      // (3구는 파울이 없으니 fouls 는 0 — '파울 없음'이 사실이라 평균 타수도 계산된다)
+      ...(isB3() ? { ball: 3 } : {})
     });
   }
   const payload = { recorded_by: auth.uid, played_at: new Date(S.t0).toISOString(), players: pl, team_id: currentTeam || null };
@@ -1100,7 +1132,7 @@ function win(winnerIdx){
     const indS = indScore(i), indC = indCushOf(i);
     // 이미 등수가 확정된 선수는 그때의 쿠션 개수로 표시(꼴등 연장으로 S.round 가 올라간 경우 대비)
     const cushGoal = (S.cushGoalAt && S.cushGoalAt[i] != null) ? S.cushGoalAt[i] : S.round;
-    const scStr = (S.done[i] && cushGoal > 0) ? `쿠션 ${indC}/${cushGoal}` : `${indS}/${S.targets[i]}`;
+    const scStr = (S.done[i] && cushGoal > 0) ? `쿠션 ${indC}/${cushGoal}` : `${indS}/${goal(i)}`;
     const ev = ballInn(i) ? (indS / ballInn(i)).toFixed(3) : '0.000';   // 에버 분모는 알 이닝
     const rankTag = dr[i] === 1 ? ' 🏆' : ` <span style="opacity:.6">${dr[i]}위</span>`;
     html += `<tr><td>${esc(nm)}${rankTag}</td><td>${scStr}</td><td>${ev}</td><td>${S.br[i]}</td></tr>`;
@@ -1125,8 +1157,8 @@ function win(winnerIdx){
 // 예전엔 쿠션 1개 = 알 3개로 환산해 한 비율로 합쳤는데, 그러면 쿠션 비중이 목표점수에 따라 달라진다
 // (목표 10점에겐 쿠션 3개가 목표의 90%, 목표 30점에겐 30%). 그래서 알을 다 뺀 수지 100 선수가
 // 아직 알을 치는 수지 300 선수보다 아래로 가는 일이 생겼다. 알과 쿠션은 섞지 않는다.
-// sc/cush 는 팀전에서 팀 공유값이다.
-const ballRatio = i => S.targets[i] > 0 ? Math.min(1, S.sc[i] / S.targets[i]) : 1;
+// sc/cush 는 팀전에서 팀 공유값이다. 3구 연장 중이면 늘어난 목표로 잰다.
+const ballRatio = i => goal(i) > 0 ? Math.min(1, S.sc[i] / goal(i)) : 1;
 const cushMade = i => S.done[i] ? (S.cush[i] || 0) : 0;
 // o 가 r 보다 확실히 앞서 있나 (동률이면 false → 공동 등수)
 function progAhead(o, r){
@@ -1219,7 +1251,7 @@ function showEarlyResult(){
   const order = [...Array(N).keys()].sort((a, b) => (S.rank[a] - S.rank[b]) || (a - b));
   for (const i of order){
     const nm = isTeam ? `${i % 2 === 0 ? 'A팀' : 'B팀'} ${S.names[i]}` : S.names[i];
-    const scStr = (S.done[i] && S.round > 0) ? `${S.targets[i]} + 쿠션${indCushOf(i)}` : `${indScore(i)} / ${S.targets[i]}`;
+    const scStr = (S.done[i] && S.round > 0) ? `${S.targets[i]} + 쿠션${indCushOf(i)}` : `${indScore(i)} / ${goal(i)}`;
     // 알 달성률, 그리고 알을 다 뺀 사람은 쿠션 진행을 따로 붙인다 (예: 100.0% + 쿠션 2/3)
     const pct = (ballRatio(i) * 100).toFixed(1) + '%' + (S.done[i] && S.round > 0 ? ` + 쿠션 ${cushMade(i)}/${S.round}` : '');
     const medal = S.rank[i] === 1 ? '🏆 ' : '';
@@ -1304,7 +1336,7 @@ $('#btnMenuNew').onclick = () => {
 $('#btnMenuRestart').onclick = () => {
   if(confirm('점수를 모두 0으로 초기화할까요?')){
     $('#menuOvl').classList.remove('on');
-    Object.assign(S, freshCounters(S.sc.length, S.first));
+    Object.assign(S, freshCounters(S.sc.length, S.first, isB3() ? 0 : (prefs.cushGoal ?? 1)));
     setPausedUI(false);
     save(); buildGameZones(); render(); toast('점수가 초기화되었습니다.');
   }

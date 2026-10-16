@@ -13,6 +13,39 @@ export function applyTheme(t){
   else r.removeAttribute('data-theme');
 }
 
+// ── 3구 / 4구 ── 점수판·기록실이 같은 값을 나눠 쓴다 (점수판에서 3구를 골랐으면 기록실도 3구로 열린다)
+// 3구 경기는 games.players 의 선수마다 ball: 3 이 붙는다. 없으면(그 전 기록 전부) 4구다.
+const LS_BALL = 'dangBall';
+export const getBall = () => { try { return localStorage.getItem(LS_BALL) === '3구' ? '3구' : '4구'; } catch(e){ return '4구'; } };
+export const setBall = b => { try { localStorage.setItem(LS_BALL, b === '3구' ? '3구' : '4구'); } catch(e){} };
+export const ballOfGame = g => (Array.isArray(g.players) && g.players[0] && g.players[0].ball === 3) ? '3구' : '4구';
+// 3구 수지 = 목표 점수 그대로 저장한다 (4구는 표시 수지 ÷ 10). 마무리 쿠션·파울이 없다.
+export const HD3_OPTIONS = [5, 8, 10, 12, 15, 18, 20, 25, 30, 35, 40];
+
+// 팀 명단 → [{ id, display_name, handicap, handicap3 }]
+// handicap3 칸이 아직 없는 DB(sql/handicap3.sql 실행 전)면 400 이 난다 → 그 칸만 빼고 다시 읽는다.
+export async function fetchRoster(teamId){
+  const q = cols => sbFetch('/rest/v1/team_members?select=profiles(' + cols + ')&team_id=eq.' + teamId);
+  let rows;
+  try { rows = await q('id,display_name,handicap,handicap3'); }
+  catch(e){ if (e.status !== 400) throw e; rows = await q('id,display_name,handicap'); }
+  return (rows || []).map(r => r && r.profiles).filter(Boolean);
+}
+
+// 3구 수지 저장 (본인 또는 관리자). 4구 수지와 달리 rename_player 를 거치지 않고 칸을 직접 고친다.
+export async function saveHandicap3(uid, v){
+  let rows;
+  try {
+    rows = await sbFetch('/rest/v1/profiles?id=eq.' + encodeURIComponent(uid), {
+      method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ handicap3: v })
+    });
+  } catch(e){
+    if (e.status === 400) throw new Error('3구 수지 칸이 아직 없습니다 — sql/handicap3.sql 을 실행해 주세요');
+    throw e;
+  }
+  if (!rows || !rows.length) throw new Error('권한이 없습니다');   // RLS 에 막히면 오류 대신 빈 배열이 온다
+}
+
 // ── 점수 음성 켬/끔 ── 세 화면이 같은 값을 쓴다 (소리는 점수판에서만 나지만 설정은 어디서든 바꾼다)
 const LS_VOICE = 'dangScoreVoice';
 export const getVoice = () => { try { const v = localStorage.getItem(LS_VOICE); return v == null ? true : JSON.parse(v); } catch(e){ return true; } };
