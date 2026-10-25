@@ -16,20 +16,20 @@
 :root{
   --sat: env(safe-area-inset-top,0px); --sab: env(safe-area-inset-bottom,0px);
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
-  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5;
-  --out:#dc2626;   /* 순위표에서 튀는 값 (주황 accent 와 헷갈리지 않는 빨강) */
+  --line:#e5e7eb; --accent:#0a6c9e; --hover:#f0f2f5;
+  --out:#dc2626;   /* 순위표에서 튀는 값 (accent 와 헷갈리지 않는 빨강) */
 }
 @media (prefers-color-scheme:dark){
   :root{ --bg:#15181c; --card:#1e2228; --text:#e8eaed; --muted:#9aa1ab;
-         --line:#2f343c; --accent:#ff8c42; --hover:#262b33; --out:#f87171; }
+         --line:#2f343c; --accent:#3aa8de; --hover:#262b33; --out:#f87171; }
 }
 /* 수동 테마 오버라이드 (설정에서 선택) — 미디어쿼리보다 우선 */
 :root[data-theme="light"]{ color-scheme:light;
   --bg:#f6f7f9; --card:#fff; --text:#1a1d21; --muted:#6b7280;
-  --line:#e5e7eb; --accent:#e8590c; --hover:#f0f2f5; --out:#dc2626; }
+  --line:#e5e7eb; --accent:#0a6c9e; --hover:#f0f2f5; --out:#dc2626; }
 :root[data-theme="dark"]{ color-scheme:dark;
   --bg:#15181c; --card:#1e2228; --text:#e8eaed; --muted:#9aa1ab;
-  --line:#2f343c; --accent:#ff8c42; --hover:#262b33; --out:#f87171; }
+  --line:#2f343c; --accent:#3aa8de; --hover:#262b33; --out:#f87171; }
 *{box-sizing:border-box}
 body{margin:0;padding:calc(56px + var(--sat)) 16px calc(16px + var(--sab));background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
