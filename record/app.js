@@ -446,10 +446,10 @@ function processData(games, members, keep) {
   // 지표는 경기 이력에서 낸다 — 통합과 모드별(2인·3인·4인·팀전) 모두.
   // 선수 상세 화면과 같은 함수(calcStatsForHistory)라 순위표와 상세가 늘 같은 값을 말한다.
   for (const p of pArr) {
-    Object.assign(p, calcStatsForHistory(p.history));
+    Object.assign(p, calcStatsForHistory(p.history, p.handicap));
     p.modes = {};
     for (const mk of new Set(p.history.map(h => h.type)))
-      p.modes[mk] = calcStatsForHistory(p.history.filter(h => h.type === mk));
+      p.modes[mk] = calcStatsForHistory(p.history.filter(h => h.type === mk), p.handicap);
   }
 
   const now = new Date();
@@ -481,6 +481,7 @@ const COLS_ALL = [   // 통합: 실력 지표 통합. 승수·승률 대신 보�
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'foulRate', t:'파울률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
+  {k:'expInn',   t:'기대 이닝', fmt:v=>v.toFixed(1)},
   {k:'bestHr',   t:'하이런'},
   {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
   {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
@@ -491,6 +492,7 @@ const COLS_SKILL = [  // 모드 공통 실력 지표
   {k:'hitRate',  t:'득점률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'foulRate', t:'파울률',    fmt:v=>v.toFixed(1)+'%'},
   {k:'cushRate', t:'쿠션 성공률', fmt:v=>v.toFixed(1)+'%'},
+  {k:'expInn',   t:'기대 이닝', fmt:v=>v.toFixed(1)},
   {k:'bestHr',   t:'하이런'},
   {k:'avgInterval', t:'평균 인터벌', fmt:v=>v.toFixed(1)+'초'},
   {k:'volatility', t:'기복',     fmt:v=>v.toFixed(1)+'%'},
@@ -520,8 +522,9 @@ const defSort = m => m==='통합' ? 'avgAvg' : 'winRate';
 const cell = (p, c) => p[c.k]==null ? '—' : (c.fmt ? c.fmt(p[c.k]) : p[c.k]);
 // 값이 낮을수록 잘한 지표. 표에서 제목을 처음 눌렀을 때와 포디움의 1등이 여기에 달려 있다.
 // (기복 = 경기별 에버리지 변동폭이라 낮을수록 안정적이다.
-//  평균 인터벌 = 한 타석에 쓴 시간이라 짧을수록 빠르게 친 것이다)
-const bestIsLow = k => k==='avgRank' || k==='foulRate' || k==='volatility' || k==='avgInterval';
+//  평균 인터벌 = 한 타석에 쓴 시간이라 짧을수록 빠르게 친 것이다.
+//  기대 이닝 = 한 게임을 끝내는 데 드는 이닝이라 적을수록 빨리 끝낸다)
+const bestIsLow = k => k==='avgRank' || k==='foulRate' || k==='volatility' || k==='avgInterval' || k==='expInn';
 // 포디움에 올릴 지표 — 승률·에버리지·평균 타수·득점률·하이런·평균 인터벌. 표(COLS)의 순서를 따라간다.
 // 승률은 모드마다 열 키가 다르다(통합 adjRate / 나머지 winRate).
 const PODIUM_KEYS = ['adjRate','winRate','avgAvg','streakAvg','hitRate','bestHr','avgInterval'];
@@ -1363,8 +1366,23 @@ const METRICS = [
   {k:'avgRank', t:'평균 순위', modes:['3인','4인'], dec:1, invert:true, min:1, max:4, val:s=>s.avgRank ?? 0, desc:'평균 순위'}
 ];
 
+/* 기대 이닝 — 수지만큼 알을 빼고 마무리 쿠션 1개를 성공하기까지 평균 몇 이닝이 드는가.
+     알 이닝   = 수지 저장값(= 2인 목표점수) ÷ 에버리지
+     쿠션 이닝 = 100 ÷ 쿠션 성공률(%)   ← 매 이닝 같은 확률로 시도해 처음 성공할 때까지(기하분포의 평균)
+     기대 이닝 = 알 이닝 + 쿠션 이닝 − 1
+   목표를 채운 이닝은 알 이닝이기도 하고 쿠션을 쳐볼 수 있는 이닝이기도 해서 양쪽에 다 세인다
+   (score/app.js 의 closeInning) → 겹친 1이닝을 뺀다. 그래서 쿠션 성공률 100% 면 알 이닝과 같다.
+   3구는 마무리 쿠션이 없어 알 이닝만이다. 쿠션 기록이 없거나 한 번도 성공 못 했으면 셀 수 없다(null). */
+function expInnOf(hd, avg, cushRate){
+  if (!(hd > 0 && avg > 0)) return null;
+  const ball = hd / avg;
+  if (is3()) return ball;
+  return cushRate > 0 ? ball + 100 / cushRate - 1 : null;
+}
+
 // 경기 이력(processData 가 만든 history 줄들) → 지표 한 벌. 순위표(통합·모드별)와 선수 상세가 함께 쓴다.
-function calcStatsForHistory(h) {
+// hd(수지 저장값)를 주면 기대 이닝도 낸다 — 주지 않으면 expInn 은 null.
+function calcStatsForHistory(h, hd) {
   const games = h.length;
   const wins = h.filter(r => r.win).length;
   // f* = 파울이 기록된 경기만 (평균 타수·파울률용) — 파울 수를 모르면 분자(파울 차감 전 득점)를 복원할 수 없다
@@ -1389,12 +1407,14 @@ function calcStatsForHistory(h) {
     }
   });
 
+  const avgAvg = sumBallInn > 0 ? (sumScore / sumBallInn) : 0;
+  const cushRate = cushInn > 0 ? (cushMade / cushInn) * 100 : null;
   return {
     games,
     wins,
     winRate: games > 0 ? (wins / games) * 100 : 0,
     // 에버 = 총득점 / 알 이닝
-    avgAvg: sumBallInn > 0 ? (sumScore / sumBallInn) : 0,
+    avgAvg,
     bestHr: maxHr,
     hitRate: sumBallInn > 0 ? ((sumBallInn - totalMisses) / sumBallInn) * 100 : 0,
     // 평균 타수 = (파울 차감 전 득점) / 득점한 알 이닝. 파울이 기록되기 전 경기는 아예 뺀다.
@@ -1413,7 +1433,8 @@ function calcStatsForHistory(h) {
     // (score 는 개인 점수, target 은 팀 목표) 보정하지 않는다 — 모드별로 다르게 틀리는 게 더 나쁘다.
     foulRate: (fGross + fBallInn) > 0 ? (fFoul / (fGross + fBallInn)) * 100 : null,
     // 쿠션 성공률 = 마무리 쿠션 성공 / 쿠션을 시도한 이닝. 시도가 없으면 null
-    cushRate: cushInn > 0 ? (cushMade / cushInn) * 100 : null,
+    cushRate,
+    expInn: expInnOf(hd, avgAvg, cushRate),
     // 평균 인터벌 = 1샷(타석) 당 평균 소모 시간(초). 공타/파울 횟수까지 포함
     avgInterval: sumShots > 0 ? (sumTime / sumShots) / 1000 : null,
     // 기복 = 경기별 에버리지의 변동계수(%). 2경기 미만이면 null
@@ -1613,7 +1634,7 @@ function showPlayer(name){
 
     // 권장수지는 기간·모드를 따라 움직이지 않는 값이라 이 성적 칸에는 넣지 않는다(머리말에 따로 있다)
     const COLS = colsFor(playerMode).filter(c => c.k !== 'name' && c.k !== 'handicap' && c.k !== 'recHd');
-    const stObj = calcStatsForHistory(h);
+    const stObj = calcStatsForHistory(h, p.handicap);
     
     let statsHtml = '';
     COLS.forEach(c => {
