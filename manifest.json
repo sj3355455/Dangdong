@@ -8,8 +8,8 @@
   "scope": "./",
   "display": "fullscreen",
   "orientation": "any",
-  "background_color": "#0e1114",
-  "theme_color": "#0e1114",
+  "background_color": "#1f2329",
+  "theme_color": "#1f2329",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
